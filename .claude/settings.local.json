@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(curl -s https://raw.githubusercontent.com/sofiaqsy/apartalo-core/main/core/services/usuarios-negocios-service.js)",
+      "Bash(curl -s https://raw.githubusercontent.com/sofiaqsy/apartalo-core/main/config/index.js)",
+      "Bash(curl -s https://raw.githubusercontent.com/sofiaqsy/apartalo-core/main/config/business-config.js)",
+      "Bash(curl -s https://raw.githubusercontent.com/sofiaqsy/apartalo-core/main/core/services/ai-service.js)",
+      "Bash(curl -s https://raw.githubusercontent.com/sofiaqsy/apartalo-core/main/core/services/sheets-service.js)",
+      "Bash(curl -s https://raw.githubusercontent.com/sofiaqsy/apartalo-core/main/routes/webhook-router.js)",
+      "Bash(curl -s https://raw.githubusercontent.com/sofiaqsy/apartalo-core/main/handlers/unificado/index.js)",
+      "Bash(curl -s https://raw.githubusercontent.com/sofiaqsy/apartalo-core/main/handlers/unificado/pedidos.js)",
+      "Bash(curl -s https://raw.githubusercontent.com/sofiaqsy/apartalo-core/main/routes/pedidos-router.js)",
+      "Bash(cp /tmp/pedidos_unificado.js \"/Users/keylacusi/Desktop/OPEN IA/apartalo-core/handlers/unificado_pedidos_remote.js\")",
+      "Bash(mkdir -p \"/Users/keylacusi/Desktop/OPEN IA/apartalo-core/handlers/unificado\")",
+      "Bash(cp /tmp/pedidos_unificado.js \"/Users/keylacusi/Desktop/OPEN IA/apartalo-core/handlers/unificado/pedidos.js\")",
+      "Bash(python3 -:*)",
+      "Bash(curl -s -X POST https://apartalo-core-9d633cdb9e1a.herokuapp.com/api/negocios/reload)",
+      "Bash(brew list:*)",
+      "Read(//usr/local/bin/**)",
+      "Bash(npx heroku:*)",
+      "Read(//Users/keylacusi/Desktop/OPEN IA/apartalo-core/routes/**)",
+      "Bash(open \"/Users/keylacusi/Desktop/OPEN IA/english-reader/index.html\")",
+      "Bash(find '/Users/keylacusi/Desktop/OPEN IA/apartalo-core' -type d -name test* -o -type d -name __test* -o -type d -name spec*)",
+      "Bash(npm run:*)",
+      "Bash(npm install:*)",
+      "Bash(npx jest:*)",
+      "Bash(grep -E \"\\\\.js$|^d\")",
+      "Bash(git clone:*)",
+      "Read(//tmp/**)",
+      "Read(//private/tmp/cafe-bot-telegram/**)",
+      "Bash(pip install:*)",
+      "Bash(pip3 install:*)",
+      "WebSearch",
+      "Bash(python -c \"import web\")",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\(''web.py''\\).read\\(\\)\\); print\\(''OK''\\)\")",
+      "WebFetch(domain:apartalo-core-9d633cdb9e1a.herokuapp.com)",
+      "Bash(python3 -c \":*)"
+    ]
+  }
+}
