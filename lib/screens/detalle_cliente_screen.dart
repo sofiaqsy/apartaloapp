@@ -771,6 +771,14 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
             padding: EdgeInsets.symmetric(vertical: 8),
             child: CircularProgressIndicator(strokeWidth: 2),
           ))
+        else if (_direcciones.isEmpty && _esInvitado && _direccionEnvioController.text.trim().isNotEmpty)
+          _buildDireccionCard({
+            'address_line': _direccionEnvioController.text.trim(),
+            'district':     _distritoEnvioController.text.trim(),
+            'department':   _departamentoEnvioController.text.trim(),
+            'alias':        'Dirección de entrega',
+            'is_primary':   true,
+          })
         else if (_direcciones.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
