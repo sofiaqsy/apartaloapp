@@ -203,6 +203,9 @@ class ApiService {
         final greenKg          = (data['greenKg']          as num?)?.toDouble();
         final greenLotCode     =  data['greenLotCode']     as String?;
         final isGreenCoffee    = (data['isGreenCoffee']    as bool?) ?? false;
+        final upcomingEvents   = (data['upcomingEvents'] as List? ?? [])
+            .map((e) => ProximoEvento.fromMap(Map<String, dynamic>.from(e)))
+            .toList();
         return ApiResponse.success(PresentacionesData(
           presentaciones:  list,
           availableKg:     availableKg,
@@ -216,6 +219,7 @@ class ApiService {
           greenKg:         greenKg,
           greenLotCode:    greenLotCode,
           isGreenCoffee:   isGreenCoffee,
+          upcomingEvents:  upcomingEvents,
         ));
       }
       return ApiResponse.error('Error obteniendo presentaciones');
@@ -1588,6 +1592,7 @@ class PresentacionesData {
   final double? greenKg;               // kg disponibles de lote verde (null = no es café verde)
   final String? greenLotCode;          // código del lote verde
   final bool isGreenCoffee;            // true si el producto tiene green_lot_id
+  final List<ProximoEvento> upcomingEvents; // todos los eventos planificados/en curso
 
   const PresentacionesData({
     required this.presentaciones,
@@ -1602,7 +1607,26 @@ class PresentacionesData {
     this.greenKg,
     this.greenLotCode,
     this.isGreenCoffee = false,
+    this.upcomingEvents = const [],
   });
+}
+
+class ProximoEvento {
+  final double kg;
+  final String? date;
+  final String? status;
+  final String? lotCode;
+  final String? eventId;
+
+  const ProximoEvento({required this.kg, this.date, this.status, this.lotCode, this.eventId});
+
+  factory ProximoEvento.fromMap(Map<String, dynamic> m) => ProximoEvento(
+    kg:      (m['kg'] as num?)?.toDouble() ?? 0,
+    date:    m['date'] as String?,
+    status:  m['status'] as String?,
+    lotCode: m['lotCode'] as String?,
+    eventId: m['eventId'] as String?,
+  );
 }
 
 class Presentacion {

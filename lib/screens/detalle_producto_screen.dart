@@ -32,6 +32,7 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
   String? _nextEventDate;                      // fecha ISO del próximo evento
   String? _nextEventStatus;                    // 'planned' | 'in_progress'
   String? _nextEventLotCode;                   // código de lote
+  List<ProximoEvento> _upcomingEvents = const [];
   double? _greenKg;                            // kg disponibles de lote verde
   String? _greenLotCode;                       // código del lote verde
   bool _isGreenCoffee = false;                 // true si tiene green_lot_id
@@ -59,6 +60,7 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
       _nextEventDate     = result.isSuccess ? result.data?.nextEventDate              : null;
       _nextEventStatus   = result.isSuccess ? result.data?.nextEventStatus            : null;
       _nextEventLotCode  = result.isSuccess ? result.data?.nextEventLotCode           : null;
+      _upcomingEvents    = result.isSuccess ? (result.data?.upcomingEvents  ?? [])   : [];
       _greenKg           = result.isSuccess ? result.data?.greenKg                    : null;
       _greenLotCode      = result.isSuccess ? result.data?.greenLotCode               : null;
       _isGreenCoffee     = result.isSuccess ? (result.data?.isGreenCoffee  ?? false) : false;
@@ -977,8 +979,8 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
                 ],
               ),
             ),
-            // Siguiente stock (próximo evento)
-            if (hasNextEvent) ...[
+            // Siguientes stocks (todos los eventos planificados/en curso)
+            if (_upcomingEvents.isNotEmpty) ...[
               const SizedBox(height: 8),
               Divider(height: 1, color: Colors.orange.shade100),
               const SizedBox(height: 8),
@@ -986,46 +988,45 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
                 Icon(Icons.event_outlined, size: 13, color: Colors.deepPurple.shade400),
                 const SizedBox(width: 6),
                 Text('Siguiente stock', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-                const Spacer(),
-                Text(_fmtKg(_nextEventKg),
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.deepPurple.shade600)),
               ]),
-              const SizedBox(height: 4),
-              Row(children: [
-                const SizedBox(width: 19),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: _nextEventStatus == 'in_progress'
-                        ? Colors.orange.shade50
-                        : Colors.deepPurple.shade50,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: _nextEventStatus == 'in_progress'
-                        ? Colors.orange.shade200
-                        : Colors.deepPurple.shade100),
-                  ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(
-                      _nextEventStatus == 'in_progress' ? Icons.local_fire_department : Icons.schedule,
-                      size: 10,
-                      color: _nextEventStatus == 'in_progress' ? Colors.orange.shade700 : Colors.deepPurple.shade400,
+              const SizedBox(height: 6),
+              ..._upcomingEvents.map((ev) => Padding(
+                padding: const EdgeInsets.only(left: 19, bottom: 5),
+                child: Row(children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: ev.status == 'in_progress' ? Colors.orange.shade50 : Colors.deepPurple.shade50,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: ev.status == 'in_progress'
+                          ? Colors.orange.shade200 : Colors.deepPurple.shade100),
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      [
-                        if (_nextEventLotCode != null && _nextEventLotCode!.isNotEmpty) _nextEventLotCode!,
-                        if (_nextEventDate != null) _fmtDate(_nextEventDate),
-                        if (_nextEventStatus == 'in_progress') 'En tueste' else 'Planificado',
-                      ].join(' · '),
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: _nextEventStatus == 'in_progress' ? Colors.orange.shade800 : Colors.deepPurple.shade600,
-                        fontWeight: FontWeight.w500,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(
+                        ev.status == 'in_progress' ? Icons.local_fire_department : Icons.schedule,
+                        size: 10,
+                        color: ev.status == 'in_progress' ? Colors.orange.shade700 : Colors.deepPurple.shade400,
                       ),
-                    ),
-                  ]),
-                ),
-              ]),
+                      const SizedBox(width: 4),
+                      Text(
+                        [
+                          if (ev.lotCode != null && ev.lotCode!.isNotEmpty) ev.lotCode!,
+                          if (ev.date != null) _fmtDate(ev.date),
+                          if (ev.status == 'in_progress') 'En tueste' else 'Planificado',
+                        ].join(' · '),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: ev.status == 'in_progress' ? Colors.orange.shade800 : Colors.deepPurple.shade600,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ]),
+                  ),
+                  const Spacer(),
+                  Text(_fmtKg(ev.kg),
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.deepPurple.shade600)),
+                ]),
+              )),
             ],
           ]),
         ),

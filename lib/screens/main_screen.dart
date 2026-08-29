@@ -2,17 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
-import '../services/ai_assistant_service.dart';
-import '../services/conversation_firestore_service.dart';
 import '../services/notification_service.dart';
 import '../providers/printer_provider.dart';
-import '../widgets/ia_status_widget.dart';
 import 'login_screen.dart';
 import 'tabs/reportes_tab.dart';
 import 'tabs/productos_tab.dart';
 import 'tabs/clientes_tab.dart';
 import 'tabs/pedidos_tab.dart';
-import 'conversaciones_screen.dart';
 import 'settings/settings_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -31,11 +27,6 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
-  final AIAssistantService _aiService = AIAssistantService();
-  final ConversationFirestoreService _conversationService = ConversationFirestoreService();
-  
-  // Contador de mensajes no leídos
-  int _mensajesNoLeidos = 0;
 
   @override
   void initState() {
@@ -45,36 +36,17 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _initializeServices() async {
-    // Inicializar IA
-    _initializeAI();
-    
-    // Cargar contador de mensajes
-    _cargarContadorMensajes();
-    
     // Re-enviar token FCM después del login
     try {
       debugPrint('🔄 Re-enviando token FCM después del login...');
-      await NotificationService().resendTokenAfterLogin();
+      final notifService = NotificationService();
+      await notifService.resendTokenAfterLogin();
+      // Navigate to Pedidos tab when a new order notification is tapped or received
+      notifService.onNuevoPedido = () {
+        if (mounted) setState(() => _currentIndex = 0);
+      };
     } catch (e) {
       debugPrint('⚠️ Error re-enviando token: $e');
-    }
-  }
-
-  Future<void> _initializeAI() async {
-    await _aiService.checkConnection();
-    _aiService.onStatusChange = (status, message) {
-      if (mounted) setState(() {});
-    };
-  }
-
-  Future<void> _cargarContadorMensajes() async {
-    try {
-      final count = await _conversationService.contarMensajesNoLeidos(widget.businessId);
-      if (mounted) {
-        setState(() => _mensajesNoLeidos = count);
-      }
-    } catch (e) {
-      debugPrint('Error cargando contador: $e');
     }
   }
 
@@ -145,47 +117,6 @@ class _MainScreenState extends State<MainScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          // Botón de conversaciones con badge
-          Stack(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.chat_bubble_outline),
-                onPressed: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ConversacionesScreen(businessId: widget.businessId),
-                    ),
-                  );
-                  // Recargar contador al volver
-                  _cargarContadorMensajes();
-                },
-              ),
-              if (_mensajesNoLeidos > 0)
-                Positioned(
-                  right: 6,
-                  top: 6,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: Colors.red,
-                      shape: BoxShape.circle,
-                    ),
-                    constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                    child: Text(
-                      _mensajesNoLeidos > 99 ? '99+' : '$_mensajesNoLeidos',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          
           // Indicador de impresora
           GestureDetector(
             onTap: () => Navigator.push(
@@ -226,10 +157,6 @@ class _MainScreenState extends State<MainScreen> {
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: Center(child: IAStatusIndicator()),
-          ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
             onSelected: (value) {
@@ -241,9 +168,6 @@ class _MainScreenState extends State<MainScreen> {
                       builder: (_) => SettingsScreen(businessName: widget.businessName),
                     ),
                   );
-                  break;
-                case 'reconectar':
-                  _aiService.checkConnection();
                   break;
                 case 'logout':
                   _logout();
@@ -261,16 +185,6 @@ class _MainScreenState extends State<MainScreen> {
                     ),
                     const SizedBox(width: 8),
                     const Text('Configuración'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'reconectar',
-                child: Row(
-                  children: [
-                    Icon(Icons.refresh, color: Colors.blue),
-                    SizedBox(width: 8),
-                    Text('Reconectar IA'),
                   ],
                 ),
               ),

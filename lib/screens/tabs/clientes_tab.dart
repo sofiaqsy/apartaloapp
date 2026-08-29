@@ -96,7 +96,7 @@ class _ClientesTabState extends State<ClientesTab> with SingleTickerProviderStat
     switch (estado) {
       case 'ACTIVO': return Colors.green;
       case 'INACTIVO': return Colors.grey;
-      case 'PROSPECTO': return Colors.orange;
+      case 'INVITADO': return Colors.purple;
       default: return Colors.blue;
     }
   }
@@ -153,7 +153,7 @@ class _ClientesTabState extends State<ClientesTab> with SingleTickerProviderStat
                       const SizedBox(width: 8),
                       _buildFiltroChip(null, 'Todos', Icons.people),
                       const SizedBox(width: 8),
-                      _buildFiltroChip('PROSPECTO', 'Prospectos', Icons.schedule),
+                      _buildFiltroChip('INVITADO', 'Invitados', Icons.person_outline),
                     ],
                   ),
                 ),
@@ -305,7 +305,7 @@ class _ClienteCard extends StatelessWidget {
     switch (estado) {
       case 'ACTIVO': return Colors.green;
       case 'INACTIVO': return Colors.grey;
-      case 'PROSPECTO': return Colors.orange;
+      case 'INVITADO': return Colors.purple;
       default: return Colors.blue;
     }
   }

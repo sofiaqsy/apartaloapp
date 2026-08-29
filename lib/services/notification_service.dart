@@ -20,6 +20,7 @@ class NotificationService {
   // Callbacks para manejar notificaciones
   Function(RemoteMessage)? onMessageReceived;
   Function(RemoteMessage)? onMessageOpenedApp;
+  VoidCallback? onNuevoPedido;
 
   /// Inicializar el servicio de notificaciones
   Future<void> initialize() async {
@@ -274,10 +275,9 @@ class NotificationService {
   /// Manejar notificación recibida
   void _handleMessage(RemoteMessage message) {
     final data = message.data;
-
-    // Aquí puedes mostrar una notificación local o actualizar la UI
     if (data['type'] == 'nuevo_pedido') {
       debugPrint('🛒 Nuevo pedido recibido');
+      onNuevoPedido?.call();
     } else if (data['type'] == 'mensaje_soporte') {
       debugPrint('💬 Nuevo mensaje de soporte');
     }
@@ -286,10 +286,9 @@ class NotificationService {
   /// Manejar cuando el usuario toca una notificación
   void _handleMessageOpenedApp(RemoteMessage message) {
     final data = message.data;
-
-    // Navegar a la pantalla correspondiente según el tipo de notificación
     if (data['type'] == 'nuevo_pedido') {
       debugPrint('➡️ Navegar a pedidos');
+      onNuevoPedido?.call();
     } else if (data['type'] == 'mensaje_soporte') {
       debugPrint('➡️ Navegar a chat de soporte');
     }

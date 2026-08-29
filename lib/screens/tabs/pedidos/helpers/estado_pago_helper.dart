@@ -40,9 +40,12 @@ class EstadoPagoHelper {
   static int calcularDiasSinPago(Map<String, dynamic> pedido) {
     final estadoPago = determinarEstadoPago(pedido);
     if (estadoPago == PAGADO) return 0;
-    
-    // Usar fechaCompletado si existe, sino fecha del pedido
-    String? fechaStr = pedido['fechaCompletado']?.toString() ?? pedido['fecha']?.toString();
+
+    // Solo contar días desde que el pedido fue completado
+    final estado = pedido['estado']?.toString() ?? pedido['status']?.toString() ?? '';
+    if (estado.toLowerCase() != 'completado' && estado.toLowerCase() != 'completed') return 0;
+
+    final String? fechaStr = pedido['fechaCompletado']?.toString();
     if (fechaStr == null || fechaStr.isEmpty) return 0;
     
     try {

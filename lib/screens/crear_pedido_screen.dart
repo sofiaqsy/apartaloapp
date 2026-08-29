@@ -19,6 +19,8 @@ class _CrearPedidoScreenState extends State<CrearPedidoScreen> with SingleTicker
   final Map<String, bool> _tieneProximoTostado = {};
   final Map<String, double> _proximoKg = {};      // nextEventKg por producto
   final Map<String, String?> _proximoEventId = {}; // nextEventId por producto
+  final Map<String, double> _greenKg = {};         // kg disponibles lote verde por producto
+  final Map<String, bool> _isGreenCoffee = {};     // true si el producto es café verde
   final Set<String> _consultandoStock = {};
 
   // Cliente seleccionado de la lista
@@ -263,13 +265,14 @@ class _CrearPedidoScreenState extends State<CrearPedidoScreen> with SingleTicker
     return unidad == 'g' ? v / 1000.0 : v;
   }
 
-  // Total kg que el carrito ya tiene para un producto (todas sus presentaciones/grinds)
-  double _kgEnCarrito(String codigo) => _carrito
-      .where((i) => i.codigo == codigo)
+  // Total kg en carrito para un producto, separando verde de tostado/molido
+  double _kgEnCarrito(String codigo, {bool? soloVerde}) => _carrito
+      .where((i) => i.codigo == codigo && (soloVerde == null || i.isGreenCoffee == soloVerde))
       .fold(0.0, (sum, i) => sum + i.cantidad * i.packSizeKg);
 
   // Stock total en kg del lote actual para un producto (independiente de presentación)
   double _stockKgForCodigo(String codigo) {
+    if (_isGreenCoffee[codigo] == true) return _greenKg[codigo] ?? double.infinity;
     for (final linea in _lineas) {
       if ((linea.producto['codigo'] as String?) == codigo && linea.presentacion != null) {
         final pres = linea.presentacion!;
@@ -284,7 +287,7 @@ class _CrearPedidoScreenState extends State<CrearPedidoScreen> with SingleTicker
   int _restanteUnidades(String codigo, Presentacion pres) {
     final packKg = _toKg(pres.contenido, pres.unidad);
     final stockKg = pres.stock * packKg;
-    final consumidoKg = _kgEnCarrito(codigo);
+    final consumidoKg = _kgEnCarrito(codigo, soloVerde: false);
     final disponibleKg = stockKg - consumidoKg;
     return (disponibleKg / packKg).floor().clamp(-pres.stock, pres.stock);
   }
@@ -300,6 +303,8 @@ class _CrearPedidoScreenState extends State<CrearPedidoScreen> with SingleTicker
         _tieneProximoTostado[codigo] = nextKg > 0 && r.data?.nextEventStatus != null;
         _proximoKg[codigo] = nextKg;
         _proximoEventId[codigo] = r.data?.nextEventId;
+        _isGreenCoffee[codigo] = r.data?.isGreenCoffee ?? false;
+        _greenKg[codigo] = r.data?.greenKg ?? 0.0;
         _consultandoStock.remove(codigo);
       });
     });
@@ -452,6 +457,7 @@ class _CrearPedidoScreenState extends State<CrearPedidoScreen> with SingleTicker
           grind: grind,
           cantidad: 1,
           packSizeKg: packKg,
+          isGreenCoffee: _isGreenCoffee[codigo] == true,
         ));
       }
     });
@@ -1244,9 +1250,13 @@ class _CrearPedidoScreenState extends State<CrearPedidoScreen> with SingleTicker
                             final idxEnCarrito = _carrito.indexWhere((i) => i.key == lineaKey);
 
                             // Out-of-stock check — stock compartido entre presentaciones del mismo lote
-                            final sinStock = pres != null && pres.stock <= 0;
+                            final esVerde = _isGreenCoffee[codigo] == true;
+                            final packKgLocal = pres != null ? _toKg(pres.contenido, pres.unidad) : 1.0;
+                            final sinStock = esVerde
+                                ? (_kgEnCarrito(codigo, soloVerde: true) >= (_greenKg[codigo] ?? double.infinity))
+                                : pres != null && pres.stock <= 0;
                             final restanteActual = pres != null ? _restanteUnidades(codigo, pres) : 0;
-                            final bloqueadoPorStock = !sinStock &&
+                            final bloqueadoPorStock = !esVerde && !sinStock &&
                                 pres != null && pres.stock > 0 &&
                                 restanteActual < 0 &&
                                 (_consultandoStock.contains(codigo) ||
@@ -1334,13 +1344,15 @@ class _CrearPedidoScreenState extends State<CrearPedidoScreen> with SingleTicker
                                               ],
                                             );
                                           }
+                                          // Verde nunca tiene pre-venta
+                                          if (_isGreenCoffee[codigo] == true) return const SizedBox.shrink();
                                           final tieneProximo = _tieneProximoTostado[codigo] == true;
                                           if (!tieneProximo) return const SizedBox.shrink();
                                           final nextKg = _proximoKg[codigo] ?? 0;
                                           final packKg = pres != null ? _toKg(pres.contenido, pres.unidad) : 1.0;
                                           // Cuánto kg del carrito ya excede el stock actual (está en pre-venta)
                                           final stockKg = (pres?.stock ?? 0) * packKg;
-                                          final totalCarritoKg = _kgEnCarrito(codigo);
+                                          final totalCarritoKg = _kgEnCarrito(codigo, soloVerde: false);
                                           final kgEnPreventa = (totalCarritoKg - stockKg).clamp(0, double.infinity);
                                           final disponibleNextKg = (nextKg - kgEnPreventa).clamp(0, nextKg);
                                           final libresNextEvent = (disponibleNextKg / packKg).floor();
@@ -1526,8 +1538,12 @@ class _CrearPedidoScreenState extends State<CrearPedidoScreen> with SingleTicker
         final lineaPres = _lineas.where(
           (l) => l.presentacion?.id == item.presentacionId,
         ).map((l) => l.presentacion).whereType<Presentacion>().firstOrNull;
-        final stockMax = lineaPres?.stock ?? double.infinity;
-        final tieneProximo = _tieneProximoTostado[item.codigo] == true;
+        final esVerdeCarrito = _isGreenCoffee[item.codigo] == true;
+        final packKgCarrito = lineaPres != null ? _toKg(lineaPres.contenido, lineaPres.unidad) : 1.0;
+        final stockMax = esVerdeCarrito
+            ? ((_greenKg[item.codigo] ?? double.infinity) / packKgCarrito)
+            : (lineaPres?.stock.toDouble() ?? double.infinity);
+        final tieneProximo = !esVerdeCarrito && _tieneProximoTostado[item.codigo] == true;
         final puedeSumar = item.cantidad < stockMax || tieneProximo;
         final grindMostrar = item.grind;
 
@@ -1889,6 +1905,7 @@ class _ItemCarrito {
   String? grind;
   int cantidad;
   final double packSizeKg; // tamaño del pack en kg para calcular stock compartido
+  final bool isGreenCoffee;
 
   _ItemCarrito({
     required this.codigo,
@@ -1902,6 +1919,7 @@ class _ItemCarrito {
     this.grind,
     required this.cantidad,
     this.packSizeKg = 1.0,
+    this.isGreenCoffee = false,
   });
 
   String get key => presentacionId != null ? '$codigo|$presentacionId|${grind ?? ''}' : codigo;

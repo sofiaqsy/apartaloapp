@@ -4,9 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
-import '../services/conversation_firestore_service.dart';
 import 'crear_pedido_screen.dart';
-import 'conversaciones_screen.dart';
 import 'tabs/pedidos/widgets/detalle_pedido/detalle_pedido_sheet.dart';
 
 class DetalleClienteScreen extends StatefulWidget {
@@ -20,7 +18,6 @@ class DetalleClienteScreen extends StatefulWidget {
 
 class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
   final _formKey = GlobalKey<FormState>();
-  final ConversationFirestoreService _firestoreService = ConversationFirestoreService();
   bool _isLoading = false;
   bool _hasChanges = false;
 
@@ -54,7 +51,6 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
   bool _esInterno = false;
 
   // Estado de la conversación Firestore
-  Conversacion? _conversacion;
   bool _botLoading = false;
 
   bool get _esNuevo => widget.cliente == null;
@@ -313,25 +309,6 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
     );
   }
 
-  /// Abrir chat con este cliente usando Firestore
-  void _abrirChat() {
-    final whatsapp = _whatsappLimpio;
-    if (whatsapp.isEmpty) {
-      _showSnack('No hay número de WhatsApp', Colors.orange);
-      return;
-    }
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ChatScreen(
-          businessId: ApiService.businessId,
-          whatsapp: whatsapp,
-          nombre: _nombreCliente,
-        ),
-      ),
-    );
-  }
 
   Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
@@ -439,8 +416,6 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
                                 if (!_esNuevo) ...[
                                   const SizedBox(height: 16),
                                   _buildSeccionEstadisticas(),
-                                  const SizedBox(height: 16),
-                                  _buildSeccionChat(),
                                 ],
                                 const SizedBox(height: 16),
                                 _buildSeccionNotas(),
@@ -1013,141 +988,6 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
   }
 
   /// Sección de chat con Firestore (tiempo real)
-  Widget _buildSeccionChat() {
-    final whatsapp = _whatsappLimpio;
-    if (whatsapp.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.chat_bubble, size: 20, color: Colors.purple.shade600),
-              const SizedBox(width: 8),
-              Text('Historial de Chat', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade800)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          
-          // Stream de conversación desde Firestore
-          StreamBuilder<Conversacion?>(
-            stream: _firestoreService.getConversacion(ApiService.businessId, whatsapp),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: CircularProgressIndicator(),
-                  ),
-                );
-              }
-
-              final conversacion = snapshot.data;
-
-              if (conversacion == null) {
-                return Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(Icons.chat_bubble_outline, size: 40, color: Colors.grey.shade400),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Sin conversaciones',
-                        style: TextStyle(fontSize: 14, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'El cliente no ha conversado por WhatsApp',
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                );
-              }
-
-              final color = conversacion.requiereAtencion ? Colors.orange : Colors.green;
-
-              return Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: color.withOpacity(0.2)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      conversacion.requiereAtencion ? Icons.support_agent : Icons.smart_toy,
-                      color: color,
-                      size: 28,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                conversacion.requiereAtencion ? 'Solicita atención' : 'Bot activo',
-                                style: TextStyle(fontWeight: FontWeight.w600, color: color),
-                              ),
-                              if (conversacion.tieneNoLeidos) ...[
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Text(
-                                    '${conversacion.noLeidos}',
-                                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                          if (conversacion.ultimoTexto.isNotEmpty)
-                            Text(
-                              conversacion.ultimoTexto,
-                              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                        ],
-                      ),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: _abrirChat,
-                      icon: const Icon(Icons.chat, size: 16),
-                      label: const Text('Ver Chat'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: color,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSeccionNotas() {
     return _buildSeccion(
       titulo: 'Notas',
