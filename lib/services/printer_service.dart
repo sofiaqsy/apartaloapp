@@ -18,6 +18,7 @@ class PedidoPrint {
   final double total;
   final String? departamento;
   final String? ciudad;
+  final String? referencia;
   final String? businessWhatsapp; // Número de WhatsApp del negocio
   final String? businessId;       // ID del negocio (para URL de tracking)
 
@@ -32,6 +33,7 @@ class PedidoPrint {
     required this.total,
     this.departamento,
     this.ciudad,
+    this.referencia,
     this.businessWhatsapp,
     this.businessId,
   });
@@ -261,6 +263,13 @@ class PrinterService {
         .where((e) => e != null && e!.isNotEmpty).toList();
     if (ubicParts.isNotEmpty) {
       cmd.writeln('TEXT $lx,$y,"4",0,1,1,"${_sanitize(ubicParts.join(', '))}"');
+      y += 44;
+    }
+
+    // Reference / additional info (font 4)
+    final ref = _sanitize(pedido.referencia ?? '');
+    if (ref.isNotEmpty) {
+      cmd.writeln('TEXT $lx,$y,"4",0,1,1,"Ref: $ref"');
       y += 44;
     }
 
