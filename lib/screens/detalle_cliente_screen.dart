@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
@@ -80,8 +81,10 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
     }
   }
 
+  bool get _esInvitado => widget.cliente?['id'] == 'guest';
+
   Future<void> _cargarEstadisticas() async {
-    if (_esNuevo) return;
+    if (_esNuevo || _esInvitado) return;
     setState(() => _statsLoading = true);
 
     try {
@@ -140,7 +143,7 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
 
   Future<void> _cargarDirecciones() async {
     final clienteId = widget.cliente?['id'] as String?;
-    if (clienteId == null || clienteId.isEmpty) return;
+    if (clienteId == null || clienteId.isEmpty || clienteId == 'guest') return;
     setState(() => _direccionesLoading = true);
     try {
       final response = await http.get(
@@ -177,6 +180,60 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
     } else {
       _showSnack('No se pudo abrir WhatsApp', Colors.red);
     }
+  }
+
+  void _compartirLinkB2B() {
+    final whatsapp = _whatsappLimpio;
+    if (whatsapp.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This client has no WhatsApp number')),
+      );
+      return;
+    }
+    final link = 'https://fincarosal.com/b2b/$whatsapp';
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Text(link, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500), textAlign: TextAlign.center),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.copy, color: Colors.blue),
+              title: const Text('Copy link'),
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: link));
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Link copied to clipboard')),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.chat, color: Colors.green),
+              title: const Text('Send via WhatsApp'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final msg = Uri.encodeComponent('Hi! Here is your personal ordering link: $link');
+                final url = 'https://wa.me/$whatsapp?text=$msg';
+                if (await canLaunchUrl(Uri.parse(url))) {
+                  await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   void _enviarMensajeRapido() {
@@ -479,13 +536,6 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
           ),
           const SizedBox(width: 12),
           _buildAccionBtn(
-            icon: Icons.smart_toy,
-            label: 'Chat',
-            color: Colors.purple,
-            onTap: _abrirChat,
-          ),
-          const SizedBox(width: 12),
-          _buildAccionBtn(
             icon: Icons.add_shopping_cart,
             label: 'Pedido',
             color: Colors.blue,
@@ -500,6 +550,13 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
               onTap: _configurarPrecios,
             ),
           ],
+          const SizedBox(width: 12),
+          _buildAccionBtn(
+            icon: Icons.link,
+            label: 'B2B',
+            color: Colors.teal,
+            onTap: _compartirLinkB2B,
+          ),
         ],
       ),
     );

@@ -1153,10 +1153,14 @@ class _DetallePedidoSheetState extends State<DetallePedidoSheet> {
               final clienteData = clienteId != null
                 ? {'id': clienteId.toString()}
                 : {
-                    'id': 'guest',
+                    'id':                'guest',
                     'nombreResponsable': widget.pedido['cliente'] ?? '',
+                    'whatsapp':          widget.pedido['whatsapp'] ?? '',
                     'telefono':          widget.pedido['whatsapp'] ?? '',
                     'email':             widget.pedido['email'] ?? '',
+                    'direccionEnvio':    widget.pedido['direccion'] ?? '',
+                    'distritoEnvio':     widget.pedido['ciudad'] ?? '',
+                    'departamentoEnvio': widget.pedido['departamento'] ?? '',
                     'estado':            'INVITADO',
                     'notas':             'Cliente sin cuenta',
                   };
