@@ -20,6 +20,7 @@ import 'header_pedido_widget.dart';
 import 'info_basica_widget.dart';
 import 'lista_productos_widget.dart';
 import '../../../../../services/pedido_pdf_service.dart';
+import '../../../../detalle_cliente_screen.dart';
 
 /// Widget principal del detalle de un pedido
 /// Muestra toda la información del pedido y permite actualizaciones
@@ -1147,6 +1148,22 @@ class _DetallePedidoSheetState extends State<DetallePedidoSheet> {
             onClose: () => Navigator.pop(context),
             onMenuTap: _mostrarMenuOpciones,
             onPdfTap: _descargarPdf,
+            onClienteTap: () {
+              final clienteId = widget.pedido['clienteId'];
+              final clienteData = clienteId != null
+                ? {'id': clienteId.toString()}
+                : {
+                    'id': 'guest',
+                    'nombreResponsable': widget.pedido['cliente'] ?? '',
+                    'telefono':          widget.pedido['whatsapp'] ?? '',
+                    'email':             widget.pedido['email'] ?? '',
+                    'estado':            'INVITADO',
+                    'notas':             'Cliente sin cuenta',
+                  };
+              Navigator.push(context, MaterialPageRoute(
+                builder: (_) => DetalleClienteScreen(cliente: clienteData),
+              ));
+            },
           ),
           
           // Contenido scrolleable
@@ -1314,16 +1331,23 @@ class _DetallePedidoSheetState extends State<DetallePedidoSheet> {
     final origenCiudad    = (d?['origenCiudad']    ?? ApiService.businessCiudad).toString();
 
     // Destino — para recojo en tienda (pickup) usar pickupName/pickupAddress
-    final destinoNombre    = (d?['destinoNombre']
-        ?? widget.pedido['pickupName']
-        ?? '').toString();
-    final destinoDireccion = (d?['destinoDireccion']
-        ?? widget.pedido['pickupAddress']
-        ?? widget.pedido['direccion']
-        ?? '').toString();
-    final destinoCiudad    = (d?['destinoCiudad']
-        ?? widget.pedido['pickupCiudad']
-        ?? [widget.pedido['ciudad'] ?? '', widget.pedido['departamento'] ?? ''].where((e) => e.isNotEmpty).join(', ')).toString();
+    final destinoNombre    = ([
+      d?['destinoNombre'],
+      widget.pedido['pickupName'],
+      widget.pedido['cliente'],
+    ].firstWhere((v) => v != null && v.toString().isNotEmpty, orElse: () => '') ?? '').toString();
+    final destinoReferencia = (d?['referencia'] ?? widget.pedido['referencia'] ?? '').toString();
+    // Use delivery record value only when non-empty, fallback to order's shipping address fields
+    final destinoDireccion = ([
+      d?['destinoDireccion'],
+      widget.pedido['pickupAddress'],
+      widget.pedido['direccion'],
+    ].firstWhere((v) => v != null && v.toString().isNotEmpty, orElse: () => '') ?? '').toString();
+    final destinoCiudad    = ([
+      d?['destinoCiudad'],
+      widget.pedido['pickupCiudad'],
+      [widget.pedido['ciudad'] ?? '', widget.pedido['departamento'] ?? ''].where((e) => e.isNotEmpty).join(', '),
+    ].firstWhere((v) => v != null && v.toString().isNotEmpty, orElse: () => '') ?? '').toString();
 
     final pedidoId = widget.pedido['id']?.toString() ?? '';
     final bizId    = widget.pedido['businessId']?.toString()
@@ -1450,6 +1474,27 @@ class _DetallePedidoSheetState extends State<DetallePedidoSheet> {
                   addr: destinoNombre.isNotEmpty ? destinoDireccion : '',
                   city: destinoCiudad,
                 ),
+
+              // ── Referencia del destino ──
+              if (destinoReferencia.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.info_outline, size: 14, color: Colors.grey.shade500),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          destinoReferencia,
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
 
             ],
           ),

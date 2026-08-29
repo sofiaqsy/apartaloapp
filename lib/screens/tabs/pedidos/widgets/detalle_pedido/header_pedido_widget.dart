@@ -8,6 +8,7 @@ class HeaderPedidoWidget extends StatelessWidget {
   final VoidCallback onClose;
   final VoidCallback? onMenuTap;
   final VoidCallback? onPdfTap;
+  final VoidCallback? onClienteTap;
 
   const HeaderPedidoWidget({
     super.key,
@@ -16,6 +17,7 @@ class HeaderPedidoWidget extends StatelessWidget {
     required this.onClose,
     this.onMenuTap,
     this.onPdfTap,
+    this.onClienteTap,
   });
 
   Color _getEstadoColor(String? estado) {
@@ -80,11 +82,18 @@ class HeaderPedidoWidget extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  cliente,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+                GestureDetector(
+                  onTap: onClienteTap,
+                  child: Text(
+                    cliente,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      decoration: onClienteTap != null ? TextDecoration.underline : null,
+                      decorationColor: estadoColor,
+                      color: onClienteTap != null ? estadoColor : null,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -178,6 +187,25 @@ class HeaderPedidoWidget extends StatelessWidget {
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
+                          ],
+                        ),
+                      ),
+
+                    // Badge de origen Web B2B
+                    if (origen == 'WEB_B2B')
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.teal.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.teal.shade200),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.language, size: 12, color: Colors.teal.shade700),
+                            const SizedBox(width: 4),
+                            Text('Web B2B', style: TextStyle(color: Colors.teal.shade700, fontSize: 12, fontWeight: FontWeight.w600)),
                           ],
                         ),
                       ),
