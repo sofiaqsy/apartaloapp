@@ -1161,6 +1161,11 @@ class _DetallePedidoSheetState extends State<DetallePedidoSheet> {
                     'direccionEnvio':    widget.pedido['direccion'] ?? '',
                     'distritoEnvio':     widget.pedido['ciudad'] ?? '',
                     'departamentoEnvio': widget.pedido['departamento'] ?? '',
+                    'referencia':        widget.pedido['referencia'] ?? '',
+                    'tipoEnvio':         widget.pedido['tipoEntrega'] ?? 'LOCAL',
+                    'totalPedidos':      1,
+                    'totalComprado':     widget.pedido['total'] ?? 0,
+                    'ultimaCompra':      widget.pedido['fecha'] ?? '',
                     'estado':            'INVITADO',
                     'notas':             'Cliente sin cuenta',
                   };

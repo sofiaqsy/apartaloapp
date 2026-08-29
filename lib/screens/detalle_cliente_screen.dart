@@ -776,6 +776,7 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
             'address_line': _direccionEnvioController.text.trim(),
             'district':     _distritoEnvioController.text.trim(),
             'department':   _departamentoEnvioController.text.trim(),
+            'reference':    (widget.cliente?['referencia'] ?? '').toString(),
             'alias':        'Dirección de entrega',
             'is_primary':   true,
           })
