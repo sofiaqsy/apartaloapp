@@ -117,7 +117,6 @@ class PedidoPdfService {
     final depto = pedido['departamento']?.toString() ?? '';
     final tipoEnvio = pedido['tipoEnvio']?.toString() ?? '';
     final empresaEnvio = pedido['empresaEnvio']?.toString() ?? '';
-    final referencia = pedido['referencia']?.toString() ?? '';
     final observaciones = pedido['observaciones']?.toString() ?? '';
     final estado = (pedido['estado'] ?? 'PENDIENTE').toString();
     final estadoPago = (pedido['estadoPago'] ?? 'PENDIENTE_PAGO').toString();
@@ -257,12 +256,8 @@ class PedidoPdfService {
                             children: [
                               if (direccion.isNotEmpty)
                                 _infoRow('Dirección:', direccion),
-                              if (referencia.isNotEmpty) ...[
-                                if (direccion.isNotEmpty) _dividerLine(),
-                                _infoRow('Referencia:', referencia),
-                              ],
                               if (ciudad.isNotEmpty || depto.isNotEmpty) ...[
-                                if (direccion.isNotEmpty || referencia.isNotEmpty) _dividerLine(),
+                                if (direccion.isNotEmpty) _dividerLine(),
                                 _infoRow('Distrito:', ciudad.isNotEmpty ? ciudad : '—'),
                                 _dividerLine(),
                                 _infoRow('Departamento:', depto.isNotEmpty ? depto : '—'),

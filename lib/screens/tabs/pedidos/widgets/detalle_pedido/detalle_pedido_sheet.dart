@@ -966,7 +966,6 @@ class _DetallePedidoSheetState extends State<DetallePedidoSheet> {
         total: total,
         departamento: widget.pedido['departamento']?.toString(),
         ciudad: widget.pedido['ciudad']?.toString(),
-        referencia: widget.pedido['referencia']?.toString(),
         businessWhatsapp: widget.businessName,
         businessId: ApiService.businessId,
       );
