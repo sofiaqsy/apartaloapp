@@ -96,9 +96,38 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
 
       if (response.statusCode == 200 && mounted) {
         final data = jsonDecode(response.body);
+        final c = Map<String, dynamic>.from(data['cliente'] ?? {});
         setState(() {
           _stats = Map<String, dynamic>.from(data['estadisticas'] ?? {});
           _statsLoading = false;
+          if (c.isNotEmpty) {
+            if ((c['nombreResponsable'] ?? '').toString().isNotEmpty)
+              _nombreResponsableController.text = c['nombreResponsable'];
+            if ((c['nombreNegocio'] ?? '').toString().isNotEmpty)
+              _nombreNegocioController.text = c['nombreNegocio'];
+            if ((c['whatsapp'] ?? c['telefono'] ?? '').toString().isNotEmpty)
+              _whatsappController.text = c['whatsapp'] ?? c['telefono'] ?? '';
+            if ((c['telefono'] ?? '').toString().isNotEmpty)
+              _telefonoController.text = c['telefono'];
+            if ((c['email'] ?? '').toString().isNotEmpty)
+              _emailController.text = c['email'];
+            if ((c['direccionEnvio'] ?? '').toString().isNotEmpty)
+              _direccionEnvioController.text = c['direccionEnvio'];
+            if ((c['distritoEnvio'] ?? '').toString().isNotEmpty)
+              _distritoEnvioController.text = c['distritoEnvio'];
+            if ((c['departamentoEnvio'] ?? '').toString().isNotEmpty)
+              _departamentoEnvioController.text = c['departamentoEnvio'];
+            if ((c['empresaEnvio'] ?? '').toString().isNotEmpty)
+              _empresaEnvioController.text = c['empresaEnvio'];
+            if ((c['localEnvio'] ?? '').toString().isNotEmpty)
+              _localEnvioController.text = c['localEnvio'];
+            if ((c['notas'] ?? '').toString().isNotEmpty)
+              _notasController.text = c['notas'];
+            if ((c['tipoEnvio'] ?? '').toString().isNotEmpty)
+              _tipoEnvio = c['tipoEnvio'];
+            if ((c['estado'] ?? '').toString().isNotEmpty)
+              _estado = c['estado'];
+          }
         });
       } else {
         setState(() => _statsLoading = false);
