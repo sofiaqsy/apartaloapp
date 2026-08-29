@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/printer_provider.dart';
-import '../../widgets/push_notification_debug.dart';
 import 'printer_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -50,34 +49,7 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           
-          // Notificaciones - DEBUG
-          _buildSettingCard(
-            context,
-            icon: Icons.notifications_outlined,
-            iconColor: Colors.orange,
-            title: 'Notificaciones Push',
-            subtitle: 'Debug y configuración',
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.orange.shade100,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                'DEBUG',
-                style: TextStyle(
-                  color: Colors.orange.shade700,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const PushNotificationDebug()),
-            ),
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 0),
           
           // Sonidos
           _buildSettingCard(
