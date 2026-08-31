@@ -83,11 +83,18 @@ class ApiService {
         url += '?${params.entries.map((e) => '${e.key}=${e.value}').join('&')}';
       }
 
+      debugPrint('📦 getProductos → $url');
       final response = await http.get(Uri.parse(url), headers: headers);
+      debugPrint('📦 getProductos ← ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final productos = List<Map<String, dynamic>>.from(data['productos'] ?? []);
+        final pendingCount = productos.where((p) => p['pendingTueste'] == true).length;
+        debugPrint('📦 getProductos: ${productos.length} productos, $pendingCount con tueste pendiente');
+        for (final p in productos.where((p) => p['pendingTueste'] == true)) {
+          debugPrint('   🔥 ${p['nombre']} (${p['codigo']}) pendingTueste=true');
+        }
         return ApiResponse.success(ProductosResponse(
           productos: productos,
           total: data['total'] ?? productos.length,
@@ -96,9 +103,11 @@ class ApiService {
           hayMas: data['hayMas'] ?? false,
         ));
       } else {
+        debugPrint('📦 getProductos ERROR body=${response.body}');
         return ApiResponse.error('Error obteniendo productos');
       }
     } catch (e) {
+      debugPrint('📦 getProductos EXCEPTION: $e');
       return ApiResponse.error('Error de conexión: $e');
     }
   }
@@ -181,10 +190,12 @@ class ApiService {
 
   static Future<ApiResponse<PresentacionesData>> getPresentaciones(String productId) async {
     try {
+      debugPrint('🔍 getPresentaciones productId=$productId');
       final response = await http.get(
         Uri.parse('$baseUrl/api/productos/$businessId/$productId/presentaciones'),
         headers: headers,
       ).timeout(const Duration(seconds: 10));
+      debugPrint('🔍 getPresentaciones ← ${response.statusCode}');
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final list = (data['presentaciones'] as List? ?? [])
@@ -206,6 +217,10 @@ class ApiService {
         final upcomingEvents   = (data['upcomingEvents'] as List? ?? [])
             .map((e) => ProximoEvento.fromMap(Map<String, dynamic>.from(e)))
             .toList();
+        debugPrint('🔍 getPresentaciones: nextEventStatus=$nextEventStatus nextEventId=$nextEventId upcomingEvents=${upcomingEvents.length}');
+        for (final ev in upcomingEvents) {
+          debugPrint('   📅 event=${ev.eventId} status=${ev.status} kg=${ev.kg}');
+        }
         return ApiResponse.success(PresentacionesData(
           presentaciones:  list,
           availableKg:     availableKg,
@@ -222,8 +237,10 @@ class ApiService {
           upcomingEvents:  upcomingEvents,
         ));
       }
+      debugPrint('🔍 getPresentaciones ERROR body=${response.body}');
       return ApiResponse.error('Error obteniendo presentaciones');
     } catch (e) {
+      debugPrint('🔍 getPresentaciones EXCEPTION: $e');
       return ApiResponse.error('Error de conexión: $e');
     }
   }
@@ -248,30 +265,36 @@ class ApiService {
 
   static Future<ApiResponse<void>> iniciarTueste(String eventId) async {
     try {
+      debugPrint('🔥 iniciarTueste eventId=$eventId businessId=$businessId');
       final response = await http.post(
         Uri.parse('$baseUrl/api/tostador/events/$eventId/start-admin'),
         headers: headers,
         body: jsonEncode({'businessId': businessId}),
       ).timeout(const Duration(seconds: 15));
+      debugPrint('🔥 iniciarTueste ← ${response.statusCode} body=${response.body}');
       if (response.statusCode == 200) return ApiResponse.success(null);
       final err = jsonDecode(response.body)['error'] ?? 'Error iniciando tueste';
       return ApiResponse.error(err);
     } catch (e) {
+      debugPrint('🔥 iniciarTueste EXCEPTION: $e');
       return ApiResponse.error('Error de conexión: $e');
     }
   }
 
   static Future<ApiResponse<void>> finalizarTueste(String eventId, double outKg, {String? notas}) async {
     try {
+      debugPrint('✅ finalizarTueste eventId=$eventId outKg=$outKg businessId=$businessId');
       final response = await http.post(
         Uri.parse('$baseUrl/api/tostador/events/$eventId/complete-admin'),
         headers: headers,
         body: jsonEncode({'businessId': businessId, 'outKg': outKg, 'notesText': notas ?? ''}),
       ).timeout(const Duration(seconds: 15));
+      debugPrint('✅ finalizarTueste ← ${response.statusCode} body=${response.body}');
       if (response.statusCode == 200) return ApiResponse.success(null);
       final err = jsonDecode(response.body)['error'] ?? 'Error finalizando tueste';
       return ApiResponse.error(err);
     } catch (e) {
+      debugPrint('✅ finalizarTueste EXCEPTION: $e');
       return ApiResponse.error('Error de conexión: $e');
     }
   }
