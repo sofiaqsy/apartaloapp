@@ -246,6 +246,36 @@ class ApiService {
     }
   }
 
+  static Future<ApiResponse<void>> iniciarTueste(String eventId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/tostador/events/$eventId/start-admin'),
+        headers: headers,
+        body: jsonEncode({'businessId': businessId}),
+      ).timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) return ApiResponse.success(null);
+      final err = jsonDecode(response.body)['error'] ?? 'Error iniciando tueste';
+      return ApiResponse.error(err);
+    } catch (e) {
+      return ApiResponse.error('Error de conexión: $e');
+    }
+  }
+
+  static Future<ApiResponse<void>> finalizarTueste(String eventId, double outKg, {String? notas}) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/tostador/events/$eventId/complete-admin'),
+        headers: headers,
+        body: jsonEncode({'businessId': businessId, 'outKg': outKg, 'notesText': notas ?? ''}),
+      ).timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) return ApiResponse.success(null);
+      final err = jsonDecode(response.body)['error'] ?? 'Error finalizando tueste';
+      return ApiResponse.error(err);
+    } catch (e) {
+      return ApiResponse.error('Error de conexión: $e');
+    }
+  }
+
   static Future<ApiResponse<String>> crearEventoTueste({
     required String greenLotId,
     required double greenInKg,

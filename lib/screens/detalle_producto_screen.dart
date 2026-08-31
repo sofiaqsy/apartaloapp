@@ -903,6 +903,152 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
     );
   }
 
+  // ── Evento tueste card con acciones ─────────────────────────────────────────
+  Widget _buildEventoTuesteCard(ProximoEvento ev) {
+    final isInProgress = ev.status == 'in_progress';
+    final color  = isInProgress ? Colors.orange : Colors.deepPurple;
+    final icon   = isInProgress ? Icons.local_fire_department : Icons.schedule_rounded;
+    final label  = isInProgress ? 'En tueste' : 'Planificado';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.shade200),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(icon, size: 13, color: color.shade700),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              [
+                if (ev.lotCode != null && ev.lotCode!.isNotEmpty) ev.lotCode!,
+                if (ev.date != null) _fmtDate(ev.date),
+                label,
+              ].join(' · '),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color.shade800),
+            ),
+          ),
+          Text(_fmtKg(ev.kg),
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color.shade700)),
+        ]),
+        if (ev.eventId != null && isInProgress) ...[
+          const SizedBox(height: 8),
+          _btnTueste(
+            label: 'Finalizar tueste',
+            icon: Icons.check_circle_outline_rounded,
+            color: Colors.green,
+            onTap: () => _mostrarFinalizarTueste(ev.eventId!, ev.kg),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  Widget _btnTueste({required String label, required IconData icon, required MaterialColor color, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        decoration: BoxDecoration(
+          color: color.shade600,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(icon, size: 15, color: Colors.white),
+          const SizedBox(width: 6),
+          Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _mostrarFinalizarTueste(String eventId, double inKg) async {
+    final kgController = TextEditingController(text: inKg.toStringAsFixed(1));
+    final notasController = TextEditingController();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, left: 20, right: 20, top: 20),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Row(children: [
+            Icon(Icons.check_circle_outline, color: Colors.green),
+            SizedBox(width: 10),
+            Text('Finalizar tueste', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ]),
+          const SizedBox(height: 16),
+          Text('Kg de café tostado obtenido', style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+          const SizedBox(height: 6),
+          TextField(
+            controller: kgController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              suffixText: 'kg',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text('Notas (opcional)', style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+          const SizedBox(height: 6),
+          TextField(
+            controller: notasController,
+            maxLines: 2,
+            decoration: InputDecoration(
+              hintText: 'Observaciones del tueste...',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green.shade600,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () async {
+                final outKg = double.tryParse(kgController.text.replaceAll(',', '.'));
+                if (outKg == null || outKg <= 0) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(content: Text('Ingresa los kg obtenidos')),
+                  );
+                  return;
+                }
+                Navigator.pop(ctx);
+                setState(() => _loadingPresentaciones = true);
+                final result = await ApiService.finalizarTueste(eventId, outKg, notas: notasController.text.trim());
+                if (!mounted) return;
+                if (result.isSuccess) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('✅ Tueste finalizado'), backgroundColor: Colors.green),
+                  );
+                  await _cargarPresentaciones();
+                } else {
+                  setState(() => _loadingPresentaciones = false);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('❌ ${result.error}'), backgroundColor: Colors.red),
+                  );
+                }
+              },
+              child: const Text('Confirmar finalización', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            ),
+          ),
+          const SizedBox(height: 20),
+        ]),
+      ),
+    );
+  }
+
   Widget _buildStockBreakdown() {
     final hasNextEvent = _nextEventKg > 0 && _nextEventStatus != null;
     final roastedTotal = _roastedKg;
@@ -979,54 +1125,19 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
                 ],
               ),
             ),
-            // Siguientes stocks (todos los eventos planificados/en curso)
+            // Eventos planificados / en curso con acciones
             if (_upcomingEvents.isNotEmpty) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Divider(height: 1, color: Colors.orange.shade100),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Row(children: [
-                Icon(Icons.event_outlined, size: 13, color: Colors.deepPurple.shade400),
+                Icon(Icons.local_fire_department, size: 13, color: Colors.orange.shade700),
                 const SizedBox(width: 6),
-                Text('Siguiente stock', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                Text('Tuestes programados',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.orange.shade800)),
               ]),
-              const SizedBox(height: 6),
-              ..._upcomingEvents.map((ev) => Padding(
-                padding: const EdgeInsets.only(left: 19, bottom: 5),
-                child: Row(children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: ev.status == 'in_progress' ? Colors.orange.shade50 : Colors.deepPurple.shade50,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: ev.status == 'in_progress'
-                          ? Colors.orange.shade200 : Colors.deepPurple.shade100),
-                    ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(
-                        ev.status == 'in_progress' ? Icons.local_fire_department : Icons.schedule,
-                        size: 10,
-                        color: ev.status == 'in_progress' ? Colors.orange.shade700 : Colors.deepPurple.shade400,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        [
-                          if (ev.lotCode != null && ev.lotCode!.isNotEmpty) ev.lotCode!,
-                          if (ev.date != null) _fmtDate(ev.date),
-                          if (ev.status == 'in_progress') 'En tueste' else 'Planificado',
-                        ].join(' · '),
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: ev.status == 'in_progress' ? Colors.orange.shade800 : Colors.deepPurple.shade600,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ]),
-                  ),
-                  const Spacer(),
-                  Text(_fmtKg(ev.kg),
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.deepPurple.shade600)),
-                ]),
-              )),
+              const SizedBox(height: 8),
+              ..._upcomingEvents.map((ev) => _buildEventoTuesteCard(ev)),
             ],
           ]),
         ),
