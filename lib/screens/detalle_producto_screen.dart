@@ -944,7 +944,7 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
               color: Colors.green,
               onTap: () => _mostrarFinalizarTueste(ev.eventId!, ev.kg),
             )
-          else
+          else if (ApiService.isTostador)
             _btnTueste(
               label: 'Iniciar tueste',
               icon: Icons.play_circle_outline_rounded,

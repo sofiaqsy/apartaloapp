@@ -30,6 +30,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final businessName = prefs.getString('business_name');
 
       if (businessId != null && businessName != null) {
+        ApiService.isTostador = prefs.getBool('is_tostador') ?? false;
         await NotificationService().resendTokenAfterLogin();
         if (mounted) {
           Navigator.of(context).pushReplacement(
@@ -93,6 +94,7 @@ class _LoginScreenState extends State<LoginScreen> {
     ApiService.businessName      = negocio['nombre'] ?? '';
     ApiService.businessDireccion = negocio['direccion'] ?? '';
     ApiService.businessCiudad    = negocio['ciudad'] ?? '';
+    ApiService.checkAndSetTostador(_phoneController.text.trim()).ignore();
 
     await NotificationService().resendTokenAfterLogin();
 

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_config.dart';
 
 /// Servicio para comunicación con Fincas Core API
@@ -13,6 +14,7 @@ class ApiService {
   static String businessName      = '';
   static String businessDireccion = '';
   static String businessCiudad    = '';
+  static bool   isTostador        = false;
 
   static String get businessId => _businessId.isNotEmpty ? _businessId : AppConfig.businessId;
 
@@ -1555,6 +1557,24 @@ class ApiService {
       return ApiResponse.error(data['error'] ?? 'Error creando pre-orden');
     } catch (e) {
       return ApiResponse.error('Error de conexión: $e');
+    }
+  }
+
+  /// Checks if the given phone belongs to a tostador (has farm_members record).
+  /// Sets [isTostador] and persists to SharedPreferences.
+  static Future<void> checkAndSetTostador(String phone) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/api/tostador/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'phone': phone}),
+      ).timeout(const Duration(seconds: 8));
+      isTostador = res.statusCode == 200;
+      debugPrint('👷 checkAndSetTostador phone=$phone → isTostador=$isTostador');
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('is_tostador', isTostador);
+    } catch (_) {
+      isTostador = false;
     }
   }
 }
