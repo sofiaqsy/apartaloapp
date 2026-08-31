@@ -935,14 +935,22 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
           Text(_fmtKg(ev.kg),
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color.shade700)),
         ]),
-        if (ev.eventId != null && isInProgress) ...[
+        if (ev.eventId != null) ...[
           const SizedBox(height: 8),
-          _btnTueste(
-            label: 'Finalizar tueste',
-            icon: Icons.check_circle_outline_rounded,
-            color: Colors.green,
-            onTap: () => _mostrarFinalizarTueste(ev.eventId!, ev.kg),
-          ),
+          if (isInProgress)
+            _btnTueste(
+              label: 'Finalizar tueste',
+              icon: Icons.check_circle_outline_rounded,
+              color: Colors.green,
+              onTap: () => _mostrarFinalizarTueste(ev.eventId!, ev.kg),
+            )
+          else
+            _btnTueste(
+              label: 'Iniciar tueste',
+              icon: Icons.play_circle_outline_rounded,
+              color: Colors.deepPurple,
+              onTap: () => _iniciarTueste(ev.eventId!),
+            ),
         ],
       ]),
     );
@@ -964,6 +972,37 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
         ]),
       ),
     );
+  }
+
+  Future<void> _iniciarTueste(String eventId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Iniciar tueste?'),
+        content: const Text('Se marcará el evento como en curso. ¿Continuar?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Iniciar'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+
+    final res = await ApiService.iniciarTueste(eventId);
+    if (!mounted) return;
+    if (res.isSuccess) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tueste iniciado'), backgroundColor: Colors.deepPurple),
+      );
+      _cargarPresentaciones();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(res.error ?? 'Error iniciando tueste'), backgroundColor: Colors.red),
+      );
+    }
   }
 
   Future<void> _mostrarFinalizarTueste(String eventId, double inKg) async {
