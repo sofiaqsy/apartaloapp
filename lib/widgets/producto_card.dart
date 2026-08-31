@@ -14,8 +14,12 @@ class ProductoCard extends StatelessWidget {
     final stockBajo = stock < 10;
     final codigo = producto['codigo'] ?? '';
     final imagenUrl = producto['imagenUrl'] as String?;
+    final pendingTueste = producto['pendingTueste'] == true;
 
-    return Container(
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+      Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Material(
         color: Colors.white,
@@ -130,6 +134,31 @@ class ProductoCard extends StatelessWidget {
           ),
         ),
       ),
+    ),
+    if (pendingTueste)
+      Positioned(
+        top: 2,
+        right: 12,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: Colors.red.shade600,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.fire_truck_rounded, size: 12, color: Colors.white),
+              const SizedBox(width: 4),
+              const Text(
+                'Tueste pendiente',
+                style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ],
     );
   }
 

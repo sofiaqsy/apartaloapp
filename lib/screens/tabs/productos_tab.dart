@@ -654,6 +654,32 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
                     padding: const EdgeInsets.only(top: 8),
                     child: Text('$_total producto${_total != 1 ? 's' : ''}', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
                   ),
+                Builder(builder: (_) {
+                  final pendingCount = _productos.where((p) => p['pendingTueste'] == true).length;
+                  if (pendingCount == 0) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.red.shade300),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.local_fire_department_rounded, color: Colors.red.shade600, size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            '$pendingCount producto${pendingCount != 1 ? 's' : ''} con tueste pendiente',
+                            style: TextStyle(color: Colors.red.shade700, fontSize: 13, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
               ],
             ),
           ),
@@ -1075,7 +1101,12 @@ class _ProductoCard extends StatelessWidget {
       imagenUrl = producto['imagenUrl'] as String?;
     }
 
-    return Container(
+    final pendingTueste = producto['pendingTueste'] == true;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+      Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Material(
         color: Colors.white,
@@ -1134,6 +1165,31 @@ class _ProductoCard extends StatelessWidget {
           ),
         ),
       ),
+    ),
+    if (pendingTueste)
+      Positioned(
+        top: 2,
+        right: 12,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: Colors.red.shade600,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.local_fire_department_rounded, size: 12, color: Colors.white),
+              SizedBox(width: 4),
+              Text(
+                'Tueste pendiente',
+                style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ],
     );
   }
 
