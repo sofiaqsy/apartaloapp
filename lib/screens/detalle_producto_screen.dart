@@ -33,6 +33,7 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
   String? _nextEventStatus;                    // 'planned' | 'in_progress'
   String? _nextEventLotCode;                   // código de lote
   List<ProximoEvento> _upcomingEvents = const [];
+  final Set<String> _uploadingEvents = {};
   double? _greenKg;                            // kg disponibles de lote verde
   String? _greenLotCode;                       // código del lote verde
   bool _isGreenCoffee = false;                 // true si tiene green_lot_id
@@ -936,6 +937,77 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color.shade700)),
         ]),
         if (ev.eventId != null) ...[
+          const SizedBox(height: 10),
+          // Media gallery
+          if (ev.mediaUrls.isNotEmpty) ...[
+            SizedBox(
+              height: 72,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: ev.mediaUrls.length,
+                itemBuilder: (_, i) {
+                  final url = ev.mediaUrls[i];
+                  final isVideo = url.contains('.mp4') || url.contains('.mov');
+                  return GestureDetector(
+                    onLongPress: () async {
+                      final del = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('¿Eliminar archivo?'),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                            TextButton(onPressed: () => Navigator.pop(ctx, true),
+                                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                child: const Text('Eliminar')),
+                          ],
+                        ),
+                      );
+                      if (del == true) _deleteEventMedia(ev.eventId!, url);
+                    },
+                    child: Container(
+                      width: 72, height: 72,
+                      margin: const EdgeInsets.only(right: 6),
+                      decoration: BoxDecoration(
+                        color: color.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: color.shade200),
+                      ),
+                      child: isVideo
+                          ? Icon(Icons.play_circle_outline, color: color.shade600, size: 32)
+                          : ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.network(url, fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Icon(Icons.broken_image, color: color.shade400)),
+                            ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          // Add media button
+          GestureDetector(
+            onTap: () => _showMediaPickerSheet(ev.eventId!),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+              decoration: BoxDecoration(
+                color: color.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: color.shade200),
+              ),
+              child: Row(children: [
+                _uploadingEvents.contains(ev.eventId)
+                    ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: color.shade600))
+                    : Icon(Icons.add_a_photo_rounded, size: 14, color: color.shade600),
+                const SizedBox(width: 6),
+                Text(
+                  _uploadingEvents.contains(ev.eventId) ? 'Subiendo...' : 'Agregar foto / video  ${ev.mediaUrls.isNotEmpty ? "(${ev.mediaUrls.length})" : ""}',
+                  style: TextStyle(fontSize: 11, color: color.shade700, fontWeight: FontWeight.w600),
+                ),
+              ]),
+            ),
+          ),
           const SizedBox(height: 8),
           if (isInProgress)
             _btnTueste(
@@ -970,6 +1042,103 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
           const SizedBox(width: 6),
           Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
         ]),
+      ),
+    );
+  }
+
+  Future<void> _pickAndUploadMedia(String eventId, {bool video = false}) async {
+    XFile? file;
+    if (video) {
+      file = await _picker.pickVideo(source: ImageSource.camera, maxDuration: const Duration(minutes: 5));
+    } else {
+      file = await _picker.pickImage(source: ImageSource.camera, imageQuality: 80);
+    }
+    if (file == null || !mounted) return;
+
+    setState(() => _uploadingEvents.add(eventId));
+    try {
+      final url = await ApiService.uploadEventMedia(eventId, File(file.path));
+      if (url != null && mounted) {
+        setState(() {
+          _upcomingEvents = _upcomingEvents.map((ev) {
+            if (ev.eventId != eventId) return ev;
+            return ProximoEvento(
+              kg: ev.kg, date: ev.date, status: ev.status,
+              lotCode: ev.lotCode, eventId: ev.eventId,
+              mediaUrls: [...ev.mediaUrls, url],
+            );
+          }).toList();
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingEvents.remove(eventId));
+    }
+  }
+
+  Future<void> _pickFromGallery(String eventId, {bool video = false}) async {
+    final file = video
+        ? await _picker.pickVideo(source: ImageSource.gallery)
+        : await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    if (file == null || !mounted) return;
+
+    setState(() => _uploadingEvents.add(eventId));
+    try {
+      final url = await ApiService.uploadEventMedia(eventId, File(file.path));
+      if (url != null && mounted) {
+        setState(() {
+          _upcomingEvents = _upcomingEvents.map((ev) {
+            if (ev.eventId != eventId) return ev;
+            return ProximoEvento(
+              kg: ev.kg, date: ev.date, status: ev.status,
+              lotCode: ev.lotCode, eventId: ev.eventId,
+              mediaUrls: [...ev.mediaUrls, url],
+            );
+          }).toList();
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingEvents.remove(eventId));
+    }
+  }
+
+  Future<void> _deleteEventMedia(String eventId, String url) async {
+    final newUrls = await ApiService.deleteEventMedia(eventId, url);
+    if (newUrls != null && mounted) {
+      setState(() {
+        _upcomingEvents = _upcomingEvents.map((ev) {
+          if (ev.eventId != eventId) return ev;
+          return ProximoEvento(
+            kg: ev.kg, date: ev.date, status: ev.status,
+            lotCode: ev.lotCode, eventId: ev.eventId,
+            mediaUrls: newUrls,
+          );
+        }).toList();
+      });
+    }
+  }
+
+  void _showMediaPickerSheet(String eventId) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(margin: const EdgeInsets.symmetric(vertical: 10), width: 36, height: 4,
+                decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+            ListTile(leading: const Icon(Icons.photo_camera_rounded), title: const Text('Tomar foto'),
+                onTap: () { Navigator.pop(ctx); _pickAndUploadMedia(eventId); }),
+            ListTile(leading: const Icon(Icons.videocam_rounded), title: const Text('Grabar video'),
+                onTap: () { Navigator.pop(ctx); _pickAndUploadMedia(eventId, video: true); }),
+            ListTile(leading: const Icon(Icons.photo_library_rounded), title: const Text('Galería de fotos'),
+                onTap: () { Navigator.pop(ctx); _pickFromGallery(eventId); }),
+            ListTile(leading: const Icon(Icons.video_library_rounded), title: const Text('Galería de videos'),
+                onTap: () { Navigator.pop(ctx); _pickFromGallery(eventId, video: true); }),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }

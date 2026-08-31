@@ -1560,6 +1560,62 @@ class ApiService {
     }
   }
 
+  static Future<String?> uploadEventMedia(String eventId, File file) async {
+    try {
+      final bytes = await file.readAsBytes();
+      final ext  = file.path.split('.').last.toLowerCase();
+      final mime = (ext == 'mp4' || ext == 'mov') ? 'video/$ext' : 'image/$ext';
+      final fname = '${DateTime.now().millisecondsSinceEpoch}.$ext';
+
+      final signRes = await http.post(
+        Uri.parse('$baseUrl/api/tostador/events/$eventId/media/sign'),
+        headers: headers,
+        body: jsonEncode({'businessId': businessId, 'filename': fname, 'mimeType': mime}),
+      ).timeout(const Duration(seconds: 15));
+      final signData = jsonDecode(signRes.body) as Map<String, dynamic>;
+      if (signRes.statusCode != 200) throw Exception(signData['error'] ?? 'Error firmando URL');
+
+      final signedUrl = signData['signedUrl'] as String;
+      final publicUrl = signData['publicUrl'] as String;
+
+      final putRes = await http.put(
+        Uri.parse(signedUrl),
+        headers: {'Content-Type': mime},
+        body: bytes,
+      ).timeout(const Duration(seconds: 30));
+      if (putRes.statusCode != 200 && putRes.statusCode != 204) {
+        throw Exception('Error subiendo archivo (${putRes.statusCode})');
+      }
+
+      final regRes = await http.post(
+        Uri.parse('$baseUrl/api/tostador/events/$eventId/media/register'),
+        headers: headers,
+        body: jsonEncode({'businessId': businessId, 'url': publicUrl}),
+      ).timeout(const Duration(seconds: 15));
+      if (regRes.statusCode != 200) throw Exception('Error registrando media');
+      return publicUrl;
+    } catch (e) {
+      debugPrint('📸 uploadEventMedia ERROR: $e');
+      return null;
+    }
+  }
+
+  static Future<List<String>?> deleteEventMedia(String eventId, String url) async {
+    try {
+      final req = http.Request('DELETE', Uri.parse('$baseUrl/api/tostador/events/$eventId/media'));
+      req.headers.addAll(headers);
+      req.body = jsonEncode({'businessId': businessId, 'url': url});
+      final streamed = await http.Client().send(req);
+      final body = await streamed.stream.bytesToString();
+      final data = jsonDecode(body) as Map<String, dynamic>;
+      if (streamed.statusCode != 200) throw Exception(data['error'] ?? 'Error eliminando media');
+      return (data['media_urls'] as List).map((e) => e.toString()).toList();
+    } catch (e) {
+      debugPrint('📸 deleteEventMedia ERROR: $e');
+      return null;
+    }
+  }
+
   /// Checks if the given phone belongs to a tostador (has farm_members record).
   /// Sets [isTostador] and persists to SharedPreferences.
   static Future<void> checkAndSetTostador(String phone) async {
@@ -1690,15 +1746,17 @@ class ProximoEvento {
   final String? status;
   final String? lotCode;
   final String? eventId;
+  final List<String> mediaUrls;
 
-  const ProximoEvento({required this.kg, this.date, this.status, this.lotCode, this.eventId});
+  const ProximoEvento({required this.kg, this.date, this.status, this.lotCode, this.eventId, this.mediaUrls = const []});
 
   factory ProximoEvento.fromMap(Map<String, dynamic> m) => ProximoEvento(
-    kg:      (m['kg'] as num?)?.toDouble() ?? 0,
-    date:    m['date'] as String?,
-    status:  m['status'] as String?,
-    lotCode: m['lotCode'] as String?,
-    eventId: m['eventId'] as String?,
+    kg:        (m['kg'] as num?)?.toDouble() ?? 0,
+    date:      m['date'] as String?,
+    status:    m['status'] as String?,
+    lotCode:   m['lotCode'] as String?,
+    eventId:   m['eventId'] as String?,
+    mediaUrls: (m['mediaUrls'] as List?)?.map((e) => e.toString()).toList() ?? [],
   );
 }
 
