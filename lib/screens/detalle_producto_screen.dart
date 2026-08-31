@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -508,192 +509,700 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
     if ((ok ?? false) && mounted) Navigator.of(context).pop();
   }
 
+  // ── Redesigned build: tab-based layout ─────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
-    final codigo = widget.producto['codigo'] ?? '';
-
-    return PopScope(
-      canPop: !_hasChanges,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _confirmPop();
-      },
-      child: Scaffold(
-        backgroundColor: Colors.grey.shade100,
-        appBar: AppBar(
-          title: const Text('Detalle del Producto'),
-          backgroundColor: Colors.blue.shade600,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: _confirmPop,
+    return DefaultTabController(
+      length: 3,
+      child: PopScope(
+        canPop: !_hasChanges,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _confirmPop();
+        },
+        child: Scaffold(
+          backgroundColor: const Color(0xFFF5F4F0),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF231e14),
+            foregroundColor: Colors.white,
+            elevation: 0,
+            leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: _confirmPop),
+            title: Text(
+              _nombreController.text.isNotEmpty
+                  ? _nombreController.text
+                  : (widget.producto['nombre'] ?? 'Producto'),
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            actions: [
+              if (_hasChanges)
+                TextButton(
+                  onPressed: _isLoading ? null : _guardarCambios,
+                  child: const Text('Guardar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                ),
+              if ((widget.producto['codigo'] ?? '').toString().isNotEmpty)
+                IconButton(
+                  icon: const Icon(Icons.qr_code_rounded, size: 22),
+                  tooltip: widget.producto['codigo'],
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(widget.producto['codigo'].toString()),
+                        duration: const Duration(seconds: 3),
+                      ),
+                    );
+                  },
+                ),
+            ],
+            bottom: const TabBar(
+              indicatorColor: Colors.white,
+              indicatorWeight: 3,
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.white54,
+              labelStyle: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              tabs: [
+                Tab(text: 'Tuestes'),
+                Tab(text: 'Lotes'),
+                Tab(text: 'Presentaciones'),
+              ],
+            ),
           ),
-          actions: [
-            if (_hasChanges)
-              TextButton(
-                onPressed: _isLoading ? null : _guardarCambios,
-                child: const Text('Guardar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+          body: Column(
+            children: [
+              _buildProductHeader(),
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : TabBarView(
+                        children: [
+                          _buildTuestesTab(),
+                          _buildLotesTab(),
+                          _buildPresentacionesTab(),
+                        ],
+                      ),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Tab: product header strip (image + inventory summary) ───────────────────
+  Widget _buildProductHeader() {
+    final roastedTotal = _roastedKg;
+    final greenTotal = _greenKg ?? 0.0;
+
+    return Container(
+        color: const Color(0xFF2d2720),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+        child: Row(
+          children: [
+            // Product image thumbnail (simple — no text overlays)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: SizedBox(
+                width: 68,
+                height: 68,
+                child: _nuevaFoto != null
+                    ? Image.file(_nuevaFoto!, fit: BoxFit.cover)
+                    : (_imagenUrlExistente != null && _imagenUrlExistente!.isNotEmpty)
+                        ? Image.network(
+                            _imagenUrlExistente!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              color: Colors.grey.shade300,
+                              child: Icon(Icons.image_not_supported_outlined,
+                                  color: Colors.grey.shade500, size: 28),
+                            ),
+                          )
+                        : Container(
+                            color: Colors.grey.shade700,
+                            child: Icon(Icons.add_a_photo_outlined,
+                                color: Colors.grey.shade400, size: 28),
+                          ),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.producto['descripcion']?.toString().isNotEmpty == true
+                        ? widget.producto['descripcion']
+                        : 'Sin descripción',
+                    style: const TextStyle(fontSize: 12, color: Colors.white54),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    _inventoryChip(Icons.eco_outlined, 'Verde', _fmtKg(greenTotal), Colors.green.shade400),
+                    const SizedBox(width: 8),
+                    _inventoryChip(Icons.local_fire_department_outlined, 'Tostado', _fmtKg(roastedTotal), Colors.orange.shade400),
+                  ]),
+                ],
+              ),
+            ),
           ],
         ),
-        body: GestureDetector(
-          onTap: () => FocusScope.of(context).unfocus(),
-          behavior: HitTestBehavior.translucent,
-          child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
-                child: Column(
-                  children: [
-                    // Imagen
-                    GestureDetector(
-                      onTap: _tomarFoto,
-                      child: Container(
-                        width: double.infinity,
-                        height: 250,
-                        color: Colors.grey.shade200,
-                        child: _buildImagen(),
-                      ),
-                    ),
+    );
+  }
 
-                    // Código de barras
-                    if (codigo.isNotEmpty)
+  Widget _inventoryChip(IconData icon, String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 13, color: color),
+        const SizedBox(width: 4),
+        Text(value, style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w700)),
+      ]),
+    );
+  }
+
+  // ── Tab: Lotes ─────────────────────────────────────────────────────────────
+  Widget _buildLotesTab() {
+    if (_loadingPresentaciones) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Green lot card
+        _buildGreenLotCard(),
+        const SizedBox(height: 12),
+        // Completed (roasted) lots card
+        _buildRoastedLotsCard(),
+        const SizedBox(height: 32),
+      ],
+    );
+  }
+
+  Widget _buildGreenLotCard() {
+    final greenTotal = _greenKg ?? 0.0;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.green.shade200),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(color: Colors.green.shade50, shape: BoxShape.circle),
+            child: Icon(Icons.eco_outlined, size: 16, color: Colors.green.shade700),
+          ),
+          const SizedBox(width: 10),
+          Text('Café verde disponible',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.green.shade800)),
+          const Spacer(),
+          Text(_fmtKg(greenTotal),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: greenTotal > 0 ? Colors.green.shade700 : Colors.grey.shade400,
+              )),
+        ]),
+        if (_isGreenCoffee && _greenKg != null) ...[
+          const SizedBox(height: 8),
+          Divider(height: 1, color: Colors.green.shade100),
+          const SizedBox(height: 8),
+          Row(children: [
+            Container(width: 5, height: 5,
+                decoration: BoxDecoration(color: Colors.green.shade400, shape: BoxShape.circle)),
+            const SizedBox(width: 8),
+            if (_greenLotCode != null && _greenLotCode!.isNotEmpty)
+              Text(_greenLotCode!,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+            const SizedBox(width: 6),
+            Text('Lote verde vinculado',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+            const Spacer(),
+            Text(_fmtKg(greenTotal),
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.green.shade600)),
+          ]),
+        ] else ...[
+          const SizedBox(height: 8),
+          Text('Sin lote verde vinculado',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+        ],
+      ]),
+    );
+  }
+
+  Widget _buildRoastedLotsCard() {
+    final roastedTotal = _roastedKg;
+    final lotsWithKg = _completedLots.where((l) => l.kg > 0).toList();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.shade200),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(color: Colors.orange.shade50, shape: BoxShape.circle),
+            child: Icon(Icons.local_fire_department_outlined, size: 16, color: Colors.orange.shade700),
+          ),
+          const SizedBox(width: 10),
+          Text('Café tostado disponible',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.orange.shade800)),
+          const Spacer(),
+          Text(_fmtKg(roastedTotal),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: roastedTotal > 0 ? Colors.orange.shade700 : Colors.grey.shade400,
+              )),
+        ]),
+        if (lotsWithKg.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Divider(height: 1, color: Colors.orange.shade100),
+          const SizedBox(height: 6),
+          ...lotsWithKg.map((lote) => Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Row(children: [
+              Container(width: 5, height: 5,
+                  decoration: BoxDecoration(color: Colors.orange.shade300, shape: BoxShape.circle)),
+              const SizedBox(width: 8),
+              if (lote.lotCode != null && lote.lotCode!.isNotEmpty)
+                Text(lote.lotCode!,
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+              if (lote.roastedAt != null) ...[
+                Text('  ·  ', style: TextStyle(fontSize: 11, color: Colors.grey.shade300)),
+                Text(_fmtDate(lote.roastedAt),
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+              ],
+              const Spacer(),
+              Text(_fmtKg(lote.kg),
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.orange.shade600)),
+            ]),
+          )),
+        ] else ...[
+          const SizedBox(height: 8),
+          Text('Sin lotes tostados disponibles',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+        ],
+      ]),
+    );
+  }
+
+  // ── Tab: Tuestes ───────────────────────────────────────────────────────────
+  Widget _buildTuestesTab() {
+    if (_loadingPresentaciones) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final inProgressEvents = _upcomingEvents.where((e) => e.status == 'in_progress').toList();
+    final plannedEvents    = _upcomingEvents.where((e) => e.status == 'planned').toList();
+
+    // Active roast view when there is an in-progress event
+    if (inProgressEvents.isNotEmpty) {
+      final ev = inProgressEvents.first;
+      return _buildActiveRoastView(ev, plannedEvents);
+    }
+
+    // Default: planned events list + create button
+    return Column(
+      children: [
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              if (plannedEvents.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 40),
+                  child: Column(children: [
+                    Icon(Icons.local_fire_department_outlined, size: 52, color: Colors.grey.shade300),
+                    const SizedBox(height: 12),
+                    Text('Sin tuestes programados', style: TextStyle(fontSize: 14, color: Colors.grey.shade500)),
+                    const SizedBox(height: 4),
+                    Text('Usa el botón de abajo para programar uno',
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade400), textAlign: TextAlign.center),
+                  ]),
+                )
+              else ...[
+                _sectionLabel('Planificados', Icons.schedule_rounded, Colors.deepPurple.shade600),
+                const SizedBox(height: 8),
+                ...plannedEvents.map(_buildEventoTuesteCard),
+              ],
+            ],
+          ),
+        ),
+        // Sticky bottom CTA
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+          child: SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton.icon(
+              onPressed: _mostrarCrearEvento,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Programar tueste', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange.shade600,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                elevation: 0,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActiveRoastView(ProximoEvento ev, List<ProximoEvento> planned) {
+    final startDate = ev.date != null ? DateTime.tryParse(ev.date!) : null;
+
+    return Column(
+      children: [
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              // ── EN CURSO card ──────────────────────────────────────
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.orange.shade300, width: 1.5),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Icon(Icons.local_fire_department, color: Colors.orange.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Text('EN CURSO',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800,
+                            color: Colors.orange.shade800, letterSpacing: 1)),
+                    const Spacer(),
+                    if (ev.lotCode != null && ev.lotCode!.isNotEmpty)
                       Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        color: Colors.grey.shade800,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.qr_code, color: Colors.white70, size: 20),
-                            const SizedBox(width: 8),
-                            Text(
-                              codigo,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontFamily: 'monospace',
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade100,
+                          borderRadius: BorderRadius.circular(20),
                         ),
+                        child: Text(ev.lotCode!,
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                                color: Colors.orange.shade800)),
                       ),
-
-                    // ── Presentaciones ──────────────────────────────────
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      color: Colors.white,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(children: [
-                            Icon(Icons.layers_outlined, size: 18, color: Colors.indigo.shade600),
-                            const SizedBox(width: 8),
-                            Expanded(child: Text('Presentaciones',
-                              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.indigo.shade700))),
-                            if (_loadingPresentaciones)
-                              const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                            else ...[
-                              GestureDetector(
-                                onTap: _cargarPresentaciones,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(right: 10),
-                                  child: Icon(Icons.refresh_rounded, size: 18, color: Colors.grey.shade400),
-                                ),
-                              ),
-                              GestureDetector(
-                                onTap: _mostrarFormPresentacion,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.indigo.shade50,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                    Icon(Icons.add, size: 14, color: Colors.indigo.shade600),
-                                    const SizedBox(width: 4),
-                                    Text('Agregar', style: TextStyle(fontSize: 12, color: Colors.indigo.shade600, fontWeight: FontWeight.w600)),
-                                  ]),
-                                ),
-                              ),
-                            ],
-                          ]),
-                          const SizedBox(height: 6),
-                          if (!_loadingPresentaciones) ...[
-                            _buildStockBreakdown(),
-                            const SizedBox(height: 8),
-                          ],
-                          Text(
-                            'Cada presentación tiene su propio precio, stock y tipo de molienda.',
-                            style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-                          ),
-                          const SizedBox(height: 12),
-                          if (_loadingPresentaciones)
-                            const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator(strokeWidth: 2)))
-                          else if (_presentaciones.isEmpty)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
-                              child: Text('Sin presentaciones. Agrega una para que el producto aparezca con precio.',
-                                style: TextStyle(fontSize: 12, color: Colors.orange.shade600)),
-                            )
-                          else
-                            ..._presentaciones.map(_buildPresentacionTile),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    // Formulario
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      color: Colors.white,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildCampo(
-                            label: 'Nombre del producto *',
-                            controller: _nombreController,
-                            hint: 'Ej: Café Blend',
-                          ),
-                          const SizedBox(height: 16),
-                          _buildCampo(
-                            label: 'Descripción (opcional)',
-                            controller: _descripcionController,
-                            hint: 'Descripción del producto...',
-                            maxLines: 3,
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // Botón guardar
+                  ]),
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    Icon(Icons.eco_outlined, size: 15, color: Colors.green.shade600),
+                    const SizedBox(width: 4),
+                    Text('${_fmtKg(ev.kg)} verde',
+                        style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: SizedBox(
-                        width: double.infinity,
-                        height: 54,
-                        child: ElevatedButton.icon(
-                          onPressed: _isLoading || !_hasChanges ? null : _guardarCambios,
-                          icon: const Icon(Icons.save),
-                          label: const Text('Guardar Cambios', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue.shade600,
-                            foregroundColor: Colors.white,
-                            disabledBackgroundColor: Colors.grey.shade300,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                        ),
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Icon(Icons.arrow_forward_rounded, size: 14, color: Colors.grey.shade400),
                     ),
+                    Icon(Icons.local_fire_department_outlined, size: 15, color: Colors.orange.shade600),
+                    const SizedBox(width: 4),
+                    Text('tostado', style: TextStyle(fontSize: 13, color: Colors.orange.shade700,
+                        fontWeight: FontWeight.w600)),
+                  ]),
+                ]),
+              ),
 
-                    const SizedBox(height: 32),
-                  ],
+              const SizedBox(height: 12),
+
+              // ── Timer card ─────────────────────────────────────────
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Column(children: [
+                  Text('TIEMPO DE TUESTE',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                          color: Colors.grey.shade400, letterSpacing: 1.5)),
+                  const SizedBox(height: 12),
+                  if (startDate != null)
+                    _RoastTimerDisplay(startDate: startDate)
+                  else
+                    Text('—', style: TextStyle(fontSize: 48, color: Colors.grey.shade300,
+                        fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 8),
+                  if (startDate != null)
+                    Text(
+                      'Iniciado ${startDate.toLocal().hour.toString().padLeft(2, '0')}:${startDate.toLocal().minute.toString().padLeft(2, '0')} del ${startDate.toLocal().day} ${['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][startDate.toLocal().month - 1]}',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                    ),
+                ]),
+              ),
+
+              const SizedBox(height: 20),
+
+              // ── Evidencia del tueste ───────────────────────────────
+              Text('EVIDENCIA DEL TUESTE',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                      color: Colors.grey.shade500, letterSpacing: 1.2)),
+              const SizedBox(height: 10),
+
+              // Existing media grid
+              if (ev.mediaUrls.isNotEmpty) ...[
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3, crossAxisSpacing: 6, mainAxisSpacing: 6,
+                  ),
+                  itemCount: ev.mediaUrls.length,
+                  itemBuilder: (_, i) {
+                    final url = ev.mediaUrls[i];
+                    final isVideo = url.contains('.mp4') || url.contains('.mov');
+                    return GestureDetector(
+                      onLongPress: () async {
+                        final del = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('¿Eliminar archivo?'),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                              TextButton(onPressed: () => Navigator.pop(ctx, true),
+                                  style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                  child: const Text('Eliminar')),
+                            ],
+                          ),
+                        );
+                        if (del == true) _deleteEventMedia(ev.eventId!, url);
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: isVideo
+                            ? Container(
+                                color: Colors.orange.shade100,
+                                child: Icon(Icons.play_circle_fill_rounded,
+                                    color: Colors.orange.shade600, size: 36))
+                            : Image.network(url, fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  color: Colors.grey.shade200,
+                                  child: Icon(Icons.broken_image, color: Colors.grey.shade400),
+                                )),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 10),
+              ],
+
+              // Add media button
+              if (ev.eventId != null)
+                GestureDetector(
+                  onTap: () => _showMediaPickerSheet(ev.eventId!),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.grey.shade200),
+                    ),
+                    child: Row(children: [
+                      Container(
+                        width: 44, height: 44,
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: _uploadingEvents.contains(ev.eventId)
+                            ? Padding(
+                                padding: const EdgeInsets.all(10),
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange.shade600))
+                            : Icon(Icons.add_a_photo_rounded, color: Colors.orange.shade600, size: 22),
+                      ),
+                      const SizedBox(width: 14),
+                      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(
+                          _uploadingEvents.contains(ev.eventId) ? 'Subiendo...' : 'Agregar foto o video',
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                        ),
+                        Text('Camara o galeria',
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                      ]),
+                    ]),
+                  ),
+                ),
+
+              const SizedBox(height: 20),
+
+              // Other planned events (collapsed)
+              if (planned.isNotEmpty) ...[
+                _sectionLabel('Planificados', Icons.schedule_rounded, Colors.deepPurple.shade600),
+                const SizedBox(height: 8),
+                ...planned.map(_buildEventoTuesteCard),
+              ],
+
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+
+        // ── Sticky bottom: Finalizar Tueste ────────────────────────
+        if (ev.eventId != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+            child: SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton.icon(
+                onPressed: () => _mostrarFinalizarTueste(ev.eventId!, ev.kg),
+                icon: const Icon(Icons.check_rounded, size: 22),
+                label: const Text('Finalizar Tueste',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green.shade600,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  elevation: 0,
                 ),
               ),
+            ),
           ),
+      ],
+    );
+  }
+
+  Widget _sectionLabel(String text, IconData icon, Color color) {
+    return Row(children: [
+      Icon(icon, size: 14, color: color),
+      const SizedBox(width: 6),
+      Text(text, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color, letterSpacing: 0.4)),
+    ]);
+  }
+
+  // ── Tab: Presentaciones ────────────────────────────────────────────────────
+  Widget _buildPresentacionesTab() {
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      behavior: HitTestBehavior.translucent,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          // Header row
+          Row(children: [
+            Icon(Icons.layers_outlined, size: 18, color: Colors.indigo.shade600),
+            const SizedBox(width: 8),
+            Text('Presentaciones',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Colors.indigo.shade800)),
+            const Spacer(),
+            if (_loadingPresentaciones)
+              const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+            else
+              GestureDetector(
+                onTap: _cargarPresentaciones,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Icon(Icons.refresh_rounded, size: 18, color: Colors.grey.shade400),
+                ),
+              ),
+            GestureDetector(
+              onTap: _mostrarFormPresentacion,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.indigo.shade50,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.add, size: 14, color: Colors.indigo.shade600),
+                  const SizedBox(width: 4),
+                  Text('Agregar', style: TextStyle(fontSize: 12, color: Colors.indigo.shade600, fontWeight: FontWeight.w600)),
+                ]),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          if (_loadingPresentaciones)
+            const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator(strokeWidth: 2)))
+          else if (_presentaciones.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Row(children: [
+                Icon(Icons.info_outline, size: 16, color: Colors.orange.shade600),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text('Sin presentaciones. Agrega una para que el producto aparezca con precio.',
+                      style: TextStyle(fontSize: 12, color: Colors.orange.shade700)),
+                ),
+              ]),
+            )
+          else
+            ..._presentaciones.map(_buildPresentacionTile),
+
+          const SizedBox(height: 20),
+          Divider(color: Colors.grey.shade300),
+          const SizedBox(height: 16),
+
+          // Edit product section
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Icon(Icons.edit_outlined, size: 16, color: Colors.grey.shade600),
+                const SizedBox(width: 8),
+                Text('Editar producto',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Colors.grey.shade700)),
+              ]),
+              const SizedBox(height: 16),
+              _buildCampo(
+                label: 'Nombre del producto *',
+                controller: _nombreController,
+                hint: 'Ej: Café Blend',
+              ),
+              const SizedBox(height: 16),
+              _buildCampo(
+                label: 'Descripción (opcional)',
+                controller: _descripcionController,
+                hint: 'Descripción del producto...',
+                maxLines: 3,
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: _isLoading || !_hasChanges ? null : _guardarCambios,
+                  icon: const Icon(Icons.save_rounded),
+                  label: const Text('Guardar Cambios', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue.shade600,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.grey.shade300,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 32),
+        ],
       ),
     );
   }
@@ -1048,10 +1557,24 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
 
   Future<void> _pickAndUploadMedia(String eventId, {bool video = false}) async {
     XFile? file;
-    if (video) {
-      file = await _picker.pickVideo(source: ImageSource.camera, maxDuration: const Duration(minutes: 5));
-    } else {
-      file = await _picker.pickImage(source: ImageSource.camera, imageQuality: 80);
+    try {
+      if (video) {
+        // No maxDuration — avoids "Failed to find a valid fallback video configuration"
+        // on triple-lens iPhones when a duration constraint forces an unsupported mode.
+        file = await _picker.pickVideo(source: ImageSource.camera);
+      } else {
+        file = await _picker.pickImage(source: ImageSource.camera, imageQuality: 80);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No se pudo abrir la cámara: ${e.toString().split('\n').first}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
     }
     if (file == null || !mounted) return;
 
@@ -1076,9 +1599,22 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
   }
 
   Future<void> _pickFromGallery(String eventId, {bool video = false}) async {
-    final file = video
-        ? await _picker.pickVideo(source: ImageSource.gallery)
-        : await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    XFile? file;
+    try {
+      file = video
+          ? await _picker.pickVideo(source: ImageSource.gallery)
+          : await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No se pudo abrir la galería: ${e.toString().split('\n').first}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
     if (file == null || !mounted) return;
 
     setState(() => _uploadingEvents.add(eventId));
@@ -1976,6 +2512,58 @@ class _StepBtn extends StatelessWidget {
           height: 52,
           child: Icon(icon, size: 26, color: color),
         ),
+      ),
+    );
+  }
+}
+
+// ── Live roast timer ─────────────────────────────────────────────────────────
+class _RoastTimerDisplay extends StatefulWidget {
+  final DateTime startDate;
+  const _RoastTimerDisplay({required this.startDate});
+
+  @override
+  State<_RoastTimerDisplay> createState() => _RoastTimerDisplayState();
+}
+
+class _RoastTimerDisplayState extends State<_RoastTimerDisplay> {
+  late Duration _elapsed;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _elapsed = DateTime.now().difference(widget.startDate);
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _elapsed = DateTime.now().difference(widget.startDate));
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String get _timerStr {
+    final h = _elapsed.inHours;
+    final m = _elapsed.inMinutes % 60;
+    final s = _elapsed.inSeconds % 60;
+    if (h > 0) {
+      return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    }
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      _timerStr,
+      style: TextStyle(
+        fontSize: 52,
+        fontWeight: FontWeight.w800,
+        color: Colors.orange.shade700,
+        fontFeatures: const [FontFeature.tabularFigures()],
       ),
     );
   }
