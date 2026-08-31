@@ -132,7 +132,8 @@ class ListaProductosWidget extends StatelessWidget {
     final preventa   = grupo.cantidadPreventa;
     final tienePrev  = preventa > 0;
     final unit       = (p['unit'] ?? '').toString().trim();
-    final showUnit   = unit.isNotEmpty && unit != 'unidad';
+    final _grindValues = {'unidad', 'grano', 'molido', 'verde', 'whole', 'ground', 'green'};
+    final showUnit   = unit.isNotEmpty && !_grindValues.contains(unit.toLowerCase());
     final roastedAt  = p['roastedAt']?.toString() ?? '';
 
     String? grindLabel;

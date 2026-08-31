@@ -639,7 +639,27 @@ class SeccionPagoWidget extends StatelessWidget {
           ]),
         ),
       ]),
-      const SizedBox(height: 12),
+      const SizedBox(height: 8),
+
+      // ── Método de pago online ────────────────────────────────────────────
+      Builder(builder: (_) {
+        final rawMethod = (pedido['paymentMethod'] ?? '').toString();
+        if (rawMethod.isEmpty) return const SizedBox.shrink();
+        final isIzipay = rawMethod.startsWith('izipay');
+        final label = isIzipay ? 'Izipay (online)' : rawMethod;
+        final icon  = isIzipay ? Icons.credit_card : Icons.account_balance_wallet;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(children: [
+            Icon(icon, size: 14, color: Colors.blue.shade600),
+            const SizedBox(width: 6),
+            Text('Pagado con: ', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blue.shade700)),
+          ]),
+        );
+      }),
+
+      const SizedBox(height: 4),
 
       // ── Alerta días sin pago ─────────────────────────────────────────────
       if (estadoPago != EstadoPagoHelper.PAGADO && diasSinPago > 0)
