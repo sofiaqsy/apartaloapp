@@ -58,7 +58,16 @@ class _LoginScreenState extends State<LoginScreen> {
       final prefs = await SharedPreferences.getInstance();
       final businessId = prefs.getString('business_id');
       final businessName = prefs.getString('business_name');
-      if (businessId == null || businessName == null) return;
+      if (businessId == null || businessName == null) {
+        // Signed in but no business saved on this device (for example a request still in
+        // review): ask the server where this account stands and show the matching screen.
+        try {
+          await _continueWithSession();
+        } catch (e) {
+          if (mounted) setState(() => _errorMessage = 'No se pudo verificar tu cuenta. Revisa tu internet.');
+        }
+        return;
+      }
 
       // Sesión restaurada: hay que repoblar ApiService igual que al iniciar sesión,
       // si no el nombre del negocio sale vacío en los PDF y las etiquetas.
