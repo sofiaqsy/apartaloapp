@@ -153,12 +153,22 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
       _codeController.clear();
-      await _continueWithSession();
+      _session = AuthSession(status: 'join_pending');
+      setState(() => _step = _Step.joinPending);
+      _snack('Solicitud enviada. El dueño del negocio debe aprobarla.');
+      await _continueWithSession(); // fills in the business name when the server knows it
     } catch (e) {
       setState(() => _errorMessage = 'Error de conexión. Verifica tu internet.');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _snack(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text), duration: const Duration(seconds: 5)));
   }
 
   Future<void> _submitBusiness() async {
@@ -175,7 +185,10 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() => _errorMessage = error);
         return;
       }
-      await _continueWithSession();
+      // Confirm right away; do not depend on the follow-up session check to show it.
+      _session = AuthSession(status: 'business_pending', businessName: name);
+      setState(() => _step = _Step.businessPending);
+      _snack('Solicitud enviada. Te avisaremos cuando tu negocio esté activo.');
     } catch (e) {
       setState(() => _errorMessage = 'Error de conexión. Verifica tu internet.');
     } finally {
@@ -452,8 +465,9 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 8),
             Text(
               _session != null && _session!.businessName.isNotEmpty
-                  ? 'Estamos revisando el registro de ${_session!.businessName}. Te avisaremos cuando esté activo.'
-                  : 'Estamos revisando el registro de tu negocio.',
+                  ? 'Recibimos el registro de "${_session!.businessName}". El administrador de Fincas lo revisará y, cuando lo apruebe, '
+                      'toca "Revisar estado" para entrar a tu negocio.'
+                  : 'Recibimos el registro de tu negocio. El administrador de Fincas lo revisará.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 15, color: Colors.grey.shade700),
             ),
