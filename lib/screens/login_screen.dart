@@ -5,7 +5,7 @@ import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import 'main_screen.dart';
 
-enum _Step { signIn, phone, pending, onboarding, ownerInfo, enterCode, joinPending, explore, revoked }
+enum _Step { signIn, phone, pending, onboarding, ownerForm, businessPending, enterCode, joinPending, explore, revoked }
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -17,6 +17,9 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _codeController = TextEditingController();
+  final TextEditingController _bizNameController = TextEditingController();
+  final TextEditingController _bizCityController = TextEditingController();
+  final TextEditingController _bizPhoneController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
   _Step _step = _Step.signIn;
@@ -32,6 +35,9 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _phoneController.dispose();
     _codeController.dispose();
+    _bizNameController.dispose();
+    _bizCityController.dispose();
+    _bizPhoneController.dispose();
     super.dispose();
   }
 
@@ -92,6 +98,9 @@ class _LoginScreenState extends State<LoginScreen> {
       case 'join_pending':
         setState(() => _step = _Step.joinPending);
         break;
+      case 'business_pending':
+        setState(() => _step = _Step.businessPending);
+        break;
       case 'revoked':
         setState(() => _step = _Step.revoked);
         break;
@@ -143,6 +152,45 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _submitBusiness() async {
+    final name = _bizNameController.text.trim();
+    final city = _bizCityController.text.trim();
+    final phone = _bizPhoneController.text.trim();
+    if (name.length < 3) { setState(() => _errorMessage = 'Escribe el nombre de tu negocio'); return; }
+    if (city.length < 2) { setState(() => _errorMessage = 'Escribe la ciudad'); return; }
+    if (phone.replaceAll(RegExp(r'\D'), '').length < 9) { setState(() => _errorMessage = 'Ingresa un número de 9 dígitos'); return; }
+    setState(() { _isLoading = true; _errorMessage = null; });
+    try {
+      final error = await AuthService.requestBusiness(name: name, city: city, phone: phone);
+      if (error != null) {
+        setState(() => _errorMessage = error);
+        return;
+      }
+      await _continueWithSession();
+    } catch (e) {
+      setState(() => _errorMessage = 'Error de conexión. Verifica tu internet.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Widget _field(TextEditingController c, String label, {TextInputType? type, String? prefix, int? max}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextField(
+        controller: c,
+        keyboardType: type,
+        maxLength: max,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixText: prefix,
+          counterText: '',
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+      ),
+    );
+  }
+
   Future<void> _refreshStatus() async {
     setState(() { _isLoading = true; _errorMessage = null; });
     try {
@@ -175,6 +223,7 @@ class _LoginScreenState extends State<LoginScreen> {
     // Antes se decidía por teléfono; ahora toda cuenta activa con negocio es miembro.
     await prefs.setBool('is_tostador', true);
     await prefs.setString('business_role', (negocio['role'] ?? '').toString());
+    await prefs.setBool('is_platform_admin', _session?.isAdmin ?? false);
 
     ApiService.businessId = negocio['businessId'];
     ApiService.businessName = negocio['name'] ?? '';
@@ -352,7 +401,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: Colors.grey.shade600)),
             const SizedBox(height: 16),
             _option('Tengo un negocio', 'Quiero registrar mi negocio y manejar su operación.',
-                () => setState(() { _step = _Step.ownerInfo; _errorMessage = null; })),
+                () => setState(() { _step = _Step.ownerForm; _errorMessage = null; })),
             _option('Trabajo en un negocio', 'Ya pertenezco a un negocio y quiero unirme a su equipo.',
                 () => setState(() { _step = _Step.enterCode; _errorMessage = null; })),
             _option('Estoy explorando', 'Todavía no quiero registrar ni unirme a un negocio.',
@@ -361,20 +410,51 @@ class _LoginScreenState extends State<LoginScreen> {
             TextButton(onPressed: _isLoading ? null : _backToSignIn, child: const Text('Usar otra cuenta')),
           ],
         );
-      case _Step.ownerInfo:
+      case _Step.ownerForm:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Registra tu negocio', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            Text('El administrador de Fincas revisará tu solicitud antes de activar el negocio.',
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
+            const SizedBox(height: 14),
+            _field(_bizNameController, 'Nombre del negocio', max: 80),
+            _field(_bizCityController, 'Ciudad', max: 60),
+            _field(_bizPhoneController, 'WhatsApp del negocio', type: TextInputType.phone, prefix: '+51  ', max: 12),
+            if (_errorMessage != null) ...[
+              Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+              const SizedBox(height: 8),
+            ],
+            _primaryButton('Enviar solicitud', _submitBusiness),
+            const SizedBox(height: 8),
+            Center(
+              child: TextButton(
+                onPressed: _isLoading ? null : () => setState(() { _step = _Step.onboarding; _errorMessage = null; }),
+                child: const Text('Volver'),
+              ),
+            ),
+          ],
+        );
+      case _Step.businessPending:
         return Column(
           children: [
-            const Text('Registro de negocios', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text('Solicitud enviada', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Text(
-              'Por ahora los negocios nuevos se activan con el administrador de Fincas. '
-              'Escríbele indicando el correo con el que iniciaste sesión y activará tu negocio.',
+              _session != null && _session!.businessName.isNotEmpty
+                  ? 'Estamos revisando el registro de ${_session!.businessName}. Te avisaremos cuando esté activo.'
+                  : 'Estamos revisando el registro de tu negocio.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 15, color: Colors.grey.shade700),
             ),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 8),
+              Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+            ],
             const SizedBox(height: 20),
-            _primaryButton('Volver', () => setState(() => _step = _Step.onboarding)),
-            TextButton(onPressed: _isLoading ? null : _refreshStatus, child: const Text('Ya me activaron, revisar')),
+            _primaryButton('Revisar estado', _refreshStatus),
+            TextButton(onPressed: _isLoading ? null : _backToSignIn, child: const Text('Usar otra cuenta')),
           ],
         );
       case _Step.explore:

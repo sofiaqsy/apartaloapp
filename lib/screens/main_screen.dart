@@ -12,6 +12,7 @@ import 'tabs/clientes_tab.dart';
 import 'tabs/pedidos_tab.dart';
 import 'settings/settings_screen.dart';
 import 'team_screen.dart';
+import 'business_requests_screen.dart';
 
 class MainScreen extends StatefulWidget {
   final String businessId;
@@ -54,10 +55,16 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   bool _isOwner = false;
+  bool _isPlatformAdmin = false;
 
   Future<void> _loadRole() async {
     final prefs = await SharedPreferences.getInstance();
-    if (mounted) setState(() => _isOwner = prefs.getString('business_role') == 'owner');
+    if (mounted) {
+      setState(() {
+        _isOwner = prefs.getString('business_role') == 'owner';
+        _isPlatformAdmin = prefs.getBool('is_platform_admin') ?? false;
+      });
+    }
   }
 
   Future<void> _logout() async {
@@ -190,6 +197,9 @@ class _MainScreenState extends State<MainScreen> {
                     ),
                   );
                   break;
+                case 'requests':
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const BusinessRequestsScreen()));
+                  break;
                 case 'logout':
                   _logout();
                   break;
@@ -211,6 +221,8 @@ class _MainScreenState extends State<MainScreen> {
               ),
               if (_isOwner)
                 const PopupMenuItem(value: 'team', child: Text('Equipo')),
+              if (_isPlatformAdmin)
+                const PopupMenuItem(value: 'requests', child: Text('Solicitudes de negocios')),
               const PopupMenuDivider(),
               const PopupMenuItem(
                 value: 'logout',

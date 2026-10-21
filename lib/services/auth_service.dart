@@ -13,6 +13,7 @@ class AuthSession {
     this.hasPhone = false,
     this.businesses = const [],
     this.businessName = '',
+    this.isAdmin = false,
   });
 
   /// active | pending | join_pending | no_invitation | revoked
@@ -20,6 +21,9 @@ class AuthSession {
 
   /// Business the person asked to join (only with join_pending).
   final String businessName;
+
+  /// Platform administrator: can approve new business requests.
+  final bool isAdmin;
   final String fullName;
   final bool hasPhone;
   final List<Map<String, dynamic>> businesses;
@@ -33,6 +37,7 @@ class AuthSession {
       fullName: (profile['fullName'] ?? '').toString(),
       hasPhone: profile['hasPhone'] == true,
       businessName: (json['businessName'] ?? '').toString(),
+      isAdmin: profile['isAdmin'] == true,
       businesses: ((json['businesses'] as List?) ?? const [])
           .map((b) => Map<String, dynamic>.from(b as Map))
           .toList(),
@@ -162,6 +167,36 @@ class AuthService {
     final res = await http
         .post(Uri.parse('${ApiService.baseUrl}/api/auth/join-requests/$requestId/decision'),
             headers: _json, body: jsonEncode({'businessId': businessId, 'approve': approve}))
+        .timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200) {
+      throw AuthException((_decode(res)['error'] ?? 'No se pudo resolver la solicitud.').toString());
+    }
+  }
+
+  /// Asks to register a new business. Returns null on success or an error message.
+  static Future<String?> requestBusiness({required String name, required String city, required String phone}) async {
+    final res = await http
+        .post(Uri.parse('${ApiService.baseUrl}/api/auth/business-requests'),
+            headers: _json, body: jsonEncode({'name': name, 'city': city, 'phone': phone}))
+        .timeout(const Duration(seconds: 15));
+    if (res.statusCode == 200) return null;
+    return (_decode(res)['error'] ?? 'No se pudo enviar la solicitud.').toString();
+  }
+
+  /// Platform admin: pending business requests.
+  static Future<List<Map<String, dynamic>>> listBusinessRequests() async {
+    final res = await http
+        .get(Uri.parse('${ApiService.baseUrl}/api/auth/admin/business-requests'))
+        .timeout(const Duration(seconds: 15));
+    final body = _decode(res);
+    if (res.statusCode != 200) throw AuthException((body['error'] ?? 'No se pudieron cargar las solicitudes.').toString());
+    return ((body['requests'] as List?) ?? const []).map((r) => Map<String, dynamic>.from(r as Map)).toList();
+  }
+
+  static Future<void> decideBusinessRequest(String requestId, bool approve) async {
+    final res = await http
+        .post(Uri.parse('${ApiService.baseUrl}/api/auth/admin/business-requests/$requestId/decision'),
+            headers: _json, body: jsonEncode({'approve': approve}))
         .timeout(const Duration(seconds: 15));
     if (res.statusCode != 200) {
       throw AuthException((_decode(res)['error'] ?? 'No se pudo resolver la solicitud.').toString());
