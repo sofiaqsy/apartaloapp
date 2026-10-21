@@ -21,6 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _bizCityController = TextEditingController();
   final TextEditingController _bizPhoneController = TextEditingController();
   bool _isLoading = false;
+  bool _checking = true; // looking for a saved session at startup
   String? _errorMessage;
   _Step _step = _Step.signIn;
   AuthSession? _session;
@@ -44,6 +45,14 @@ class _LoginScreenState extends State<LoginScreen> {
   /// A saved business is only restored while the Firebase session is alive. After a
   /// re-install (or a sign out) there is no session and the login is requested again.
   Future<void> _checkExistingLogin() async {
+    try {
+      await _restoreSession();
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
+  }
+
+  Future<void> _restoreSession() async {
     try {
       if (!AuthService.isSignedIn) return;
       final prefs = await SharedPreferences.getInstance();
@@ -531,6 +540,12 @@ class _LoginScreenState extends State<LoginScreen> {
       case _Step.revoked:
         return _message('Acceso bloqueado', 'El acceso de esta cuenta fue desactivado. Contacta al administrador.');
       case _Step.signIn:
+        if (_checking) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
         return Column(
           children: [
             _primaryButton('Continuar con Google', () => _signIn(AuthService.signInWithGoogle),
@@ -577,6 +592,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 8),
                       Text('Gestiona tu negocio fácilmente', style: TextStyle(fontSize: 16, color: Colors.grey.shade600)),
                       const Spacer(),
+                      if (_isLoading)
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 12),
+                          child: LinearProgressIndicator(minHeight: 3),
+                        ),
                       _stepContent(),
                       const SizedBox(height: 24),
                     ],
