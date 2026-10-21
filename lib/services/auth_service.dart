@@ -189,10 +189,10 @@ class AuthService {
   }
 
   /// Asks to register a new business. Returns null on success or an error message.
-  static Future<String?> requestBusiness({required String name, required String city, required String phone}) async {
+  static Future<String?> requestBusiness({required String name, required String city}) async {
     final res = await http
         .post(Uri.parse('${ApiService.baseUrl}/api/auth/business-requests'),
-            headers: _json, body: jsonEncode({'name': name, 'city': city, 'phone': phone}))
+            headers: _json, body: jsonEncode({'name': name, 'city': city}))
         .timeout(const Duration(seconds: 15));
     if (res.statusCode == 200) return null;
     return (_decode(res)['error'] ?? 'No se pudo enviar la solicitud.').toString();

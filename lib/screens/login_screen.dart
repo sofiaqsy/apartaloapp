@@ -5,7 +5,7 @@ import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import 'main_screen.dart';
 
-enum _Step { signIn, phone, pending, onboarding, ownerForm, businessPending, enterCode, joinPending, explore, revoked }
+enum _Step { signIn, pending, onboarding, ownerForm, businessPending, enterCode, joinPending, explore, revoked }
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,11 +15,9 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _codeController = TextEditingController();
   final TextEditingController _bizNameController = TextEditingController();
   final TextEditingController _bizCityController = TextEditingController();
-  final TextEditingController _bizPhoneController = TextEditingController();
   bool _isLoading = false;
   bool _checking = true; // looking for a saved session at startup
   String? _errorMessage;
@@ -36,11 +34,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
-    _phoneController.dispose();
     _codeController.dispose();
     _bizNameController.dispose();
     _bizCityController.dispose();
-    _bizPhoneController.dispose();
     super.dispose();
   }
 
@@ -144,8 +140,6 @@ class _LoginScreenState extends State<LoginScreen> {
         if (session.businesses.isNotEmpty) await _clearPending();
         if (session.businesses.isEmpty) {
           setState(() => _step = _Step.onboarding);
-        } else if (!session.hasPhone) {
-          setState(() => _step = _Step.phone);
         } else {
           await _openBusiness(session);
         }
@@ -166,27 +160,6 @@ class _LoginScreenState extends State<LoginScreen> {
         break;
       default:
         setState(() => _step = _Step.onboarding);
-    }
-  }
-
-  Future<void> _savePhone() async {
-    final phone = _phoneController.text.trim();
-    if (phone.length < 9) {
-      setState(() => _errorMessage = 'Ingresa tu número de 9 dígitos');
-      return;
-    }
-    setState(() { _isLoading = true; _errorMessage = null; });
-    try {
-      final error = await AuthService.savePhone(phone);
-      if (error != null) {
-        setState(() => _errorMessage = error);
-        return;
-      }
-      await _openBusiness(_session!);
-    } catch (e) {
-      setState(() => _errorMessage = 'Error de conexión. Verifica tu internet.');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -226,13 +199,11 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _submitBusiness() async {
     final name = _bizNameController.text.trim();
     final city = _bizCityController.text.trim();
-    final phone = _bizPhoneController.text.trim();
     if (name.length < 3) { setState(() => _errorMessage = 'Escribe el nombre de tu negocio'); return; }
     if (city.length < 2) { setState(() => _errorMessage = 'Escribe la ciudad'); return; }
-    if (phone.replaceAll(RegExp(r'\D'), '').length < 9) { setState(() => _errorMessage = 'Ingresa un número de 9 dígitos'); return; }
     setState(() { _isLoading = true; _errorMessage = null; });
     try {
-      final error = await AuthService.requestBusiness(name: name, city: city, phone: phone);
+      final error = await AuthService.requestBusiness(name: name, city: city);
       if (error != null) {
         setState(() => _errorMessage = error);
         return;
@@ -459,42 +430,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _stepContent() {
     switch (_step) {
-      case _Step.phone:
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Tu número de WhatsApp', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            Text('Lo guardamos en tu perfil. No se usa para iniciar sesión.',
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
-            const SizedBox(height: 14),
-            TextField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              maxLength: 12,
-              onSubmitted: (_) => _savePhone(),
-              decoration: InputDecoration(
-                prefixText: '+51  ',
-                hintText: '987 654 321',
-                counterText: '',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-            ),
-            if (_errorMessage != null) ...[
-              const SizedBox(height: 8),
-              Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 13)),
-            ],
-            const SizedBox(height: 16),
-            _primaryButton('Continuar', _savePhone),
-            const SizedBox(height: 8),
-            Center(
-              child: TextButton(
-                onPressed: _isLoading ? null : () => _openBusiness(_session!),
-                child: const Text('Ahora no'),
-              ),
-            ),
-          ],
-        );
       case _Step.pending:
         return _message('Cuenta en revisión',
             'Reconocimos tu correo. Falta que el administrador confirme tu acceso. Vuelve a intentarlo en unos minutos.');
@@ -529,7 +464,6 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 14),
             _field(_bizNameController, 'Nombre del negocio', max: 80),
             _field(_bizCityController, 'Ciudad', max: 60),
-            _field(_bizPhoneController, 'WhatsApp del negocio', type: TextInputType.phone, prefix: '+51  ', max: 12),
             if (_errorMessage != null) ...[
               Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 13)),
               const SizedBox(height: 8),
