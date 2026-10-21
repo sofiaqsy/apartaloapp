@@ -555,24 +555,34 @@ class _LoginScreenState extends State<LoginScreen> {
         onTap: () => FocusScope.of(context).unfocus(),
         behavior: HitTestBehavior.translucent,
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              children: [
-                const Spacer(),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  child: Image.asset('assets/splash/splash.png', width: 100, height: 100, fit: BoxFit.cover),
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.all(24.0),
+              child: ConstrainedBox(
+                // Fills the screen when there is room (Spacers center the content) and scrolls when
+                // the form or the keyboard needs more height.
+                constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
+                child: IntrinsicHeight(
+                  child: Column(
+                    children: [
+                      const Spacer(),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(24),
+                        child: Image.asset('assets/splash/splash.png', width: 100, height: 100, fit: BoxFit.cover),
+                      ),
+                      const SizedBox(height: 24),
+                      Text('Fincas',
+                          style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.brown.shade800)),
+                      const SizedBox(height: 8),
+                      Text('Gestiona tu negocio fácilmente', style: TextStyle(fontSize: 16, color: Colors.grey.shade600)),
+                      const Spacer(),
+                      _stepContent(),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 24),
-                Text('Fincas',
-                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.brown.shade800)),
-                const SizedBox(height: 8),
-                Text('Gestiona tu negocio fácilmente', style: TextStyle(fontSize: 16, color: Colors.grey.shade600)),
-                const Spacer(),
-                _stepContent(),
-                const SizedBox(height: 24),
-              ],
+              ),
             ),
           ),
         ),
