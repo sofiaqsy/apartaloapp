@@ -24,11 +24,13 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _checking = true; // looking for a saved session at startup
   String? _errorMessage;
   _Step _step = _Step.signIn;
+  Map<String, String>? _savedPending; // request in review remembered on this device
   AuthSession? _session;
 
   @override
   void initState() {
     super.initState();
+    _loadPending();
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkExistingLogin());
   }
 
@@ -44,6 +46,43 @@ class _LoginScreenState extends State<LoginScreen> {
 
   /// A saved business is only restored while the Firebase session is alive. After a
   /// re-install (or a sign out) there is no session and the login is requested again.
+  Future<void> _loadPending() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final kind = prefs.getString('pending_kind');
+      if (kind == null) return;
+      if (mounted) {
+        setState(() => _savedPending = {
+              'kind': kind,
+              'name': prefs.getString('pending_name') ?? '',
+              'email': prefs.getString('pending_email') ?? '',
+              'provider': prefs.getString('pending_provider') ?? '',
+            });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _rememberPending(String kind, String name) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('pending_kind', kind);
+      await prefs.setString('pending_name', name);
+      await prefs.setString('pending_email', AuthService.maskEmail(AuthService.currentEmail));
+      final provider = AuthService.currentProvider ?? '';
+      await prefs.setString('pending_provider', provider.startsWith('apple') ? 'Apple' : (provider.startsWith('google') ? 'Google' : ''));
+    } catch (_) {}
+  }
+
+  Future<void> _clearPending() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      for (final k in ['pending_kind', 'pending_name', 'pending_email', 'pending_provider']) {
+        await prefs.remove(k);
+      }
+      if (mounted) setState(() => _savedPending = null);
+    } catch (_) {}
+  }
+
   Future<void> _checkExistingLogin() async {
     try {
       await _restoreSession();
@@ -102,6 +141,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _session = session;
     switch (session.status) {
       case 'active':
+        if (session.businesses.isNotEmpty) await _clearPending();
         if (session.businesses.isEmpty) {
           setState(() => _step = _Step.onboarding);
         } else if (!session.hasPhone) {
@@ -114,9 +154,11 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() => _step = _Step.pending);
         break;
       case 'join_pending':
+        await _rememberPending('join', session.businessName);
         setState(() => _step = _Step.joinPending);
         break;
       case 'business_pending':
+        await _rememberPending('business', session.businessName);
         setState(() => _step = _Step.businessPending);
         break;
       case 'revoked':
@@ -163,6 +205,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       _codeController.clear();
       _session = AuthSession(status: 'join_pending');
+      await _rememberPending('join', '');
       setState(() => _step = _Step.joinPending);
       _snack('Solicitud enviada. El dueño del negocio debe aprobarla.');
       await _continueWithSession(); // fills in the business name when the server knows it
@@ -196,6 +239,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       // Confirm right away; do not depend on the follow-up session check to show it.
       _session = AuthSession(status: 'business_pending', businessName: name);
+      await _rememberPending('business', name);
       setState(() => _step = _Step.businessPending);
       _snack('Solicitud enviada. Te avisaremos cuando tu negocio esté activo.');
     } catch (e) {
@@ -338,6 +382,39 @@ class _LoginScreenState extends State<LoginScreen> {
         child: _isLoading
             ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
             : Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+      ),
+    );
+  }
+
+  Widget _pendingReminder() {
+    final p = _savedPending!;
+    final what = p['kind'] == 'join'
+        ? 'unirte a un negocio'
+        : (p['name']!.isNotEmpty ? 'registrar "${p['name']}"' : 'registrar tu negocio');
+    final account = [
+      if (p['provider']!.isNotEmpty) p['provider'],
+      if (p['email']!.isNotEmpty) p['email'],
+    ].join(' - ');
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        border: Border.all(color: Colors.amber.shade300),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Tienes una solicitud en revisión', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text(
+            'Pediste $what desde este teléfono. Inicia sesión con la misma cuenta${account.isNotEmpty ? ' ($account)' : ''} '
+            'para ver el estado.',
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade800),
+          ),
+        ],
       ),
     );
   }
@@ -487,6 +564,8 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 20),
             _primaryButton('Revisar estado', _refreshStatus),
             TextButton(onPressed: _isLoading ? null : _backToSignIn, child: const Text('Usar otra cuenta')),
+            Text('Tu solicitud queda guardada. Para verla de nuevo, inicia sesión con esta misma cuenta.',
+                textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
           ],
         );
       case _Step.explore:
@@ -558,6 +637,8 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 20),
             _primaryButton('Revisar estado', _refreshStatus),
             TextButton(onPressed: _isLoading ? null : _backToSignIn, child: const Text('Usar otra cuenta')),
+            Text('Tu solicitud queda guardada. Para verla de nuevo, inicia sesión con esta misma cuenta.',
+                textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
           ],
         );
       case _Step.revoked:
@@ -571,6 +652,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
         return Column(
           children: [
+            if (_savedPending != null) _pendingReminder(),
             _primaryButton('Continuar con Google', () => _signIn(AuthService.signInWithGoogle),
                 color: Colors.white, textColor: Colors.black87),
             const SizedBox(height: 12),

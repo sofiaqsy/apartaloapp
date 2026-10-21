@@ -61,6 +61,21 @@ class AuthService {
 
   static bool get isSignedIn => _auth.currentUser != null;
 
+  /// Email and sign-in method of the current account, only to remind the person which one to use.
+  static String? get currentEmail => _auth.currentUser?.email;
+  static String? get currentProvider {
+    final providers = _auth.currentUser?.providerData ?? const [];
+    return providers.isEmpty ? null : providers.first.providerId;
+  }
+
+  /// a***@gmail.com: enough to recognise the account without exposing it on screen.
+  static String maskEmail(String? email) {
+    if (email == null || !email.contains('@')) return '';
+    final parts = email.split('@');
+    final name = parts.first;
+    return '${name.isEmpty ? '' : name[0]}***@${parts.last}';
+  }
+
   /// The iOS keychain keeps the Firebase session after the app is uninstalled. On a fresh
   /// install (no marker in SharedPreferences) we sign out so the login screen is shown again.
   static Future<void> clearStaleSessionOnFreshInstall() async {
