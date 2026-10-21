@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import 'main_screen.dart';
+
+enum _Step { signIn, phone, pending, onboarding, ownerInfo, enterCode, joinPending, explore, revoked }
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -14,8 +16,11 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _codeController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
+  _Step _step = _Step.signIn;
+  AuthSession? _session;
 
   @override
   void initState() {
@@ -23,60 +28,44 @@ class _LoginScreenState extends State<LoginScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkExistingLogin());
   }
 
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    _codeController.dispose();
+    super.dispose();
+  }
+
+  /// A saved business is only restored while the Firebase session is alive. After a
+  /// re-install (or a sign out) there is no session and the login is requested again.
   Future<void> _checkExistingLogin() async {
     try {
+      if (!AuthService.isSignedIn) return;
       final prefs = await SharedPreferences.getInstance();
       final businessId = prefs.getString('business_id');
       final businessName = prefs.getString('business_name');
+      if (businessId == null || businessName == null) return;
 
-      if (businessId != null && businessName != null) {
-        ApiService.isTostador = prefs.getBool('is_tostador') ?? false;
-        await NotificationService().resendTokenAfterLogin();
-        if (mounted) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (_) => MainScreen(businessId: businessId, businessName: businessName),
-            ),
-          );
-        }
-      }
+      // Sesión restaurada: hay que repoblar ApiService igual que al iniciar sesión,
+      // si no el nombre del negocio sale vacío en los PDF y las etiquetas.
+      ApiService.businessId = businessId;
+      ApiService.businessName = businessName;
+      ApiService.businessDireccion = prefs.getString('business_direccion') ?? '';
+      ApiService.businessCiudad = prefs.getString('business_ciudad') ?? '';
+      ApiService.isTostador = prefs.getBool('is_tostador') ?? false;
+      await NotificationService().resendTokenAfterLogin();
+      _goToMain(businessId, businessName);
     } catch (e) {
       debugPrint('⚠️ Error verificando login: $e');
     }
   }
 
-  Future<void> _login() async {
-    final phone = _phoneController.text.trim();
-
-    if (phone.isEmpty) {
-      setState(() => _errorMessage = 'Ingresa tu número de WhatsApp');
-      return;
-    }
-    if (phone.length < 9) {
-      setState(() => _errorMessage = 'Número inválido');
-      return;
-    }
-
+  Future<void> _signIn(Future<void> Function() provider) async {
     setState(() { _isLoading = true; _errorMessage = null; });
-
     try {
-      final result = await ApiService.buscarNegocioPorWhatsapp(phone);
-
-      if (result['encontrado'] != true) {
-        setState(() => _errorMessage = result['mensaje'] ?? 'Acceso no autorizado');
-        return;
-      }
-
-      // Múltiples negocios → mostrar selector
-      if (result['negocios'] != null) {
-        final negocios = List<Map<String, dynamic>>.from(result['negocios']);
-        if (!mounted) return;
-        final seleccionado = await _mostrarSelectorNegocio(negocios);
-        if (seleccionado == null) return;
-        await _iniciarSesion(seleccionado);
-      } else {
-        await _iniciarSesion(result['negocio']);
-      }
+      await provider();
+      await _continueWithSession();
+    } on AuthException catch (e) {
+      if (e.message != 'cancelled') setState(() => _errorMessage = e.message);
     } catch (e) {
       setState(() => _errorMessage = 'Error de conexión. Verifica tu internet.');
     } finally {
@@ -84,30 +73,132 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _continueWithSession() async {
+    final session = await AuthService.fetchSession();
+    _session = session;
+    switch (session.status) {
+      case 'active':
+        if (session.businesses.isEmpty) {
+          setState(() => _step = _Step.onboarding);
+        } else if (!session.hasPhone) {
+          setState(() => _step = _Step.phone);
+        } else {
+          await _openBusiness(session);
+        }
+        break;
+      case 'pending':
+        setState(() => _step = _Step.pending);
+        break;
+      case 'join_pending':
+        setState(() => _step = _Step.joinPending);
+        break;
+      case 'revoked':
+        setState(() => _step = _Step.revoked);
+        break;
+      default:
+        setState(() => _step = _Step.onboarding);
+    }
+  }
+
+  Future<void> _savePhone() async {
+    final phone = _phoneController.text.trim();
+    if (phone.length < 9) {
+      setState(() => _errorMessage = 'Ingresa tu número de 9 dígitos');
+      return;
+    }
+    setState(() { _isLoading = true; _errorMessage = null; });
+    try {
+      final error = await AuthService.savePhone(phone);
+      if (error != null) {
+        setState(() => _errorMessage = error);
+        return;
+      }
+      await _openBusiness(_session!);
+    } catch (e) {
+      setState(() => _errorMessage = 'Error de conexión. Verifica tu internet.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _submitCode() async {
+    final code = _codeController.text.trim();
+    if (code.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').length != 8) {
+      setState(() => _errorMessage = 'El código tiene 8 caracteres, por ejemplo ABCD-EFGH');
+      return;
+    }
+    setState(() { _isLoading = true; _errorMessage = null; });
+    try {
+      final error = await AuthService.submitJoinCode(code);
+      if (error != null) {
+        setState(() => _errorMessage = error);
+        return;
+      }
+      _codeController.clear();
+      await _continueWithSession();
+    } catch (e) {
+      setState(() => _errorMessage = 'Error de conexión. Verifica tu internet.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _refreshStatus() async {
+    setState(() { _isLoading = true; _errorMessage = null; });
+    try {
+      await _continueWithSession();
+    } catch (e) {
+      setState(() => _errorMessage = 'Error de conexión. Verifica tu internet.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _openBusiness(AuthSession session) async {
+    Map<String, dynamic>? business;
+    if (session.businesses.length == 1) {
+      business = session.businesses.first;
+    } else {
+      if (!mounted) return;
+      business = await _mostrarSelectorNegocio(session.businesses);
+    }
+    if (business == null) return;
+    await _iniciarSesion(business);
+  }
+
   Future<void> _iniciarSesion(Map<String, dynamic> negocio) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('business_id', negocio['id']);
-    await prefs.setString('business_name', negocio['nombre']);
-    await prefs.setString('user_phone', _phoneController.text.trim());
+    await prefs.setString('business_id', negocio['businessId']);
+    await prefs.setString('business_name', negocio['name']);
+    await prefs.setString('business_direccion', negocio['address'] ?? '');
+    await prefs.setString('business_ciudad', negocio['city'] ?? '');
+    // Antes se decidía por teléfono; ahora toda cuenta activa con negocio es miembro.
+    await prefs.setBool('is_tostador', true);
+    await prefs.setString('business_role', (negocio['role'] ?? '').toString());
 
-    ApiService.businessId        = negocio['id'];
-    ApiService.businessName      = negocio['nombre'] ?? '';
-    ApiService.businessDireccion = negocio['direccion'] ?? '';
-    ApiService.businessCiudad    = negocio['ciudad'] ?? '';
-    ApiService.checkAndSetTostador(_phoneController.text.trim()).ignore();
+    ApiService.businessId = negocio['businessId'];
+    ApiService.businessName = negocio['name'] ?? '';
+    ApiService.businessDireccion = negocio['address'] ?? '';
+    ApiService.businessCiudad = negocio['city'] ?? '';
+    ApiService.isTostador = true;
 
     await NotificationService().resendTokenAfterLogin();
+    _goToMain(negocio['businessId'], negocio['name']);
+  }
 
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => MainScreen(
-            businessId: negocio['id'],
-            businessName: negocio['nombre'],
-          ),
-        ),
-      );
-    }
+  void _goToMain(String businessId, String businessName) {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => MainScreen(businessId: businessId, businessName: businessName),
+      ),
+    );
+  }
+
+  Future<void> _backToSignIn() async {
+    await AuthService.signOut();
+    if (!mounted) return;
+    setState(() { _step = _Step.signIn; _errorMessage = null; _session = null; });
   }
 
   Future<Map<String, dynamic>?> _mostrarSelectorNegocio(List<Map<String, dynamic>> negocios) {
@@ -135,14 +226,12 @@ class _LoginScreenState extends State<LoginScreen> {
               leading: CircleAvatar(
                 backgroundColor: Colors.blue.shade50,
                 child: Text(
-                  (n['nombre'] ?? '?')[0].toUpperCase(),
+                  (n['name'] ?? '?').toString().substring(0, 1).toUpperCase(),
                   style: TextStyle(color: Colors.blue.shade700, fontWeight: FontWeight.bold),
                 ),
               ),
-              title: Text(n['nombre'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: n['ciudad'] != null && (n['ciudad'] as String).isNotEmpty
-                  ? Text(n['ciudad'])
-                  : null,
+              title: Text(n['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: (n['city'] ?? '').toString().isNotEmpty ? Text(n['city']) : null,
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.pop(ctx, n),
             )),
@@ -151,6 +240,231 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       ),
     );
+  }
+
+  // ── UI ───────────────────────────────────────────────────────────────────
+
+  Widget _primaryButton(String label, VoidCallback? onPressed, {Color? color, Color? textColor}) {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: ElevatedButton(
+        onPressed: _isLoading ? null : onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color ?? Colors.brown.shade700,
+          foregroundColor: textColor ?? Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        child: _isLoading
+            ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+            : Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+      ),
+    );
+  }
+
+  Widget _option(String title, String body, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: _isLoading ? null : onTap,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade300),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 2),
+              Text(body, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _message(String title, String body) {
+    return Column(
+      children: [
+        Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Text(body, textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: Colors.grey.shade700)),
+        const SizedBox(height: 20),
+        _primaryButton('Usar otra cuenta', _backToSignIn),
+      ],
+    );
+  }
+
+  Widget _stepContent() {
+    switch (_step) {
+      case _Step.phone:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Tu número de WhatsApp', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            Text('Lo guardamos en tu perfil. No se usa para iniciar sesión.',
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _phoneController,
+              keyboardType: TextInputType.phone,
+              maxLength: 12,
+              onSubmitted: (_) => _savePhone(),
+              decoration: InputDecoration(
+                prefixText: '+51  ',
+                hintText: '987 654 321',
+                counterText: '',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+            ),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 8),
+              Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+            ],
+            const SizedBox(height: 16),
+            _primaryButton('Continuar', _savePhone),
+            const SizedBox(height: 8),
+            Center(
+              child: TextButton(
+                onPressed: _isLoading ? null : () => _openBusiness(_session!),
+                child: const Text('Ahora no'),
+              ),
+            ),
+          ],
+        );
+      case _Step.pending:
+        return _message('Cuenta en revisión',
+            'Reconocimos tu correo. Falta que el administrador confirme tu acceso. Vuelve a intentarlo en unos minutos.');
+      case _Step.onboarding:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Bienvenido a Fincas',
+                textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Text('¿Cómo quieres empezar?',
+                textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: Colors.grey.shade600)),
+            const SizedBox(height: 16),
+            _option('Tengo un negocio', 'Quiero registrar mi negocio y manejar su operación.',
+                () => setState(() { _step = _Step.ownerInfo; _errorMessage = null; })),
+            _option('Trabajo en un negocio', 'Ya pertenezco a un negocio y quiero unirme a su equipo.',
+                () => setState(() { _step = _Step.enterCode; _errorMessage = null; })),
+            _option('Estoy explorando', 'Todavía no quiero registrar ni unirme a un negocio.',
+                () => setState(() { _step = _Step.explore; _errorMessage = null; })),
+            const SizedBox(height: 8),
+            TextButton(onPressed: _isLoading ? null : _backToSignIn, child: const Text('Usar otra cuenta')),
+          ],
+        );
+      case _Step.ownerInfo:
+        return Column(
+          children: [
+            const Text('Registro de negocios', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text(
+              'Por ahora los negocios nuevos se activan con el administrador de Fincas. '
+              'Escríbele indicando el correo con el que iniciaste sesión y activará tu negocio.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 15, color: Colors.grey.shade700),
+            ),
+            const SizedBox(height: 20),
+            _primaryButton('Volver', () => setState(() => _step = _Step.onboarding)),
+            TextButton(onPressed: _isLoading ? null : _refreshStatus, child: const Text('Ya me activaron, revisar')),
+          ],
+        );
+      case _Step.explore:
+        return Column(
+          children: [
+            const Text('Fincas', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text(
+              'Fincas es una herramienta para negocios de café: pedidos, productos, clientes y tostado. '
+              'Si solo quieres comprar, hazlo por WhatsApp con tu negocio. Vuelve cuando quieras registrar o unirte a uno.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 15, color: Colors.grey.shade700),
+            ),
+            const SizedBox(height: 20),
+            _primaryButton('Volver', () => setState(() => _step = _Step.onboarding)),
+          ],
+        );
+      case _Step.enterCode:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Código de invitación', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            Text('Pídeselo al dueño del negocio. El dueño debe aprobar tu solicitud.',
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _codeController,
+              textCapitalization: TextCapitalization.characters,
+              maxLength: 9,
+              onSubmitted: (_) => _submitCode(),
+              decoration: InputDecoration(
+                hintText: 'ABCD-EFGH',
+                counterText: '',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+            ),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 8),
+              Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+            ],
+            const SizedBox(height: 16),
+            _primaryButton('Enviar solicitud', _submitCode),
+            const SizedBox(height: 8),
+            Center(
+              child: TextButton(
+                onPressed: _isLoading ? null : () => setState(() { _step = _Step.onboarding; _errorMessage = null; }),
+                child: const Text('Volver'),
+              ),
+            ),
+          ],
+        );
+      case _Step.joinPending:
+        return Column(
+          children: [
+            const Text('Solicitud enviada', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text(
+              _session != null && _session!.businessName.isNotEmpty
+                  ? 'Esperando que el dueño de ${_session!.businessName} apruebe tu acceso.'
+                  : 'Esperando que el dueño del negocio apruebe tu acceso.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 15, color: Colors.grey.shade700),
+            ),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 8),
+              Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+            ],
+            const SizedBox(height: 20),
+            _primaryButton('Revisar estado', _refreshStatus),
+            TextButton(onPressed: _isLoading ? null : _backToSignIn, child: const Text('Usar otra cuenta')),
+          ],
+        );
+      case _Step.revoked:
+        return _message('Acceso bloqueado', 'El acceso de esta cuenta fue desactivado. Contacta al administrador.');
+      case _Step.signIn:
+        return Column(
+          children: [
+            _primaryButton('Continuar con Google', () => _signIn(AuthService.signInWithGoogle),
+                color: Colors.white, textColor: Colors.black87),
+            const SizedBox(height: 12),
+            _primaryButton('Continuar con Apple', () => _signIn(AuthService.signInWithApple),
+                color: Colors.black, textColor: Colors.white),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 12),
+              Text(_errorMessage!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.red, fontSize: 13)),
+            ],
+          ],
+        );
+    }
   }
 
   @override
@@ -166,155 +480,23 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               children: [
                 const Spacer(),
-
-                // Logo
                 ClipRRect(
                   borderRadius: BorderRadius.circular(24),
-                  child: Image.asset(
-                    'assets/splash/splash.png',
-                    width: 100,
-                    height: 100,
-                    fit: BoxFit.cover,
-                  ),
+                  child: Image.asset('assets/splash/splash.png', width: 100, height: 100, fit: BoxFit.cover),
                 ),
                 const SizedBox(height: 24),
-                Text(
-                  'Fincas',
-                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.brown.shade800),
-                ),
+                Text('Fincas',
+                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.brown.shade800)),
                 const SizedBox(height: 8),
-                Text(
-                  'Gestiona tu negocio fácilmente',
-                  style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-                ),
-
+                Text('Gestiona tu negocio fácilmente', style: TextStyle(fontSize: 16, color: Colors.grey.shade600)),
                 const Spacer(),
-
-                // Campo de teléfono
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Tu número de WhatsApp',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: _errorMessage != null ? Colors.red.shade300 : Colors.transparent,
-                          width: 2,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade200,
-                              borderRadius: const BorderRadius.only(
-                                topLeft: Radius.circular(14),
-                                bottomLeft: Radius.circular(14),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Image.network(
-                                  'https://flagcdn.com/w40/pe.png',
-                                  width: 24, height: 16,
-                                  errorBuilder: (_, __, ___) => const Text('🇵🇪'),
-                                ),
-                                const SizedBox(width: 8),
-                                Text('+51', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
-                              ],
-                            ),
-                          ),
-                          Expanded(
-                            child: TextField(
-                              controller: _phoneController,
-                              keyboardType: TextInputType.phone,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.digitsOnly,
-                                LengthLimitingTextInputFormatter(9),
-                              ],
-                              decoration: const InputDecoration(
-                                hintText: '999 888 777',
-                                border: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-                              ),
-                              style: const TextStyle(fontSize: 18, letterSpacing: 1),
-                              onSubmitted: (_) => _login(),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    if (_errorMessage != null) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.lock_outline, color: Colors.red.shade400, size: 20),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _errorMessage!,
-                                style: TextStyle(color: Colors.red.shade700, fontSize: 13),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-
+                _stepContent(),
                 const SizedBox(height: 24),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _login,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF231e14),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      elevation: 0,
-                    ),
-                    child: _isLoading
-                        ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : const Text('Continuar', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                  ),
-                ),
-
-                const Spacer(),
-
-                Text(
-                  'Solo administradores autorizados pueden acceder',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
               ],
             ),
           ),
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _phoneController.dispose();
-    super.dispose();
   }
 }

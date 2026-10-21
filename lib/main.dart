@@ -4,6 +4,10 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:http/http.dart' as http;
+import 'config/app_config.dart';
+import 'services/auth_client.dart';
+import 'services/auth_service.dart';
 import 'firebase_options.dart';
 import 'providers/printer_provider.dart';
 import 'services/notification_service.dart';
@@ -17,6 +21,19 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 Future<void> main() async {
+  // Every http call made through the top-level helpers goes through AuthClient, which
+  // adds the Firebase token only for our backend host.
+  await http.runWithClient(
+    _appMain,
+    () => AuthClient(
+      http.Client(),
+      backendHost: () => Uri.tryParse(AppConfig.apiBaseUrl)?.host,
+      getToken: AuthService.idToken,
+    ),
+  );
+}
+
+Future<void> _appMain() async {
   // Envolver todo en un try-catch para evitar crashes
   try {
     WidgetsFlutterBinding.ensureInitialized();
@@ -32,6 +49,7 @@ Future<void> main() async {
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
       
       // Inicializar servicio de notificaciones
+      await AuthService.clearStaleSessionOnFreshInstall();
       await NotificationService().initialize();
     } catch (e) {
       debugPrint('⚠️ Error inicializando Firebase: $e');

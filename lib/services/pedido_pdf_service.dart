@@ -97,10 +97,17 @@ class PedidoPdfService {
   }
 
   /// Genera el PDF y devuelve los bytes — úsalo para preview o share.
+  /// Días de validez de una cotización.
+  static const int validezCotizacionDias = 15;
+
+  /// [esCotizacion] reutiliza exactamente este mismo diseño para una
+  /// cotización: sólo cambian los rótulos (COTIZACIÓN en vez de pedido,
+  /// validez en vez de estado) y el cierre del pie de página.
   static Future<Uint8List> generarBytes({
     required Map<String, dynamic> pedido,
     required List<Map<String, dynamic>> productos,
     String? businessName,
+    bool esCotizacion = false,
   }) async {
     final doc = pw.Document();
     final font = await PdfGoogleFonts.notoSansRegular();
@@ -125,6 +132,13 @@ class PedidoPdfService {
     final total = (pedido['total'] ?? 0).toDouble();
     final subFinal = subtotal > 0 ? subtotal : (total - costoEnvio);
 
+    // Fecha de vencimiento de la cotización (sólo se usa si esCotizacion).
+    final vence = DateTime.now().add(
+        const Duration(days: validezCotizacionDias));
+    final validaHasta =
+        '${vence.day.toString().padLeft(2, '0')}/'
+        '${vence.month.toString().padLeft(2, '0')}/${vence.year}';
+
     final estadoPagoLabel = switch (estadoPago.toUpperCase()) {
       'PAGADO'        => 'Pagado',
       'PARCIAL'       => 'Parcial',
@@ -145,15 +159,40 @@ class PedidoPdfService {
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                // Nombre del negocio
+                // El nombre del negocio manda; "COTIZACIÓN" va al lado, no debajo.
                 pw.Expanded(
-                  child: pw.Text(negocio.toUpperCase(),
-                    style: pw.TextStyle(
-                      fontSize: 22,
-                      fontWeight: pw.FontWeight.bold,
-                      color: _brown,
-                      letterSpacing: 1.5,
-                    )),
+                  child: pw.Row(
+                    crossAxisAlignment: pw.CrossAxisAlignment.center,
+                    children: [
+                      pw.Flexible(
+                        child: pw.Text(negocio.toUpperCase(),
+                          style: pw.TextStyle(
+                            fontSize: 22,
+                            fontWeight: pw.FontWeight.bold,
+                            color: _brown,
+                            letterSpacing: 1.5,
+                          )),
+                      ),
+                      if (esCotizacion) ...[
+                        pw.SizedBox(width: 10),
+                        pw.Container(
+                          padding: const pw.EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: pw.BoxDecoration(
+                            border: pw.Border.all(color: _brown, width: 1),
+                            borderRadius: pw.BorderRadius.circular(3),
+                          ),
+                          child: pw.Text('COTIZACIÓN',
+                            style: pw.TextStyle(
+                              fontSize: 11,
+                              fontWeight: pw.FontWeight.bold,
+                              color: _brown,
+                              letterSpacing: 2,
+                            )),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
 
                 // Número y fechas
@@ -169,7 +208,10 @@ class PedidoPdfService {
                     pw.SizedBox(height: 6),
                     pw.Text('Fecha de emisión: $fecha',
                       style: const pw.TextStyle(fontSize: 8.5, color: _textGrey)),
-                    if (hora.isNotEmpty)
+                    if (esCotizacion)
+                      pw.Text('Válida hasta: $validaHasta',
+                        style: const pw.TextStyle(fontSize: 8.5, color: _textGrey))
+                    else if (hora.isNotEmpty)
                       pw.Text('Hora: $hora',
                         style: const pw.TextStyle(fontSize: 8.5, color: _textGrey)),
                   ],
@@ -192,9 +234,13 @@ class PedidoPdfService {
               child: pw.Row(
                 children: [
                   pw.Expanded(child: _metaChip('Moneda', 'PEN - Soles')),
-                  pw.Expanded(child: _metaChip('Fecha de pedido', fecha)),
-                  pw.Expanded(child: _metaChip('N° de pedido', pedidoId)),
-                  pw.Expanded(child: _metaChip('Estado del pedido', _estadoLabel(estado))),
+                  pw.Expanded(child: _metaChip(
+                      esCotizacion ? 'Fecha de emisión' : 'Fecha de pedido', fecha)),
+                  pw.Expanded(child: _metaChip(
+                      esCotizacion ? 'N° de cotización' : 'N° de pedido', pedidoId)),
+                  pw.Expanded(child: esCotizacion
+                      ? _metaChip('Válida hasta', validaHasta)
+                      : _metaChip('Estado del pedido', _estadoLabel(estado))),
                 ],
               ),
             ),
@@ -511,14 +557,21 @@ class PedidoPdfService {
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.end,
                   children: [
-                    pw.Text('¡Gracias por tu compra!',
+                    pw.Text(
+                      esCotizacion
+                          ? '¡Gracias por tu interés!'
+                          : '¡Gracias por tu compra!',
                       style: pw.TextStyle(
                         fontSize: 11,
                         fontWeight: pw.FontWeight.bold,
                         color: _brown,
                       )),
                     pw.SizedBox(height: 2),
-                    pw.Text('Disfruta lo mejor del cafe peruano',
+                    pw.Text(
+                      esCotizacion
+                          ? 'Precios válidos por $validezCotizacionDias días, '
+                              'sujetos a disponibilidad'
+                          : 'Disfruta lo mejor del cafe peruano',
                       style: const pw.TextStyle(fontSize: 8, color: _textGrey)),
                   ],
                 ),
@@ -530,6 +583,22 @@ class PedidoPdfService {
     );
 
     return doc.save();
+  }
+
+  /// Genera la cotización con este mismo diseño y abre el share sheet.
+  static Future<void> generarCotizacionYCompartir({
+    required Map<String, dynamic> cotizacion,
+    required List<Map<String, dynamic>> productos,
+    String? businessName,
+  }) async {
+    final bytes = await generarBytes(
+      pedido: cotizacion,
+      productos: productos,
+      businessName: businessName,
+      esCotizacion: true,
+    );
+    final id = cotizacion['id']?.toString() ?? 'cotizacion';
+    await Printing.sharePdf(bytes: bytes, filename: 'cotizacion_$id.pdf');
   }
 
   /// Mantiene la compatibilidad: genera y abre el share sheet directamente.

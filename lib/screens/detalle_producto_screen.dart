@@ -4,7 +4,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
+import '../providers/printer_provider.dart';
 import '../services/api_service.dart';
+import '../services/printer_service.dart';
 
 class DetalleProductoScreen extends StatefulWidget {
   final Map<String, dynamic> producto;
@@ -541,6 +544,11 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
                   onPressed: _isLoading ? null : _guardarCambios,
                   child: const Text('Guardar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                 ),
+              IconButton(
+                icon: const Icon(Icons.print_rounded, size: 22),
+                tooltip: 'Imprimir muestra',
+                onPressed: _abrirHojaMuestra,
+              ),
               if ((widget.producto['codigo'] ?? '').toString().isNotEmpty)
                 IconButton(
                   icon: const Icon(Icons.qr_code_rounded, size: 22),
@@ -1405,7 +1413,10 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => _CrearEventoSheet(
         productId: productId,
+        // El mapa del producto no trae green_lot_id; el código de lote sí
+        // llega fresco desde el endpoint de presentaciones.
         defaultLoteId: widget.producto['green_lot_id'] as String?,
+        defaultLoteCode: _greenLotCode,
         onCreado: () {
           if (mounted) _cargarPresentaciones();
         },
@@ -2199,6 +2210,7 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
                   items: const [
                     DropdownMenuItem(value: 'g', child: Text('g')),
                     DropdownMenuItem(value: 'kg', child: Text('kg')),
+                    DropdownMenuItem(value: 'ml', child: Text('ml')),
                     DropdownMenuItem(value: 'und', child: Text('und')),
                   ],
                   onChanged: (v) => ss(() => unidad = v ?? unidad),
@@ -2326,6 +2338,207 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
           )),
         );
       }),
+    );
+  }
+
+
+  // ── Impresión de etiqueta de muestra ────────────────────────────────────────
+
+  /// Arma la ficha técnica desde el producto cargado.
+  /// Los campos que el API todavía no envía quedan en null y su fila se omite.
+  MuestraPrint _construirMuestra() {
+    final p = widget.producto;
+
+    String? txt(String clave) {
+      final v = p[clave];
+      if (v == null) return null;
+      final s = v.toString().trim();
+      return s.isEmpty ? null : s;
+    }
+
+    // sensory_notes llega como lista; se une por comas.
+    // NO se cae a 'descripcion': ese campo es un párrafo largo y la etiqueta
+    // es una ficha de datos, no un texto corrido.
+    String? notas;
+    final rawNotas = p['sensoryNotes'] ?? p['sensory_notes'];
+    if (rawNotas is List && rawNotas.isNotEmpty) {
+      notas = rawNotas.join(', ');
+    }
+
+    final altura = p['altitudeMasl'] ?? p['altitude_masl'];
+
+    return MuestraPrint(
+      nombre:     _nombreController.text.trim().isNotEmpty
+                    ? _nombreController.text.trim()
+                    : (txt('nombre') ?? 'Producto'),
+      altura:     altura != null ? '$altura msnm' : null,
+      variedad:   txt('variedad')  ?? txt('variety'),
+      proceso:    txt('proceso')   ?? txt('process'),
+      tostado:    txt('tostado')   ?? txt('roastLevel'),
+      finca:      txt('finca')     ?? txt('farmName'),
+      productor:  txt('productor') ?? txt('producerName'),
+      tostador:   txt('tostador')  ?? txt('roasterName'),
+      notas:      notas,
+      puntajeSca: txt('scaScore')  ?? txt('sca_score'),
+      whatsapp:   '51946259052',
+      web:        'https://fincarosal.com/',
+    );
+  }
+
+  void _abrirHojaMuestra() {
+    int copias = 1;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          final printer   = ctx.watch<PrinterProvider>();
+          final conectada = printer.isConnected;
+          final muestra   = _construirMuestra();
+
+          // Campos que quedarían en blanco en la etiqueta.
+          final faltantes = <String>[
+            if (muestra.notas == null)      'notas sensoriales',
+            if (muestra.proceso == null)    'proceso',
+            if (muestra.puntajeSca == null) 'puntaje SCA',
+          ];
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40, height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text('Imprimir muestra',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(muestra.nombre,
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                const SizedBox(height: 20),
+
+                if (!conectada)
+                  _avisoMuestra(
+                    Icons.print_disabled_rounded,
+                    'No hay impresora conectada',
+                    'Conectala en Ajustes > Impresora',
+                    Colors.red,
+                  )
+                else if (faltantes.isNotEmpty)
+                  _avisoMuestra(
+                    Icons.info_outline_rounded,
+                    'La etiqueta saldra sin ${faltantes.join(", ")}',
+                    'Esos campos estan vacios en este producto',
+                    Colors.orange,
+                  ),
+
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Text('Cantidad de etiquetas',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.remove_circle_outline),
+                      onPressed: copias > 1
+                          ? () => setSheetState(() => copias--)
+                          : null,
+                    ),
+                    Text('$copias',
+                        style: const TextStyle(
+                            fontSize: 17, fontWeight: FontWeight.w700)),
+                    IconButton(
+                      icon: const Icon(Icons.add_circle_outline),
+                      onPressed: copias < 20
+                          ? () => setSheetState(() => copias++)
+                          : null,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    icon: printer.isPrinting
+                        ? const SizedBox(
+                            width: 16, height: 16,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.print_rounded),
+                    label: Text(printer.isPrinting ? 'Imprimiendo...' : 'Imprimir'),
+                    onPressed: (!conectada || printer.isPrinting)
+                        ? null
+                        : () async {
+                            final ok = await ctx
+                                .read<PrinterProvider>()
+                                .printMuestra(muestra, ApiService.businessName,
+                                    copias: copias);
+                            if (!ctx.mounted) return;
+                            Navigator.pop(ctx);
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(ok
+                                    ? '🏷️ $copias etiqueta(s) enviada(s)'
+                                    : 'No se pudo imprimir'),
+                                backgroundColor: ok ? Colors.green : Colors.red,
+                              ),
+                            );
+                          },
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _avisoMuestra(IconData icono, String titulo, String detalle, MaterialColor color) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.shade50,
+        border: Border.all(color: color.shade200),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icono, size: 18, color: color.shade700),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(titulo,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: color.shade900)),
+                Text(detalle,
+                    style: TextStyle(fontSize: 11, color: color.shade800)),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2573,11 +2786,13 @@ class _RoastTimerDisplayState extends State<_RoastTimerDisplay> {
 class _CrearEventoSheet extends StatefulWidget {
   final String productId;
   final String? defaultLoteId;
+  final String? defaultLoteCode;
   final VoidCallback onCreado;
 
   const _CrearEventoSheet({
     required this.productId,
     this.defaultLoteId,
+    this.defaultLoteCode,
     required this.onCreado,
   });
 
@@ -2594,24 +2809,64 @@ class _CrearEventoSheetState extends State<_CrearEventoSheet> {
   bool _loadingLotes     = true;
   List<Map<String, dynamic>> _lotes = [];
 
+  /// Id del lote asignado al producto, si está entre los disponibles.
+  String? _loteProductoId;
+
+  /// El producto tiene lote asignado pero no aparece entre los disponibles
+  /// (agotado o archivado).
+  bool _loteProductoNoDisponible = false;
+
   @override
   void initState() {
     super.initState();
-    _loteId = widget.defaultLoteId;
+    _loteId = null;
+    _kgCtrl.addListener(() => setState(() {}));
     _cargarLotes();
   }
 
   Future<void> _cargarLotes() async {
     final res = await ApiService.getLotesVerdes();
     if (!mounted) return;
+    final lotes = res.data ?? [];
+
+    // Se busca el lote del producto por id o por código. Antes, sin esa
+    // coincidencia, se preseleccionaba el lote más nuevo de la finca, que
+    // podía ser el de otro café.
+    Map<String, dynamic>? delProducto;
+    for (final l in lotes) {
+      final idOk = widget.defaultLoteId != null && l['id'] == widget.defaultLoteId;
+      final codeOk = (widget.defaultLoteCode ?? '').isNotEmpty &&
+          l['lot_code'] == widget.defaultLoteCode;
+      if (idOk || codeOk) { delProducto = l; break; }
+    }
+
+    final tieneLoteAsignado = (widget.defaultLoteId ?? '').isNotEmpty ||
+        (widget.defaultLoteCode ?? '').isNotEmpty;
+
     setState(() {
-      _lotes = res.data ?? [];
+      _lotes = lotes;
       _loadingLotes = false;
-      if (_loteId == null && _lotes.isNotEmpty) {
-        _loteId = _lotes.first['id'] as String?;
-      }
+      _loteProductoId = delProducto?['id'] as String?;
+      _loteId = _loteProductoId;  // sin coincidencia → el usuario elige
+      _loteProductoNoDisponible = tieneLoteAsignado && delProducto == null;
     });
   }
+
+  Map<String, dynamic>? get _loteSel {
+    for (final l in _lotes) {
+      if (l['id'] == _loteId) return l;
+    }
+    return null;
+  }
+
+  double get _kgDisponibles =>
+      double.tryParse('${_loteSel?['current_kg'] ?? ''}') ?? 0;
+
+  double? get _kgIngresados => double.tryParse(_kgCtrl.text.trim());
+
+  /// Hay kg escritos y superan lo que queda en el lote elegido.
+  bool get _excedeLote =>
+      _loteSel != null && (_kgIngresados ?? 0) > _kgDisponibles;
 
   @override
   void dispose() {
@@ -2619,6 +2874,9 @@ class _CrearEventoSheetState extends State<_CrearEventoSheet> {
     _kgSalidaCtrl.dispose();
     super.dispose();
   }
+
+  static String _fmtKgLote(double v) =>
+      v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(1);
 
   String _fmtFecha(DateTime dt) =>
       '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}'
@@ -2652,6 +2910,34 @@ class _CrearEventoSheetState extends State<_CrearEventoSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Ingresa los kg a tostar')));
       return;
+    }
+    // Si no hay kg suficientes, el tueste falla después al finalizarlo
+    // (el trigger no puede descontar del lote).
+    if (kg > _kgDisponibles) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('El lote ${_loteSel?['lot_code'] ?? ''} solo tiene '
+            '${_fmtKgLote(_kgDisponibles)} kg disponibles'),
+        backgroundColor: Colors.red,
+      ));
+      return;
+    }
+    if (_loteProductoId != null && _loteId != _loteProductoId) {
+      final seguir = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Lote distinto al del producto'),
+          content: Text('Este producto usa el lote '
+              '${widget.defaultLoteCode ?? ''}. Vas a tostar con '
+              '${_loteSel?['lot_code'] ?? ''}. ¿Continuar?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Continuar')),
+          ],
+        ),
+      );
+      if (seguir != true || !mounted) return;
     }
     setState(() => _submitting = true);
     final kgSalida = double.tryParse(_kgSalidaCtrl.text.trim());
@@ -2729,6 +3015,7 @@ class _CrearEventoSheetState extends State<_CrearEventoSheet> {
                     if (variety != null && variety.isNotEmpty) variety,
                     if (l['harvest_year'] != null) '${l['harvest_year']}',
                     '${l['current_kg']} kg',
+                    if (l['id'] == _loteProductoId) 'lote del producto',
                   ].join(' · ');
                   return DropdownMenuItem<String>(
                     value: l['id'] as String,
@@ -2736,6 +3023,21 @@ class _CrearEventoSheetState extends State<_CrearEventoSheet> {
                   );
                 }).toList(),
                 onChanged: (v) => setState(() => _loteId = v),
+              ),
+            if (!_loadingLotes && _loteProductoNoDisponible)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'El lote del producto (${widget.defaultLoteCode ?? ''}) no '
+                  'tiene stock disponible. Elige otro lote.',
+                  style: TextStyle(fontSize: 12, color: Colors.red.shade700),
+                ),
+              )
+            else if (!_loadingLotes && _loteProductoId == null && _lotes.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text('Este producto no tiene lote asignado. Elige uno.',
+                    style: TextStyle(fontSize: 12, color: Colors.orange.shade800)),
               ),
             const SizedBox(height: 14),
 
@@ -2750,6 +3052,13 @@ class _CrearEventoSheetState extends State<_CrearEventoSheet> {
                 hintText: 'Ej: 65',
                 hintStyle: TextStyle(color: Colors.grey.shade300),
                 suffixText: 'kg',
+                helperText: _loteSel == null
+                    ? null
+                    : 'Disponible en ${_loteSel!['lot_code']}: '
+                      '${_fmtKgLote(_kgDisponibles)} kg',
+                errorText: _excedeLote
+                    ? 'Supera lo disponible (${_fmtKgLote(_kgDisponibles)} kg)'
+                    : null,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 isDense: true,
@@ -2806,7 +3115,7 @@ class _CrearEventoSheetState extends State<_CrearEventoSheet> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                onPressed: _submitting ? null : _submit,
+                onPressed: (_submitting || _excedeLote) ? null : _submit,
                 child: _submitting
                     ? const SizedBox(height: 18, width: 18,
                         child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))

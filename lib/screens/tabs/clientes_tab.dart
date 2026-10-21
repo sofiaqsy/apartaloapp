@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
+import '../crear_cotizacion_screen.dart';
 import '../detalle_cliente_screen.dart';
 
 class ClientesTab extends StatefulWidget {
@@ -83,6 +84,15 @@ class _ClientesTabState extends State<ClientesTab> with SingleTickerProviderStat
     if (result == true) _cargarClientes();
   }
 
+  /// Cotización sin cliente pre-elegido: el flujo arranca en el paso 1,
+  /// donde se busca un cliente existente o se crea uno nuevo.
+  void _irACotizar() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CrearCotizacionScreen()),
+    );
+  }
+
   void _irADetalle(Map<String, dynamic> cliente) async {
     final result = await Navigator.push(
       context,
@@ -164,12 +174,26 @@ class _ClientesTabState extends State<ClientesTab> with SingleTickerProviderStat
         ],
       ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'fab_clientes',
-        onPressed: _irANuevoCliente,
-        backgroundColor: Colors.green.shade600,
-        icon: const Icon(Icons.person_add),
-        label: const Text('Nuevo Cliente', style: TextStyle(fontWeight: FontWeight.w600)),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'fab_cotizar',
+            onPressed: _irACotizar,
+            backgroundColor: Colors.purple.shade600,
+            icon: const Icon(Icons.request_quote_outlined),
+            label: const Text('Cotizar', style: TextStyle(fontWeight: FontWeight.w600)),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton.extended(
+            heroTag: 'fab_clientes',
+            onPressed: _irANuevoCliente,
+            backgroundColor: Colors.green.shade600,
+            icon: const Icon(Icons.person_add),
+            label: const Text('Nuevo Cliente', style: TextStyle(fontWeight: FontWeight.w600)),
+          ),
+        ],
       ),
     );
   }

@@ -1,6 +1,3 @@
-// Export all models
-export 'bot_conversation.dart';
-
 /// Modelo de Producto
 class Producto {
   final String codigo;

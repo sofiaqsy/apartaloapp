@@ -137,6 +137,36 @@ class PrinterProvider extends ChangeNotifier {
     }
   }
   
+  /// Imprime etiqueta de muestra con la ficha técnica del café
+  Future<bool> printMuestra(MuestraPrint muestra, String businessName,
+      {int copias = 1}) async {
+    if (!isConnected) {
+      _error = 'Impresora no conectada';
+      notifyListeners();
+      return false;
+    }
+
+    _isPrinting = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final success = await _printerService.printMuestra(muestra, businessName,
+          copias: copias);
+      if (!success) {
+        _error = 'Error al imprimir';
+      }
+      _isPrinting = false;
+      notifyListeners();
+      return success;
+    } catch (e) {
+      _error = e.toString();
+      _isPrinting = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
   /// Imprime página de prueba
   Future<bool> printTest(String businessName) async {
     if (!isConnected) {

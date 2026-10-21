@@ -1,3 +1,4 @@
+import '../services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
@@ -10,6 +11,7 @@ import 'tabs/productos_tab.dart';
 import 'tabs/clientes_tab.dart';
 import 'tabs/pedidos_tab.dart';
 import 'settings/settings_screen.dart';
+import 'team_screen.dart';
 
 class MainScreen extends StatefulWidget {
   final String businessId;
@@ -32,6 +34,7 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     ApiService.businessId = widget.businessId;
+    _loadRole();
     _initializeServices();
   }
 
@@ -48,6 +51,13 @@ class _MainScreenState extends State<MainScreen> {
     } catch (e) {
       debugPrint('⚠️ Error re-enviando token: $e');
     }
+  }
+
+  bool _isOwner = false;
+
+  Future<void> _loadRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) setState(() => _isOwner = prefs.getString('business_role') == 'owner');
   }
 
   Future<void> _logout() async {
@@ -75,8 +85,11 @@ class _MainScreenState extends State<MainScreen> {
     );
 
     if (confirm == true) {
+      await AuthService.signOut();
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
+      // clear() también borra la marca de instalación; se vuelve a poner para no repetir el cierre.
+      await prefs.setBool('install_marker_v1', true);
 
       if (mounted) {
         Navigator.of(context).pushReplacement(
@@ -169,6 +182,14 @@ class _MainScreenState extends State<MainScreen> {
                     ),
                   );
                   break;
+                case 'team':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => TeamScreen(businessId: widget.businessId, businessName: widget.businessName),
+                    ),
+                  );
+                  break;
                 case 'logout':
                   _logout();
                   break;
@@ -188,6 +209,8 @@ class _MainScreenState extends State<MainScreen> {
                   ],
                 ),
               ),
+              if (_isOwner)
+                const PopupMenuItem(value: 'team', child: Text('Equipo')),
               const PopupMenuDivider(),
               const PopupMenuItem(
                 value: 'logout',

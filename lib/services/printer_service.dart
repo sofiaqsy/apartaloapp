@@ -37,6 +37,40 @@ class PedidoPrint {
   });
 }
 
+
+/// Datos de la ficha técnica de un café para la etiqueta de MUESTRA.
+/// Todos los campos salvo [nombre] son opcionales: la etiqueta omite por
+/// completo la fila de un campo vacío en vez de imprimir un hueco.
+class MuestraPrint {
+  final String  nombre;
+  final String? altura;      // farms.altitude_masl → "1600 msnm"
+  final String? variedad;    // coffee_varieties.name
+  final String? proceso;     // coffee_process_methods.name
+  final String? tostado;     // coffee_roast_levels.name
+  final String? finca;       // farms.name
+  final String? productor;   // farms.producer_name
+  final String? tostador;    // roast_operators.name
+  final String? notas;       // products.sensory_notes, unidas por coma
+  final String? puntajeSca;  // products.sca_score → "87.0"
+  final String? whatsapp;    // solo dígitos, ej. "51946259052"
+  final String? web;         // ej. "https://fincarosal.com/"
+
+  const MuestraPrint({
+    required this.nombre,
+    this.altura,
+    this.variedad,
+    this.proceso,
+    this.tostado,
+    this.finca,
+    this.productor,
+    this.tostador,
+    this.notas,
+    this.puntajeSca,
+    this.whatsapp,
+    this.web,
+  });
+}
+
 class PrinterService {
   BluetoothDevice? _connectedDevice;
   BluetoothCharacteristic? _writeCharacteristic;
@@ -352,6 +386,156 @@ class PrinterService {
 
     cmd.writeln('PRINT 1,1');
     return cmd.toString();
+  }
+
+
+  /// Imprime etiqueta de MUESTRA con la ficha técnica del café
+  Future<bool> printMuestra(MuestraPrint m, String businessName,
+      {int copias = 1}) async {
+    if (!_isConnected || _writeCharacteristic == null) return false;
+
+    try {
+      final tspl = _buildMuestraLabel(m, businessName, copias);
+      debugPrint('[PRINTER] 🏷️ Enviando muestra: ${tspl.length} bytes, $copias copia(s)');
+      return await _sendData(Uint8List.fromList(tspl.codeUnits));
+    } catch (e) {
+      debugPrint('[PRINTER] ❌ Error: $e');
+      return false;
+    }
+  }
+
+  /// Construye comandos TSPL para la etiqueta de muestra.
+  ///
+  /// Jerarquía tipográfica: etiquetas en fuente 2 (12x20) y valores en fuente 4
+  /// (24x32), para que se distinga de un vistazo cuál es campo y cuál es dato.
+  String _buildMuestraLabel(MuestraPrint m, String businessName, int copias) {
+    final StringBuffer cmd = StringBuffer();
+
+    cmd.writeln('SIZE 100 mm, 150 mm');
+    cmd.writeln('GAP 2 mm, 0 mm');
+    cmd.writeln('DIRECTION 1');
+    cmd.writeln('CLS');
+
+    int y = 5;
+    const int lx = 70;   // sangría izquierda
+    const int vx = 260;  // columna de valores
+    const int rx = 785;  // borde derecho: BAR 15 + ancho 770 = 785
+    final biz = _sanitize(businessName);
+
+    // ── CABECERA — igual que la etiqueta de pedido ───────
+    cmd.writeln('BAR 15,$y,770,14');
+    y += 30;
+    cmd.writeln('TEXT $lx,$y,"5",0,1,2,"$biz"');
+    y += 114;                            // font5 48px × 2 + gap
+    cmd.writeln('TEXT $lx,$y,"3",0,1,1,"Muestra de $biz"');
+    y += 34;
+    cmd.writeln('BAR 15,$y,770,3');
+    y += 15;
+
+    // ── BANNER "MUESTRA" ─────────────────────────────────
+    // Recuadro, no parte del nombre: debe leerse como una marca de la
+    // etiqueta y no como una variante del producto.
+    cmd.writeln('BOX 15,$y,$rx,${y + 70},3');
+    cmd.writeln('TEXT 192,${y + 16},"5",0,1,1,"M U E S T R A"');
+    y += 90;
+
+    // ── NOMBRE DEL PRODUCTO ──────────────────────────────
+    // El nombre del negocio ya manda arriba, así que el producto va en
+    // fuente 4 doble: sigue siendo el dato más grande del cuerpo.
+    // A doble ancho cada carácter ocupa ~48 dots, así que entran ~15 por
+    // línea en los 770 disponibles: hay que partirlo o sale cortado.
+    final nombre = _sanitize(m.nombre);
+    final lineasNombre = _splitProductos(nombre, 15).take(3).toList();
+    for (final linea in lineasNombre) {
+      cmd.writeln('TEXT $lx,$y,"4",0,2,2,"$linea"');
+      y += 66;
+    }
+
+    cmd.writeln('BAR 15,$y,770,3');
+    y += 20;
+
+    // ── FICHA TÉCNICA ────────────────────────────────────
+    // Todo en un solo bloque de dos columnas: rótulo pequeño a la izquierda
+    // y valor en fuente 4 a la derecha, como la ficha impresa de la bolsa.
+    // El valor se parte en varias líneas si no entra de una.
+    const int anchoValor = 21;  // (785 - 260) / 24px por carácter
+
+    void fila(String etiqueta, String? valor) {
+      final v = (valor ?? '').trim();
+      if (v.isEmpty) return;  // fila vacía → se omite, sin dejar hueco
+      final lineas = _splitProductos(_sanitize(v), anchoValor);
+      cmd.writeln('TEXT $lx,${y + 6},"2",0,1,1,"$etiqueta"');
+      for (var i = 0; i < lineas.length; i++) {
+        cmd.writeln('TEXT $vx,${y + i * 38},"4",0,1,1,"${lineas[i]}"');
+      }
+      y += 38 * lineas.length + 8;
+    }
+
+    fila('ALTURA',      m.altura);
+    fila('VARIEDAD',    m.variedad);
+    fila('PROCESO',     m.proceso);
+    fila('TOSTADO',     m.tostado);
+    fila('NOTAS',       m.notas);
+    fila('PUNTAJE SCA', m.puntajeSca == null ? null : '${m.puntajeSca} puntos');
+    fila('FINCA',       m.finca);
+    fila('PRODUCTOR',   m.productor);
+    fila('TOSTADOR',    m.tostador);
+
+    cmd.writeln('BAR 15,$y,770,3');
+    y += 20;
+
+    // ── QR: WHATSAPP + TIENDA ────────────────────────────
+    // Dos códigos lado a lado, cada uno con su rótulo debajo.
+    final wa  = (m.whatsapp ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+    final web = (m.web ?? '').trim();
+
+    if (wa.isNotEmpty || web.isNotEmpty) {
+      const int qCell = 5;    // 165 px
+      const int qSize = 165;
+      const int col2  = 430;  // segunda columna
+
+      if (wa.isNotEmpty) {
+        cmd.writeln('QRCODE $lx,$y,M,$qCell,A,0,"https://wa.me/$wa"');
+      }
+      if (web.isNotEmpty) {
+        cmd.writeln('QRCODE $col2,$y,M,$qCell,A,0,"$web"');
+      }
+
+      final int yLabel = y + qSize + 12;
+      if (wa.isNotEmpty) {
+        cmd.writeln('TEXT $lx,$yLabel,"2",0,1,1,"COTIZACIONES - WHATSAPP"');
+        // Fuente 4: es lo que se copia a mano si no hay lector.
+        cmd.writeln('TEXT $lx,${yLabel + 28},"4",0,1,1,"${_formatTelefono(wa)}"');
+      }
+      if (web.isNotEmpty) {
+        cmd.writeln('TEXT $col2,$yLabel,"2",0,1,1,"TIENDA ONLINE"');
+        cmd.writeln('TEXT $col2,${yLabel + 28},"3",0,1,1,"${_sanitize(_dominio(web))}"');
+      }
+
+      y += qSize + 12 + 28 + 40;
+    }
+
+    // ── PIE ──────────────────────────────────────────────
+    cmd.writeln('BAR 15,$y,770,14');
+    y += 30;
+    const pie = 'No es para venta';
+    cmd.writeln('TEXT $lx,$y,"3",0,1,1,"$pie"');
+
+    cmd.writeln('PRINT 1,$copias');
+    return cmd.toString();
+  }
+
+  /// "https://fincarosal.com/" → "fincarosal.com"
+  String _dominio(String url) => url
+      .replaceFirst(RegExp(r'^https?://'), '')
+      .replaceFirst(RegExp(r'^www\.'), '')
+      .replaceFirst(RegExp(r'/+$'), '');
+
+  /// "51946259052" → "+51 946 259 052"
+  String _formatTelefono(String digitos) {
+    if (digitos.length != 11) return '+$digitos';
+    return '+${digitos.substring(0, 2)} ${digitos.substring(2, 5)} '
+           '${digitos.substring(5, 8)} ${digitos.substring(8)}';
   }
 
   /// Imprime página de prueba
