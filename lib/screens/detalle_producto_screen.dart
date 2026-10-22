@@ -39,6 +39,8 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
   String _simboloMoneda = 'S/'; // símbolo de la moneda del producto
   String? _presentacionAbiertaId; // la presentación cuyo formulario está abierto
   bool _primeraPresentacionAbierta = false; // la primera se abre sola una vez, al cargar
+  bool _infoExpandida = true; // sección "Información general" expandida
+  bool _presentacionesExpandida = true; // sección "Presentaciones" expandida
   // Presentaciones
   List<Presentacion> _presentaciones = [];
   bool _loadingPresentaciones = false;
@@ -1135,32 +1137,41 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // Información general: nombre, descripciones, categoría y atributos del café
+          ProductoInfoGeneral(
+            expandida: _infoExpandida,
+            onAlternar: () => setState(() => _infoExpandida = !_infoExpandida),
+            productId: widget.producto['codigo']?.toString() ?? '',
+            onDirtyChanged: (sucio) {
+              if (mounted && _infoDirty != sucio) setState(() => _infoDirty = sucio);
+            },
+            onGuardado: _infoGuardada,
+          ),
+
+          const SizedBox(height: FincasSpacing.l),
+
           // Sección "Presentaciones": encabezado, ajustes (stock manual, lote verde, moneda) y la lista
           FincasCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Presentaciones', style: FincasText.sectionTitle),
-                          Text('Variantes con su precio, stock y B2B', style: FincasText.metadata),
-                        ],
-                      ),
-                    ),
-                    if (_loadingPresentaciones)
-                      const Padding(
-                        padding: EdgeInsets.all(FincasSpacing.m),
-                        child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5)),
-                      )
-                    else
-                      IconButton(tooltip: 'Actualizar presentaciones', onPressed: _cargarPresentaciones, icon: const Icon(Icons.refresh_rounded)),
-                  ],
+                FincasSeccionEncabezado(
+                  titulo: 'Presentaciones',
+                  subtitulo: 'Variantes con su precio, stock y B2B',
+                  expandida: _presentacionesExpandida,
+                  onAlternar: () => setState(() => _presentacionesExpandida = !_presentacionesExpandida),
+                  trailing: _loadingPresentaciones
+                      ? const Padding(
+                          padding: EdgeInsets.all(FincasSpacing.m),
+                          child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5)),
+                        )
+                      : IconButton(tooltip: 'Actualizar presentaciones', onPressed: _cargarPresentaciones, icon: const Icon(Icons.refresh_rounded)),
                 ),
+                FincasPlegable(
+                  expandida: _presentacionesExpandida,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
                 const Divider(),
                 const SizedBox(height: FincasSpacing.s),
                 ProductoPresentacionesAjustes(
@@ -1203,20 +1214,13 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
                       )),
                 const SizedBox(height: FincasSpacing.s),
                 FincasSecondaryButton(label: 'Agregar presentación', onPressed: _mostrarFormPresentacion),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
 
-          const SizedBox(height: FincasSpacing.l),
-
-          // Información general: nombre, descripciones, categoría y atributos del café
-          ProductoInfoGeneral(
-            productId: widget.producto['codigo']?.toString() ?? '',
-            onDirtyChanged: (sucio) {
-              if (mounted && _infoDirty != sucio) setState(() => _infoDirty = sucio);
-            },
-            onGuardado: _infoGuardada,
-          ),
           const SizedBox(height: 32),
         ],
       ),

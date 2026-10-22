@@ -339,3 +339,95 @@ class FincasMessageState extends StatelessWidget {
     );
   }
 }
+
+/// Encabezado de una sección que se puede contraer o expandir. Toda la fila es el botón (48 pt de alto como mínimo).
+/// Si [onAlternar] es null se comporta como un encabezado fijo.
+class FincasSeccionEncabezado extends StatelessWidget {
+  const FincasSeccionEncabezado({
+    super.key,
+    required this.titulo,
+    this.subtitulo,
+    this.expandida = true,
+    this.onAlternar,
+    this.trailing,
+  });
+  final String titulo;
+  final String? subtitulo;
+  final bool expandida;
+  final VoidCallback? onAlternar;
+
+  /// Acción extra a la derecha (por ejemplo "actualizar").
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final textos = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(titulo, style: FincasText.sectionTitle),
+        if (subtitulo != null) Text(subtitulo!, style: FincasText.metadata),
+      ],
+    );
+    if (onAlternar == null) {
+      return Row(children: [Expanded(child: Semantics(header: true, child: textos)), if (trailing != null) trailing!]);
+    }
+    return Row(
+      children: [
+        Expanded(
+          child: Semantics(
+            button: true,
+            header: true,
+            expanded: expandida,
+            label: '$titulo, ${expandida ? 'expandida' : 'contraída'}',
+            hint: expandida ? 'Toca para contraer' : 'Toca para expandir',
+            excludeSemantics: true,
+            child: InkWell(
+              onTap: onAlternar,
+              borderRadius: BorderRadius.circular(FincasRadii.small),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: FincasSpacing.minTouch),
+                child: Row(
+                  children: [
+                    Expanded(child: textos),
+                    AnimatedRotation(
+                      turns: expandida ? 0.5 : 0, // la flecha apunta hacia abajo cuando está contraída
+                      duration: const Duration(milliseconds: 200),
+                      child: const Icon(Icons.expand_more, color: FincasColors.textSecondary),
+                    ),
+                    const SizedBox(width: FincasSpacing.xs),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (trailing != null) trailing!,
+      ],
+    );
+  }
+}
+
+/// Contenido de una sección que se puede contraer. Al contraer solo se oculta: el estado (lo que el usuario
+/// escribió) se conserva, y al expandir vuelve tal cual.
+class FincasPlegable extends StatelessWidget {
+  const FincasPlegable({super.key, required this.expandida, required this.child});
+  final bool expandida;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeInOut,
+      alignment: Alignment.topCenter,
+      child: ClipRect(
+        child: Visibility(
+          visible: expandida,
+          maintainState: true, // conserva el estado de los campos y de los avisos de cambios sin guardar
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+

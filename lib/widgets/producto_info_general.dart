@@ -18,6 +18,8 @@ class ProductoInfoGeneral extends StatefulWidget {
     required this.productId,
     this.onDirtyChanged,
     this.onGuardado,
+    this.expandida = true,
+    this.onAlternar,
     CargarInfo? cargar,
     GuardarInfo? guardar,
   })  : _cargar = cargar,
@@ -30,6 +32,10 @@ class ProductoInfoGeneral extends StatefulWidget {
 
   /// Se llama con el producto ya guardado.
   final ValueChanged<ProductoInfo>? onGuardado;
+
+  /// Sección contraíble: si [onAlternar] es null el encabezado es fijo y siempre está expandida.
+  final bool expandida;
+  final VoidCallback? onAlternar;
 
   final CargarInfo? _cargar;
   final GuardarInfo? _guardar;
@@ -272,11 +278,14 @@ class _ProductoInfoGeneralState extends State<ProductoInfoGeneral> {
 
   @override
   Widget build(BuildContext context) {
+    final abierta = widget.onAlternar == null || widget.expandida;
     return FincasCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const FincasSectionHeader('Información general'),
+          FincasSeccionEncabezado(titulo: 'Información general', expandida: abierta, onAlternar: widget.onAlternar),
+          FincasPlegable(expandida: abierta, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const SizedBox(height: FincasSpacing.s),
           if (_cargando)
             const Padding(padding: EdgeInsets.symmetric(vertical: FincasSpacing.xl), child: Center(child: FincasLoader(message: 'Cargando información...')))
           else if (_errorCarga != null) ...[
@@ -313,6 +322,7 @@ class _ProductoInfoGeneralState extends State<ProductoInfoGeneral> {
               onPressed: _hayCambios ? _guardar : null,
             ),
           ],
+          ])),
         ],
       ),
     );
