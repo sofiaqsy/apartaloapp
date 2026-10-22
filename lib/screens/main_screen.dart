@@ -14,6 +14,7 @@ import 'settings/settings_screen.dart';
 import 'team_screen.dart';
 import 'businesses_screen.dart';
 import '../services/session_store.dart';
+import '../widgets/fincas_widgets.dart';
 import 'business_requests_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -72,7 +73,7 @@ class _MainScreenState extends State<MainScreen> {
   /// "Mis negocios": switch business or ask to join / register another one.
   Future<void> _openBusinesses() async {
     try {
-      final session = await AuthService.fetchSession();
+      final session = await runWithFincasLoader(context, 'Cargando tus negocios...', AuthService.fetchSession);
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute(

@@ -4,6 +4,8 @@ import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../services/session_store.dart';
+import 'package:flutter/services.dart';
+import '../theme/fincas_theme.dart';
 import '../theme/fincas_tokens.dart';
 import '../widgets/fincas_widgets.dart';
 import 'businesses_screen.dart';
@@ -503,7 +505,9 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     // Checking a saved session or signing in: the loader sits right under the brand, as part of it.
     final loadingOnly = _step == _Step.signIn && (_checking || _isLoading);
-    return Scaffold(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: FincasTheme.statusBarOnLight,
+      child: Scaffold(
       backgroundColor: FincasColors.background,
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
@@ -543,6 +547,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       ),
+    ),
     );
   }
 }

@@ -76,12 +76,7 @@ Future<void> _appMain() async {
     }
 
     // Configurar estilo de la barra de estado
-    SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-      ),
-    );
+    SystemChrome.setSystemUIOverlayStyle(FincasTheme.statusBarOnLight);
 
     runApp(const FincaRosalApp());
   } catch (e, stackTrace) {

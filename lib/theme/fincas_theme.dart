@@ -1,10 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'fincas_tokens.dart';
 
 /// App-wide Material theme built only from [FincasColors], [FincasText], [FincasSpacing] and
 /// [FincasRadii]. This replaces the former blue seed, which produced the lavender surfaces.
 class FincasTheme {
   FincasTheme._();
+
+  /// Status bar for light pages (ivory): dark time, signal and battery. On iOS the flag is
+  /// `statusBarBrightness` (brightness of the page behind it); on Android it is the icon brightness.
+  static const SystemUiOverlayStyle statusBarOnLight = SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.dark,
+    statusBarBrightness: Brightness.light,
+  );
 
   static ThemeData light() {
     const scheme = ColorScheme(

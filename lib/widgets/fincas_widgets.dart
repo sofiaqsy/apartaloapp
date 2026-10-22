@@ -279,6 +279,42 @@ class FincasLoader extends StatelessWidget {
   }
 }
 
+/// Covers the screen while something is happening, so a tap never looks ignored and cannot be repeated.
+class FincasBusyOverlay extends StatelessWidget {
+  const FincasBusyOverlay({super.key, required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: Stack(
+        children: [
+          ModalBarrier(color: FincasColors.background.withValues(alpha: 0.88), dismissible: false),
+          Center(child: FincasLoader(message: message)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shows the Fincas loader in a blocking dialog while [task] runs, then closes it and returns the result.
+/// For work that ends on the same screen (for example loading data before opening another one).
+Future<T> runWithFincasLoader<T>(BuildContext context, String message, Future<T> Function() task) async {
+  final navigator = Navigator.of(context, rootNavigator: true);
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    barrierColor: FincasColors.background.withValues(alpha: 0.88),
+    useRootNavigator: true,
+    builder: (_) => PopScope(canPop: false, child: Center(child: Material(color: Colors.transparent, child: FincasLoader(message: message)))),
+  );
+  try {
+    return await task();
+  } finally {
+    if (navigator.canPop()) navigator.pop();
+  }
+}
+
 /// Empty, status or error state: a title, a short explanation and an optional action.
 class FincasMessageState extends StatelessWidget {
   const FincasMessageState({super.key, required this.title, required this.message, this.tone = FincasTone.neutral});

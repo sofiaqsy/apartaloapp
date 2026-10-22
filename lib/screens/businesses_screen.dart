@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../theme/fincas_theme.dart';
 import '../theme/fincas_tokens.dart';
 import '../widgets/fincas_widgets.dart';
 
@@ -29,17 +30,30 @@ class BusinessesScreen extends StatefulWidget {
 class _BusinessesScreenState extends State<BusinessesScreen> {
   late AuthSession _session = widget.session;
   bool _loading = false;
+  String? _busy; // message of the blocking loader, null when idle
   String? _error;
 
-  Future<void> _refresh() async {
-    setState(() { _loading = true; _error = null; });
+  Future<void> _refresh({bool overlay = false}) async {
+    setState(() { _loading = true; _error = null; if (overlay) _busy = 'Actualizando...'; });
     try {
       final s = await AuthService.fetchSession();
       if (mounted) setState(() => _session = s);
     } catch (_) {
       if (mounted) setState(() => _error = 'No se pudo actualizar. Revisa tu internet.');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() { _loading = false; if (overlay) _busy = null; });
+    }
+  }
+
+  /// Enters a business with a visible loader: choosing it saves the session and may take a moment.
+  Future<void> _enter(Map<String, dynamic> business) async {
+    setState(() { _loading = true; _busy = 'Entrando a ${business['name'] ?? 'tu negocio'}...'; });
+    try {
+      await widget.onSelect(context, business, _session);
+    } catch (_) {
+      _snack('No se pudo entrar al negocio. Revisa tu internet e intenta de nuevo.');
+    } finally {
+      if (mounted) setState(() { _loading = false; _busy = null; });
     }
   }
 
@@ -53,7 +67,7 @@ class _BusinessesScreenState extends State<BusinessesScreen> {
   Future<void> _joinWithCode() async {
     final code = await showDialog<String>(context: context, builder: (_) => const _JoinCodeDialog());
     if (code == null || code.isEmpty) return;
-    setState(() => _loading = true);
+    setState(() { _loading = true; _busy = 'Enviando solicitud...'; });
     try {
       final error = await AuthService.submitJoinCode(code);
       _snack(error ?? 'Solicitud enviada. El dueño del negocio debe aprobarla.');
@@ -61,7 +75,7 @@ class _BusinessesScreenState extends State<BusinessesScreen> {
     } catch (_) {
       _snack('Error de conexión.');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() { _loading = false; _busy = null; });
     }
   }
 
@@ -74,7 +88,7 @@ class _BusinessesScreenState extends State<BusinessesScreen> {
       _snack('Escribe el nombre del negocio y la ciudad.');
       return;
     }
-    setState(() => _loading = true);
+    setState(() { _loading = true; _busy = 'Enviando solicitud...'; });
     try {
       final error = await AuthService.requestBusiness(name: businessName, city: cityName);
       _snack(error ?? 'Solicitud enviada. Te avisaremos cuando tu negocio esté activo.');
@@ -82,7 +96,7 @@ class _BusinessesScreenState extends State<BusinessesScreen> {
     } catch (_) {
       _snack('Error de conexión.');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() { _loading = false; _busy = null; });
     }
   }
 
@@ -100,8 +114,12 @@ class _BusinessesScreenState extends State<BusinessesScreen> {
         toolbarHeight: canGoBack ? kToolbarHeight : 0,
         backgroundColor: Colors.transparent,
         centerTitle: false,
+        // A transparent bar made iOS draw white icons on the ivory page; ask for dark ones.
+        systemOverlayStyle: FincasTheme.statusBarOnLight,
       ),
-      body: SafeArea(
+      body: Stack(
+        children: [
+        SafeArea(
         top: false,
         child: Column(
           children: [
@@ -114,7 +132,6 @@ class _BusinessesScreenState extends State<BusinessesScreen> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(FincasSpacing.screenH, FincasSpacing.s, FincasSpacing.screenH, FincasSpacing.l),
                   children: [
-                    if (_loading) const Padding(padding: EdgeInsets.only(bottom: FincasSpacing.s), child: LinearProgressIndicator(minHeight: 3)),
                     // Header: small greeting, then the title, kept close to the list.
                     if (_session.fullName.isNotEmpty)
                       Text('Hola, ${_session.fullName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: FincasText.bodySecondary),
@@ -122,7 +139,7 @@ class _BusinessesScreenState extends State<BusinessesScreen> {
                     const SizedBox(height: FincasSpacing.l),
                     if (_error != null) ...[
                       FincasMessageState(title: 'No se pudo actualizar', message: _error!, tone: FincasTone.error),
-                      FincasTextButton(label: 'Reintentar', onPressed: _loading ? null : _refresh),
+                      FincasTextButton(label: 'Reintentar', onPressed: _loading ? null : () => _refresh(overlay: true)),
                       const SizedBox(height: FincasSpacing.m),
                     ],
                     if (businesses.isEmpty && pending.isEmpty && _error == null)
@@ -140,7 +157,7 @@ class _BusinessesScreenState extends State<BusinessesScreen> {
                             city: (b['city'] ?? '').toString(),
                             roleLabel: _roleLabel((b['role'] ?? '').toString()),
                             isCurrent: b['businessId'] == widget.currentBusinessId,
-                            onTap: _loading ? null : () => widget.onSelect(context, b, _session),
+                            onTap: _loading ? null : () => _enter(b),
                           ),
                         )),
                     if (pending.isNotEmpty) ...[
@@ -197,6 +214,9 @@ class _BusinessesScreenState extends State<BusinessesScreen> {
             ),
           ],
         ),
+      ),
+          if (_busy != null) FincasBusyOverlay(message: _busy!),
+        ],
       ),
     );
   }

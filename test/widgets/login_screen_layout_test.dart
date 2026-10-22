@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:apartalo_app/screens/login_screen.dart';
@@ -40,5 +41,13 @@ void main() {
     expect(find.text('Verificando tu sesión...'), findsOneWidget);
     expect(find.text('Continuar con Google'), findsNothing);
     await t.pumpAndSettle(const Duration(milliseconds: 200));
+  });
+
+  testWidgets('the sign-in screen asks for dark status bar icons (the page is ivory)', (t) async {
+    await _size(t, 390, 844);
+    await t.pumpWidget(_app());
+    await t.pumpAndSettle(const Duration(milliseconds: 200));
+    final region = t.widget<AnnotatedRegion<SystemUiOverlayStyle>>(find.byType(AnnotatedRegion<SystemUiOverlayStyle>).first);
+    expect(region.value.statusBarIconBrightness, Brightness.dark);
   });
 }
