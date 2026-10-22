@@ -79,14 +79,14 @@ class _MainScreenState extends State<MainScreen> {
           builder: (_) => BusinessesScreen(
             session: session,
             currentBusinessId: widget.businessId,
-            onSelect: (business, s) async {
+            onSelect: (screenContext, business, s) async {
               if (business['businessId'] == widget.businessId) {
-                Navigator.of(context).pop();
+                Navigator.of(screenContext).pop();
                 return;
               }
               await SessionStore.activateBusiness(business, isPlatformAdmin: s.isAdmin);
-              if (!mounted) return;
-              Navigator.of(context).pushAndRemoveUntil(
+              if (!screenContext.mounted) return;
+              Navigator.of(screenContext).pushAndRemoveUntil(
                 MaterialPageRoute(
                   builder: (_) => MainScreen(businessId: business['businessId'], businessName: business['name']),
                 ),

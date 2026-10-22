@@ -15,8 +15,9 @@ class BusinessesScreen extends StatefulWidget {
 
   final AuthSession session;
 
-  /// Called when the person picks a business to enter.
-  final Future<void> Function(Map<String, dynamic> business, AuthSession session) onSelect;
+  /// Called when the person picks a business to enter. [context] belongs to this screen, which is
+  /// still mounted (the page that opened it may already have been replaced).
+  final Future<void> Function(BuildContext context, Map<String, dynamic> business, AuthSession session) onSelect;
 
   /// Business currently open (when this screen is reached from the menu).
   final String? currentBusinessId;
@@ -50,33 +51,7 @@ class _BusinessesScreenState extends State<BusinessesScreen> {
   }
 
   Future<void> _joinWithCode() async {
-    final controller = TextEditingController();
-    final code = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Unirme a otro negocio'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Pídele el código de invitación al dueño. Él debe aprobar tu solicitud.'),
-            const SizedBox(height: FincasSpacing.m),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              textCapitalization: TextCapitalization.characters,
-              maxLength: 9,
-              decoration: const InputDecoration(labelText: 'Código', hintText: 'ABCD-EFGH', counterText: ''),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('Enviar solicitud')),
-        ],
-      ),
-    );
-    controller.dispose();
+    final code = await showDialog<String>(context: context, builder: (_) => const _JoinCodeDialog());
     if (code == null || code.isEmpty) return;
     setState(() => _loading = true);
     try {
@@ -91,33 +66,10 @@ class _BusinessesScreenState extends State<BusinessesScreen> {
   }
 
   Future<void> _registerBusiness() async {
-    final name = TextEditingController();
-    final city = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Registrar un negocio nuevo'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('El administrador de Fincas revisará tu solicitud antes de activarlo.'),
-            const SizedBox(height: 12),
-            TextField(controller: name, maxLength: 80, decoration: const InputDecoration(labelText: 'Nombre del negocio', counterText: '')),
-            const SizedBox(height: 10),
-            TextField(controller: city, maxLength: 60, decoration: const InputDecoration(labelText: 'Ciudad', counterText: '')),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Enviar solicitud')),
-        ],
-      ),
-    );
-    final businessName = name.text.trim();
-    final cityName = city.text.trim();
-    name.dispose();
-    city.dispose();
-    if (ok != true) return;
+    final result = await showDialog<(String, String)>(context: context, builder: (_) => const _RegisterBusinessDialog());
+    if (result == null) return;
+    final businessName = result.$1.trim();
+    final cityName = result.$2.trim();
     if (businessName.length < 3 || cityName.length < 2) {
       _snack('Escribe el nombre del negocio y la ciudad.');
       return;
@@ -186,7 +138,7 @@ class _BusinessesScreenState extends State<BusinessesScreen> {
                       city: (b['city'] ?? '').toString(),
                       roleLabel: _roleLabel((b['role'] ?? '').toString()),
                       isCurrent: b['businessId'] == widget.currentBusinessId,
-                      onTap: _loading ? null : () => widget.onSelect(b, _session),
+                      onTap: _loading ? null : () => widget.onSelect(context, b, _session),
                     ),
                   )),
               if (pending.isNotEmpty) ...[
@@ -222,6 +174,93 @@ class _BusinessesScreenState extends State<BusinessesScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Owns its controller, so it is disposed only when the dialog is really removed.
+class _JoinCodeDialog extends StatefulWidget {
+  const _JoinCodeDialog();
+
+  @override
+  State<_JoinCodeDialog> createState() => _JoinCodeDialogState();
+}
+
+class _JoinCodeDialogState extends State<_JoinCodeDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Unirme a otro negocio'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Pídele el código de invitación al dueño. Él debe aprobar tu solicitud.'),
+          const SizedBox(height: FincasSpacing.m),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            textCapitalization: TextCapitalization.characters,
+            maxLength: 9,
+            decoration: const InputDecoration(labelText: 'Código', hintText: 'ABCD-EFGH', counterText: ''),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        ElevatedButton(onPressed: () => Navigator.pop(context, _controller.text.trim()), child: const Text('Enviar solicitud')),
+      ],
+    );
+  }
+}
+
+class _RegisterBusinessDialog extends StatefulWidget {
+  const _RegisterBusinessDialog();
+
+  @override
+  State<_RegisterBusinessDialog> createState() => _RegisterBusinessDialogState();
+}
+
+class _RegisterBusinessDialogState extends State<_RegisterBusinessDialog> {
+  final _name = TextEditingController();
+  final _city = TextEditingController();
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _city.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Registrar un negocio nuevo'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('El administrador de Fincas revisará tu solicitud antes de activarlo.'),
+            const SizedBox(height: FincasSpacing.m),
+            TextField(controller: _name, maxLength: 80, decoration: const InputDecoration(labelText: 'Nombre del negocio', counterText: '')),
+            const SizedBox(height: FincasSpacing.field),
+            TextField(controller: _city, maxLength: 60, decoration: const InputDecoration(labelText: 'Ciudad', counterText: '')),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        ElevatedButton(onPressed: () => Navigator.pop(context, (_name.text, _city.text)), child: const Text('Enviar solicitud')),
+      ],
     );
   }
 }

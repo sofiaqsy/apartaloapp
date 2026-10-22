@@ -255,10 +255,15 @@ class _LoginScreenState extends State<LoginScreen> {
       MaterialPageRoute(
         builder: (_) => BusinessesScreen(
           session: session,
-          onSelect: (business, s) async {
+          onSelect: (screenContext, business, s) async {
             await SessionStore.activateBusiness(business, isPlatformAdmin: s.isAdmin);
-            if (!mounted) return;
-            _goToMain(business['businessId'], business['name']);
+            // Use the hub's own context: this login page was replaced by the hub and is no longer mounted.
+            if (!screenContext.mounted) return;
+            Navigator.of(screenContext).pushReplacement(
+              MaterialPageRoute(
+                builder: (_) => MainScreen(businessId: business['businessId'], businessName: business['name']),
+              ),
+            );
           },
         ),
       ),

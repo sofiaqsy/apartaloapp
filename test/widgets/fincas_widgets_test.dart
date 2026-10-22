@@ -63,7 +63,7 @@ void main() {
         {'kind': 'join', 'businessName': ''},
       ],
     );
-    await t.pumpWidget(_app(BusinessesScreen(session: session, onSelect: (b, s) async {}), scale: 2.0));
+    await t.pumpWidget(_app(BusinessesScreen(session: session, onSelect: (c, b, s) async {}), scale: 2.0));
     expect(t.takeException(), isNull);
     expect(find.text('Tus negocios'), findsOneWidget);
     await t.scrollUntilVisible(find.text('Registrar un negocio nuevo'), 300, scrollable: find.byType(Scrollable).first);
@@ -75,13 +75,13 @@ void main() {
     final session = AuthSession(status: 'active', fullName: 'Keyla', businesses: [
       {'businessId': 'BIZ-1', 'name': 'keyla', 'city': 'lima', 'role': 'owner'},
     ]);
-    await t.pumpWidget(_app(BusinessesScreen(session: session, onSelect: (b, s) async => picked = b)));
+    await t.pumpWidget(_app(BusinessesScreen(session: session, onSelect: (c, b, s) async => picked = b)));
     await t.tap(find.byType(FincasBusinessCard));
     expect(picked?['businessId'], 'BIZ-1');
   });
 
   testWidgets('"Tus negocios": empty account shows the empty state, not a blank screen', (t) async {
-    await t.pumpWidget(_app(BusinessesScreen(session: AuthSession(status: 'active'), onSelect: (b, s) async {})));
+    await t.pumpWidget(_app(BusinessesScreen(session: AuthSession(status: 'active'), onSelect: (c, b, s) async {})));
     expect(find.text('Aún no tienes negocios'), findsOneWidget);
   });
 }
