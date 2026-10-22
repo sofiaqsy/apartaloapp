@@ -570,9 +570,9 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
               unselectedLabelColor: Colors.white54,
               labelStyle: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
               tabs: [
-                Tab(text: 'Tuestes'),
-                Tab(text: 'Lotes'),
                 Tab(text: 'Presentaciones'),
+                Tab(text: 'Lotes'),
+                Tab(text: 'Tuestes'),
               ],
             ),
           ),
@@ -584,9 +584,9 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
                     ? const Center(child: CircularProgressIndicator())
                     : TabBarView(
                         children: [
-                          _buildTuestesTab(),
-                          _buildLotesTab(),
                           _buildPresentacionesTab(),
+                          _buildLotesTab(),
+                          _buildTuestesTab(),
                         ],
                       ),
               ),
