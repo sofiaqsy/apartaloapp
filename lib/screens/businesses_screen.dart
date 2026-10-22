@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../theme/fincas_tokens.dart';
+import '../widgets/fincas_widgets.dart';
 
 /// "Tus negocios": the businesses of this account, the requests still in review, and the options
 /// to join another business with a code or to register a new one.
@@ -58,13 +60,13 @@ class _BusinessesScreenState extends State<BusinessesScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('Pídele el código de invitación al dueño. Él debe aprobar tu solicitud.'),
-            const SizedBox(height: 12),
+            const SizedBox(height: FincasSpacing.m),
             TextField(
               controller: controller,
               autofocus: true,
               textCapitalization: TextCapitalization.characters,
               maxLength: 9,
-              decoration: const InputDecoration(hintText: 'ABCD-EFGH', counterText: '', border: OutlineInputBorder()),
+              decoration: const InputDecoration(labelText: 'Código', hintText: 'ABCD-EFGH', counterText: ''),
             ),
           ],
         ),
@@ -100,9 +102,9 @@ class _BusinessesScreenState extends State<BusinessesScreen> {
           children: [
             const Text('El administrador de Fincas revisará tu solicitud antes de activarlo.'),
             const SizedBox(height: 12),
-            TextField(controller: name, maxLength: 80, decoration: const InputDecoration(labelText: 'Nombre del negocio', counterText: '', border: OutlineInputBorder())),
+            TextField(controller: name, maxLength: 80, decoration: const InputDecoration(labelText: 'Nombre del negocio', counterText: '')),
             const SizedBox(height: 10),
-            TextField(controller: city, maxLength: 60, decoration: const InputDecoration(labelText: 'Ciudad', counterText: '', border: OutlineInputBorder())),
+            TextField(controller: city, maxLength: 60, decoration: const InputDecoration(labelText: 'Ciudad', counterText: '')),
           ],
         ),
         actions: [
@@ -138,52 +140,86 @@ class _BusinessesScreenState extends State<BusinessesScreen> {
   Widget build(BuildContext context) {
     final businesses = _session.businesses;
     final pending = _session.pending;
+    final canGoBack = Navigator.of(context).canPop();
     return Scaffold(
-      appBar: AppBar(title: const Text('Tus negocios')),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            if (_loading) const Padding(padding: EdgeInsets.only(bottom: 12), child: LinearProgressIndicator(minHeight: 3)),
-            if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(_error!, style: const TextStyle(color: Colors.red))),
-            if (_session.fullName.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text('Hola, ${_session.fullName}', style: TextStyle(fontSize: 15, color: Colors.grey.shade700)),
-              ),
-            ...businesses.map((b) {
-              final current = b['businessId'] == widget.currentBusinessId;
-              return Card(
-                child: ListTile(
-                  title: Text((b['name'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Text([
-                    if ((b['city'] ?? '').toString().isNotEmpty) b['city'],
-                    _roleLabel((b['role'] ?? '').toString()),
-                    if (current) 'Abierto ahora',
-                  ].join('  -  ')),
-                  trailing: const Text('Entrar'),
-                  onTap: _loading ? null : () => widget.onSelect(b, _session),
+      backgroundColor: FincasColors.background,
+      // Back arrow only when reached from the menu; after sign-in there is nothing to go back to.
+      appBar: AppBar(
+        toolbarHeight: canGoBack ? kToolbarHeight : 0,
+        backgroundColor: Colors.transparent,
+        centerTitle: false,
+      ),
+      body: SafeArea(
+        top: false,
+        child: RefreshIndicator(
+          color: FincasColors.ink,
+          onRefresh: _refresh,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(FincasSpacing.screenH, FincasSpacing.s, FincasSpacing.screenH, FincasSpacing.xxl),
+            children: [
+              if (_loading) const Padding(padding: EdgeInsets.only(bottom: FincasSpacing.m), child: LinearProgressIndicator(minHeight: 3)),
+              // Header: greeting first, small; then the screen title.
+              if (_session.fullName.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: FincasSpacing.xs),
+                  child: Text('Hola, ${_session.fullName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: FincasText.bodySecondary),
                 ),
-              );
-            }),
-            if (pending.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              const Text('En revisión', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              ...pending.map((p) => Card(
-                    color: Colors.amber.shade50,
-                    child: ListTile(
-                      title: Text(p['businessName']?.toString().isNotEmpty == true ? p['businessName'].toString() : 'Solicitud para unirte a un negocio'),
-                      subtitle: Text(p['kind'] == 'business' ? 'Registro de negocio nuevo, lo revisa el administrador' : 'Falta que el dueño apruebe tu acceso'),
+              Semantics(header: true, child: const Text('Tus negocios', style: FincasText.screenTitle)),
+              const SizedBox(height: FincasSpacing.xl),
+              if (_error != null) ...[
+                FincasMessageState(title: 'No se pudo actualizar', message: _error!, tone: FincasTone.error),
+                FincasTextButton(label: 'Reintentar', onPressed: _loading ? null : _refresh),
+                const SizedBox(height: FincasSpacing.l),
+              ],
+              if (businesses.isEmpty && pending.isEmpty && _error == null)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: FincasSpacing.xl),
+                  child: FincasMessageState(
+                    title: 'Aún no tienes negocios',
+                    message: 'Únete a uno con un código de invitación o registra el tuyo.',
+                  ),
+                ),
+              ...businesses.map((b) => Padding(
+                    padding: const EdgeInsets.only(bottom: FincasSpacing.m),
+                    child: FincasBusinessCard(
+                      name: (b['name'] ?? '').toString(),
+                      city: (b['city'] ?? '').toString(),
+                      roleLabel: _roleLabel((b['role'] ?? '').toString()),
+                      isCurrent: b['businessId'] == widget.currentBusinessId,
+                      onTap: _loading ? null : () => widget.onSelect(b, _session),
                     ),
                   )),
+              if (pending.isNotEmpty) ...[
+                const SizedBox(height: FincasSpacing.l),
+                const FincasSectionHeader('En revisión'),
+                ...pending.map((p) {
+                  final isBusiness = p['kind'] == 'business';
+                  final name = (p['businessName'] ?? '').toString();
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: FincasSpacing.m),
+                    child: FincasCard(
+                      tone: FincasTone.warning,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(name.isNotEmpty ? name : 'Solicitud para unirte a un negocio',
+                              maxLines: 2, overflow: TextOverflow.ellipsis,
+                              style: FincasText.sectionTitle.copyWith(color: FincasColors.warning)),
+                          const SizedBox(height: FincasSpacing.xs),
+                          Text(isBusiness ? 'Registro de negocio nuevo. Lo revisa el administrador.' : 'Falta que el dueño apruebe tu acceso.',
+                              style: FincasText.metadata.copyWith(color: FincasColors.warning)),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              ],
+              const SizedBox(height: FincasSpacing.section),
+              FincasSecondaryButton(label: 'Unirme a otro negocio', onPressed: _loading ? null : _joinWithCode),
+              const SizedBox(height: FincasSpacing.s),
+              FincasTextButton(label: 'Registrar un negocio nuevo', onPressed: _loading ? null : _registerBusiness),
             ],
-            const SizedBox(height: 24),
-            OutlinedButton(onPressed: _loading ? null : _joinWithCode, child: const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('Unirme a otro negocio'))),
-            const SizedBox(height: 10),
-            OutlinedButton(onPressed: _loading ? null : _registerBusiness, child: const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('Registrar un negocio nuevo'))),
-          ],
+          ),
         ),
       ),
     );

@@ -70,18 +70,24 @@ flutter:
     - .env
     - assets/splash/
 
+  fonts:
+    # Editorial serif for brand moments only (wordmark, large screen titles). SIL OFL 1.1, see assets/fonts/OFL-Fraunces.txt
+    - family: Fraunces
+      fonts:
+        - asset: assets/fonts/Fraunces.ttf
+
 # Configuración de Splash Screen Nativo
 flutter_native_splash:
-  color: "#231e14"
+  color: "#252117"
   image: assets/splash/splash.png
-  color_dark: "#231e14"
+  color_dark: "#252117"
   image_dark: assets/splash/splash.png
   android_12:
-    color: "#231e14"
-    icon_background_color: "#231e14"
+    color: "#252117"
+    icon_background_color: "#252117"
     image: assets/splash/splash.png
-    color_dark: "#231e14"
-    icon_background_color_dark: "#231e14"
+    color_dark: "#252117"
+    icon_background_color_dark: "#252117"
     image_dark: assets/splash/splash.png
   ios: true
   android: true

@@ -4,6 +4,8 @@ import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../services/session_store.dart';
+import '../theme/fincas_tokens.dart';
+import '../widgets/fincas_widgets.dart';
 import 'businesses_screen.dart';
 import 'main_screen.dart';
 
@@ -222,19 +224,14 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Widget _field(TextEditingController c, String label, {TextInputType? type, String? prefix, int? max}) {
+  Widget _field(TextEditingController c, String label, {TextInputType? type, int? max}) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: FincasSpacing.field),
       child: TextField(
         controller: c,
         keyboardType: type,
         maxLength: max,
-        decoration: InputDecoration(
-          labelText: label,
-          prefixText: prefix,
-          counterText: '',
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-        ),
+        decoration: InputDecoration(labelText: label, counterText: ''),
       ),
     );
   }
@@ -285,23 +282,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // ── UI ───────────────────────────────────────────────────────────────────
 
-  Widget _primaryButton(String label, VoidCallback? onPressed, {Color? color, Color? textColor}) {
-    return SizedBox(
-      width: double.infinity,
-      height: 52,
-      child: ElevatedButton(
-        onPressed: _isLoading ? null : onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color ?? Colors.brown.shade700,
-          foregroundColor: textColor ?? Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        ),
-        child: _isLoading
-            ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-            : Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-      ),
-    );
-  }
+  Widget _errorText() => _errorMessage == null
+      ? const SizedBox.shrink()
+      : Padding(
+          padding: const EdgeInsets.only(bottom: FincasSpacing.m),
+          child: Text(_errorMessage!, style: const TextStyle(color: FincasColors.error, fontSize: 14, height: 1.4)),
+        );
 
   Widget _pendingReminder() {
     final p = _savedPending!;
@@ -312,49 +298,49 @@ class _LoginScreenState extends State<LoginScreen> {
       if (p['provider']!.isNotEmpty) p['provider'],
       if (p['email']!.isNotEmpty) p['email'],
     ].join(' - ');
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.amber.shade50,
-        border: Border.all(color: Colors.amber.shade300),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Tienes una solicitud en revisión', style: TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 4),
-          Text(
-            'Pediste $what desde este teléfono. Inicia sesión con la misma cuenta${account.isNotEmpty ? ' ($account)' : ''} '
-            'para ver el estado.',
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade800),
-          ),
-        ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: FincasSpacing.l),
+      child: FincasCard(
+        tone: FincasTone.warning,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Tienes una solicitud en revisión', style: FincasText.label.copyWith(color: FincasColors.warning, fontWeight: FontWeight.w600)),
+            const SizedBox(height: FincasSpacing.xs),
+            Text(
+              'Pediste $what desde este teléfono. Inicia sesión con la misma cuenta${account.isNotEmpty ? ' ($account)' : ''} '
+              'para ver el estado.',
+              style: FincasText.metadata.copyWith(color: FincasColors.warning),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _option(String title, String body, VoidCallback onTap) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: _isLoading ? null : onTap,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade300),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.only(bottom: FincasSpacing.m),
+      child: Semantics(
+        button: true,
+        label: '$title. $body',
+        excludeSemantics: true,
+        child: FincasCard(
+          onTap: _isLoading ? null : onTap,
+          child: Row(
             children: [
-              Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 2),
-              Text(body, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: FincasText.sectionTitle),
+                    const SizedBox(height: FincasSpacing.xs),
+                    Text(body, style: FincasText.metadata),
+                  ],
+                ),
+              ),
+              const SizedBox(width: FincasSpacing.s),
+              const Icon(Icons.chevron_right, size: FincasIcons.regular, color: FincasColors.espresso),
             ],
           ),
         ),
@@ -362,14 +348,29 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _message(String title, String body) {
+  /// Status or notice with the matching actions underneath.
+  Widget _statusScreen(String title, String body, List<Widget> actions, {FincasTone tone = FincasTone.neutral}) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        Text(body, textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: Colors.grey.shade700)),
-        const SizedBox(height: 20),
-        _primaryButton('Usar otra cuenta', _backToSignIn),
+        FincasMessageState(title: title, message: body, tone: tone),
+        const SizedBox(height: FincasSpacing.xl),
+        if (_errorMessage != null) Center(child: _errorText()),
+        ...actions,
+      ],
+    );
+  }
+
+  static const _savedNote = 'Tu solicitud queda guardada. Para verla de nuevo, inicia sesión con esta misma cuenta.';
+
+  Widget _formHeader(String title, String body) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Semantics(header: true, child: Text(title, style: FincasText.sectionTitle)),
+        const SizedBox(height: FincasSpacing.xs),
+        Text(body, style: FincasText.bodySecondary),
+        const SizedBox(height: FincasSpacing.l),
       ],
     );
   }
@@ -377,180 +378,116 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _stepContent() {
     switch (_step) {
       case _Step.pending:
-        return _message('Cuenta en revisión',
-            'Reconocimos tu correo. Falta que el administrador confirme tu acceso. Vuelve a intentarlo en unos minutos.');
+        return _statusScreen(
+          'Cuenta en revisión',
+          'Reconocimos tu correo. Falta que el administrador confirme tu acceso. Vuelve a intentarlo en unos minutos.',
+          [FincasPrimaryButton(label: 'Usar otra cuenta', onPressed: _isLoading ? null : _backToSignIn)],
+        );
       case _Step.onboarding:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Bienvenido a Fincas',
-                textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            Text('¿Cómo quieres empezar?',
-                textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: Colors.grey.shade600)),
-            const SizedBox(height: 16),
+            const Text('Bienvenido a Fincas', textAlign: TextAlign.center, style: FincasText.sectionTitle),
+            const SizedBox(height: FincasSpacing.xs),
+            const Text('¿Cómo quieres empezar?', textAlign: TextAlign.center, style: FincasText.bodySecondary),
+            const SizedBox(height: FincasSpacing.l),
             _option('Tengo un negocio', 'Quiero registrar mi negocio y manejar su operación.',
                 () => setState(() { _step = _Step.ownerForm; _errorMessage = null; })),
             _option('Trabajo en un negocio', 'Ya pertenezco a un negocio y quiero unirme a su equipo.',
                 () => setState(() { _step = _Step.enterCode; _errorMessage = null; })),
             _option('Estoy explorando', 'Todavía no quiero registrar ni unirme a un negocio.',
                 () => setState(() { _step = _Step.explore; _errorMessage = null; })),
-            const SizedBox(height: 8),
-            TextButton(onPressed: _isLoading ? null : _backToSignIn, child: const Text('Usar otra cuenta')),
+            FincasTextButton(label: 'Usar otra cuenta', onPressed: _isLoading ? null : _backToSignIn),
           ],
         );
       case _Step.ownerForm:
         return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Registra tu negocio', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            Text('El administrador de Fincas revisará tu solicitud antes de activar el negocio.',
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
-            const SizedBox(height: 14),
+            _formHeader('Registra tu negocio', 'El administrador de Fincas revisará tu solicitud antes de activar el negocio.'),
             _field(_bizNameController, 'Nombre del negocio', max: 80),
             _field(_bizCityController, 'Ciudad', max: 60),
-            if (_errorMessage != null) ...[
-              Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 13)),
-              const SizedBox(height: 8),
-            ],
-            _primaryButton('Enviar solicitud', _submitBusiness),
-            const SizedBox(height: 8),
-            Center(
-              child: TextButton(
-                onPressed: _isLoading ? null : () => setState(() { _step = _Step.onboarding; _errorMessage = null; }),
-                child: const Text('Volver'),
-              ),
+            _errorText(),
+            FincasPrimaryButton(label: 'Enviar solicitud', onPressed: _submitBusiness, loading: _isLoading),
+            FincasTextButton(
+              label: 'Volver',
+              onPressed: _isLoading ? null : () => setState(() { _step = _Step.onboarding; _errorMessage = null; }),
             ),
           ],
         );
       case _Step.businessPending:
-        return Column(
-          children: [
-            const Text('Solicitud enviada', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text(
-              _session != null && _session!.businessName.isNotEmpty
-                  ? 'Recibimos el registro de "${_session!.businessName}". El administrador de Fincas lo revisará y, cuando lo apruebe, '
-                      'toca "Revisar estado" para entrar a tu negocio.'
-                  : 'Recibimos el registro de tu negocio. El administrador de Fincas lo revisará.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 15, color: Colors.grey.shade700),
-            ),
-            if (_errorMessage != null) ...[
-              const SizedBox(height: 8),
-              Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 13)),
-            ],
-            const SizedBox(height: 20),
-            _primaryButton('Revisar estado', _refreshStatus),
-            TextButton(onPressed: _isLoading ? null : _backToSignIn, child: const Text('Usar otra cuenta')),
-            Text('Tu solicitud queda guardada. Para verla de nuevo, inicia sesión con esta misma cuenta.',
-                textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        return _statusScreen(
+          'Solicitud enviada',
+          _session != null && _session!.businessName.isNotEmpty
+              ? 'Recibimos el registro de "${_session!.businessName}". El administrador de Fincas lo revisará y, cuando lo apruebe, '
+                  'toca "Revisar estado" para entrar a tu negocio.'
+              : 'Recibimos el registro de tu negocio. El administrador de Fincas lo revisará.',
+          [
+            FincasPrimaryButton(label: 'Revisar estado', onPressed: _refreshStatus, loading: _isLoading),
+            FincasTextButton(label: 'Usar otra cuenta', onPressed: _isLoading ? null : _backToSignIn),
+            const Text(_savedNote, textAlign: TextAlign.center, style: FincasText.caption),
           ],
         );
       case _Step.explore:
-        return Column(
-          children: [
-            const Text('Fincas', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text(
-              'Fincas es una herramienta para negocios de café: pedidos, productos, clientes y tostado. '
+        return _statusScreen(
+          'Fincas',
+          'Fincas es una herramienta para negocios de café: pedidos, productos, clientes y tostado. '
               'Si solo quieres comprar, hazlo por WhatsApp con tu negocio. Vuelve cuando quieras registrar o unirte a uno.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 15, color: Colors.grey.shade700),
-            ),
-            const SizedBox(height: 20),
-            _primaryButton('Volver', () => setState(() => _step = _Step.onboarding)),
-          ],
+          [FincasPrimaryButton(label: 'Volver', onPressed: () => setState(() => _step = _Step.onboarding))],
         );
       case _Step.enterCode:
         return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Código de invitación', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            Text('Pídeselo al dueño del negocio. El dueño debe aprobar tu solicitud.',
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
-            const SizedBox(height: 14),
-            TextField(
-              controller: _codeController,
-              textCapitalization: TextCapitalization.characters,
-              maxLength: 9,
-              onSubmitted: (_) => _submitCode(),
-              decoration: InputDecoration(
-                hintText: 'ABCD-EFGH',
-                counterText: '',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+            _formHeader('Código de invitación', 'Pídeselo al dueño del negocio. El dueño debe aprobar tu solicitud.'),
+            Padding(
+              padding: const EdgeInsets.only(bottom: FincasSpacing.field),
+              child: TextField(
+                controller: _codeController,
+                textCapitalization: TextCapitalization.characters,
+                maxLength: 9,
+                onSubmitted: (_) => _submitCode(),
+                decoration: const InputDecoration(labelText: 'Código', hintText: 'ABCD-EFGH', counterText: ''),
               ),
             ),
-            if (_errorMessage != null) ...[
-              const SizedBox(height: 8),
-              Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 13)),
-            ],
-            const SizedBox(height: 16),
-            _primaryButton('Enviar solicitud', _submitCode),
-            const SizedBox(height: 8),
-            Center(
-              child: TextButton(
-                onPressed: _isLoading ? null : () => setState(() { _step = _Step.onboarding; _errorMessage = null; }),
-                child: const Text('Volver'),
-              ),
+            _errorText(),
+            FincasPrimaryButton(label: 'Enviar solicitud', onPressed: _submitCode, loading: _isLoading),
+            FincasTextButton(
+              label: 'Volver',
+              onPressed: _isLoading ? null : () => setState(() { _step = _Step.onboarding; _errorMessage = null; }),
             ),
           ],
         );
       case _Step.joinPending:
-        return Column(
-          children: [
-            const Text('Solicitud enviada', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text(
-              _session != null && _session!.businessName.isNotEmpty
-                  ? 'Esperando que el dueño de ${_session!.businessName} apruebe tu acceso.'
-                  : 'Esperando que el dueño del negocio apruebe tu acceso.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 15, color: Colors.grey.shade700),
-            ),
-            if (_errorMessage != null) ...[
-              const SizedBox(height: 8),
-              Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 13)),
-            ],
-            const SizedBox(height: 20),
-            _primaryButton('Revisar estado', _refreshStatus),
-            TextButton(onPressed: _isLoading ? null : _backToSignIn, child: const Text('Usar otra cuenta')),
-            Text('Tu solicitud queda guardada. Para verla de nuevo, inicia sesión con esta misma cuenta.',
-                textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        return _statusScreen(
+          'Solicitud enviada',
+          _session != null && _session!.businessName.isNotEmpty
+              ? 'Esperando que el dueño de ${_session!.businessName} apruebe tu acceso.'
+              : 'Esperando que el dueño del negocio apruebe tu acceso.',
+          [
+            FincasPrimaryButton(label: 'Revisar estado', onPressed: _refreshStatus, loading: _isLoading),
+            FincasTextButton(label: 'Usar otra cuenta', onPressed: _isLoading ? null : _backToSignIn),
+            const Text(_savedNote, textAlign: TextAlign.center, style: FincasText.caption),
           ],
         );
       case _Step.revoked:
-        return _message('Acceso bloqueado', 'El acceso de esta cuenta fue desactivado. Contacta al administrador.');
+        return _statusScreen(
+          'Acceso bloqueado',
+          'El acceso de esta cuenta fue desactivado. Contacta al administrador.',
+          [FincasPrimaryButton(label: 'Usar otra cuenta', onPressed: _isLoading ? null : _backToSignIn)],
+          tone: FincasTone.error,
+        );
       case _Step.signIn:
-        // One single loader instead of a spinner on every button plus a bar.
-        if (_checking || _isLoading) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 24),
-            child: Column(
-              children: [
-                const SizedBox(width: 32, height: 32, child: CircularProgressIndicator(strokeWidth: 3)),
-                const SizedBox(height: 14),
-                Text(
-                  _checking ? 'Verificando tu sesión...' : 'Iniciando sesión...',
-                  style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-                ),
-              ],
-            ),
-          );
-        }
         return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (_savedPending != null) _pendingReminder(),
-            _primaryButton('Continuar con Google', () => _signIn(AuthService.signInWithGoogle),
-                color: Colors.white, textColor: Colors.black87),
-            const SizedBox(height: 12),
-            _primaryButton('Continuar con Apple', () => _signIn(AuthService.signInWithApple),
-                color: Colors.black, textColor: Colors.white),
+            FincasSecondaryButton(label: 'Continuar con Google', onPressed: () => _signIn(AuthService.signInWithGoogle)),
+            const SizedBox(height: FincasSpacing.m),
+            FincasPrimaryButton(label: 'Continuar con Apple', onPressed: () => _signIn(AuthService.signInWithApple)),
             if (_errorMessage != null) ...[
-              const SizedBox(height: 12),
-              Text(_errorMessage!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.red, fontSize: 13)),
+              const SizedBox(height: FincasSpacing.m),
+              Center(child: _errorText()),
             ],
           ],
         );
@@ -559,8 +496,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Checking a saved session or signing in: the loader sits right under the brand, as part of it.
+    final loadingOnly = _step == _Step.signIn && (_checking || _isLoading);
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: FincasColors.background,
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         behavior: HitTestBehavior.translucent,
@@ -568,28 +507,29 @@ class _LoginScreenState extends State<LoginScreen> {
           child: LayoutBuilder(
             builder: (context, constraints) => SingleChildScrollView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.all(24.0),
+              padding: const EdgeInsets.all(FincasSpacing.screenH),
               child: ConstrainedBox(
-                // Always as wide as the screen so narrow content (a loader, a message) stays centered, and as tall
-                // as the screen when there is room (Spacers center the content); it scrolls when
-                // the form or the keyboard needs more height.
-                constraints: BoxConstraints(minWidth: constraints.maxWidth - 48, minHeight: constraints.maxHeight - 48),
+                // As wide as the screen so narrow content stays centered; as tall as the screen when there is room;
+                // it scrolls when a form or the keyboard needs more height.
+                constraints: BoxConstraints(
+                  minWidth: constraints.maxWidth - FincasSpacing.screenH * 2,
+                  minHeight: constraints.maxHeight - FincasSpacing.screenH * 2,
+                ),
                 child: IntrinsicHeight(
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       const Spacer(),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(24),
-                        child: Image.asset('assets/splash/splash.png', width: 100, height: 100, fit: BoxFit.cover),
-                      ),
-                      const SizedBox(height: 24),
-                      Text('Fincas',
-                          style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.brown.shade800)),
-                      const SizedBox(height: 8),
-                      Text('Gestiona tu negocio fácilmente', style: TextStyle(fontSize: 16, color: Colors.grey.shade600)),
-                      const Spacer(),
-                      _stepContent(),
-                      const SizedBox(height: 24),
+                      FincasBrandMark(logoSize: _step == _Step.signIn ? 104 : 80, showTagline: _step == _Step.signIn),
+                      if (loadingOnly) ...[
+                        const SizedBox(height: FincasSpacing.xxl),
+                        FincasLoader(message: _checking ? 'Verificando tu sesión...' : 'Iniciando sesión...'),
+                        const Spacer(),
+                      ] else ...[
+                        const Spacer(),
+                        _stepContent(),
+                        const SizedBox(height: FincasSpacing.xl),
+                      ],
                     ],
                   ),
                 ),
