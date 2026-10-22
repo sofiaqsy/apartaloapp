@@ -1,5 +1,6 @@
 import '../widgets/fincas_widgets.dart';
 import '../theme/fincas_tokens.dart';
+import '../widgets/presentacion_form.dart';
 import '../widgets/presentacion_tile.dart';
 import '../widgets/producto_info_general.dart';
 import '../widgets/producto_presentaciones_ajustes.dart';
@@ -36,6 +37,8 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
   bool _ajustesDirty = false; // cambios sin guardar en los ajustes de presentaciones
   bool _stockManual = false; // el stock de cada presentación se escribe a mano
   String _simboloMoneda = 'S/'; // símbolo de la moneda del producto
+  String? _presentacionAbiertaId; // la presentación cuyo formulario está abierto
+  bool _primeraPresentacionAbierta = false; // la primera se abre sola una vez, al cargar
   // Presentaciones
   List<Presentacion> _presentaciones = [];
   bool _loadingPresentaciones = false;
@@ -80,6 +83,11 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
       _greenLotCode      = result.isSuccess ? result.data?.greenLotCode               : null;
       _isGreenCoffee     = result.isSuccess ? (result.data?.isGreenCoffee  ?? false) : false;
       _loadingPresentaciones = false;
+      // La primera presentación aparece con su formulario abierto (solo la primera vez que se cargan).
+      if (!_primeraPresentacionAbierta && _presentaciones.isNotEmpty) {
+        _presentacionAbiertaId = primeraPresentacionAbierta(_presentaciones);
+        _primeraPresentacionAbierta = true;
+      }
     });
   }
 
@@ -1178,11 +1186,20 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
                   )
                 else
                   ..._presentaciones.map((p) => PresentacionTile(
+                        key: ValueKey('presentacion-${p.id}'),
                         presentacion: p,
                         simboloMoneda: _simboloMoneda,
                         stockManual: _stockManual,
-                        onEditar: () => _mostrarFormPresentacion(presentacion: p),
+                        abierta: p.id == _presentacionAbiertaId,
+                        onAlternar: () => setState(() => _presentacionAbiertaId = p.id == _presentacionAbiertaId ? null : p.id),
                         onEliminar: () => _eliminarPresentacion(p),
+                        formulario: PresentacionForm(
+                          key: ValueKey('form-${p.id}'),
+                          presentacion: p,
+                          stockManual: _stockManual,
+                          simboloMoneda: _simboloMoneda,
+                          onGuardar: (d) => _guardarPresentacion(d, existente: p),
+                        ),
                       )),
                 const SizedBox(height: FincasSpacing.s),
                 FincasSecondaryButton(label: 'Agregar presentación', onPressed: _mostrarFormPresentacion),
@@ -1971,288 +1988,72 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
     }
   }
 
-  void _mostrarFormPresentacion({Presentacion? presentacion}) {
+  /// Crea o actualiza una presentación. Devuelve null si salió bien o el mensaje de error.
+  Future<String?> _guardarPresentacion(PresentacionDatos d, {Presentacion? existente}) async {
     final productId = widget.producto['codigo']?.toString() ?? '';
-    final esEdicion = presentacion != null;
+    // Con stock manual el stock viene del formulario; si no, lo calcula el sistema desde los tuestes.
+    final stock = d.stock ?? (existente?.stock ?? 0);
+    final ApiResponse<dynamic> result = existente != null
+        ? await ApiService.actualizarPresentacion(
+            productId: productId,
+            presentationId: existente.id,
+            contenido: d.contenido,
+            unidad: d.unidad,
+            precio: d.precio,
+            precioB2b: d.precioB2b,
+            cantidadB2b: d.cantidadB2b,
+            stock: stock,
+            pedidoMinimo: d.pedidoMinimo,
+            predeterminada: d.predeterminada,
+            visible: d.visible,
+            molienda: d.molienda,
+          )
+        : await ApiService.crearPresentacion(
+            productId: productId,
+            contenido: d.contenido,
+            unidad: d.unidad,
+            precio: d.precio,
+            precioB2b: d.precioB2b,
+            cantidadB2b: d.cantidadB2b,
+            stock: stock,
+            pedidoMinimo: d.pedidoMinimo,
+            predeterminada: d.predeterminada,
+            visible: d.visible,
+            molienda: d.molienda,
+          );
+    if (!result.isSuccess) return result.error ?? 'No se pudo guardar la presentación';
+    await _cargarPresentaciones();
+    if (mounted) _mostrarSnackBar(existente != null ? 'Presentación actualizada' : 'Presentación creada', FincasColors.ink);
+    return null;
+  }
 
-    final contenidoCtrl = TextEditingController(
-        text: esEdicion ? '${presentacion.contenido % 1 == 0 ? presentacion.contenido.toInt() : presentacion.contenido}' : '');
-    final precioCtrl = TextEditingController(
-        text: esEdicion ? presentacion.precio.toStringAsFixed(2) : '');
-    final precioB2bCtrl = TextEditingController(
-        text: esEdicion && presentacion.precioB2b != null ? presentacion.precioB2b!.toStringAsFixed(2) : '');
-    final cantidadB2bCtrl = TextEditingController(
-        text: esEdicion && presentacion.cantidadB2b != null ? presentacion.cantidadB2b.toString() : '');
-    final pedidoMinimoCtrl = TextEditingController(
-        text: esEdicion ? presentacion.pedidoMinimo.toString() : '1');
-    final stockCtrl = TextEditingController(text: esEdicion ? presentacion.stock.toString() : '0');
-
-    String unidad = esEdicion ? presentacion.unidad : 'g';
-    bool predeterminada = esEdicion ? presentacion.predeterminada : false;
-    bool visible = esEdicion ? presentacion.visible : true; // visible en tienda
-    List<String> molienda = esEdicion ? List<String>.from(presentacion.molienda) : [];
-
+  /// Hoja para crear una presentación nueva (las existentes se editan abriendo su tarjeta).
+  void _mostrarFormPresentacion() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(builder: (ctx, ss) {
-        Future<void> guardar() async {
-          final contenidoVal = double.tryParse(contenidoCtrl.text.trim()) ?? 0;
-          final precioVal = double.tryParse(precioCtrl.text.trim()) ?? 0;
-          if (contenidoVal <= 0 || precioVal <= 0) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Contenido y precio son obligatorios'), backgroundColor: Colors.orange));
-            return;
-          }
-          final b2b = precioB2bCtrl.text.trim().isNotEmpty ? double.tryParse(precioB2bCtrl.text.trim()) : null;
-          final cantB2b = cantidadB2bCtrl.text.trim().isNotEmpty ? int.tryParse(cantidadB2bCtrl.text.trim()) : null;
-          // Con stock manual el stock se escribe aquí; si no, lo calcula el sistema desde los tuestes.
-          final stock = _stockManual ? (int.tryParse(stockCtrl.text.trim()) ?? 0) : (esEdicion ? presentacion.stock : 0);
-          final pedidoMinimo = int.tryParse(pedidoMinimoCtrl.text.trim()) ?? 1;
-
-          Navigator.pop(ctx);
-
-          ApiResponse<dynamic> result;
-          if (esEdicion) {
-            result = await ApiService.actualizarPresentacion(
-              productId: productId,
-              presentationId: presentacion.id,
-              contenido: contenidoVal,
-              unidad: unidad,
-              precio: precioVal,
-              precioB2b: b2b,
-              cantidadB2b: cantB2b,
-              stock: stock,
-              pedidoMinimo: pedidoMinimo,
-              predeterminada: predeterminada,
-              visible: visible,
-              molienda: molienda,
-            );
-          } else {
-            result = await ApiService.crearPresentacion(
-              productId: productId,
-              contenido: contenidoVal,
-              unidad: unidad,
-              precio: precioVal,
-              precioB2b: b2b,
-              cantidadB2b: cantB2b,
-              stock: stock,
-              pedidoMinimo: pedidoMinimo,
-              predeterminada: predeterminada,
-              visible: visible,
-              molienda: molienda,
-            );
-          }
-
-          if (result.isSuccess) {
-            _cargarPresentaciones();
-            if (mounted) _mostrarSnackBar(
-              esEdicion ? '✅ Presentación actualizada' : '✅ Presentación creada', Colors.green);
-          } else {
-            if (mounted) _mostrarSnackBar(result.error ?? 'Error', Colors.red);
-          }
-        }
-
-        return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          padding: EdgeInsets.only(
-            left: 20, right: 20, top: 20,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-          ),
-          child: SingleChildScrollView(child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Center(child: Container(width: 40, height: 4,
-                decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 16),
-              Row(children: [
-                Container(padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.indigo.shade50, shape: BoxShape.circle),
-                  child: Icon(Icons.layers_outlined, color: Colors.indigo.shade600, size: 20)),
-                const SizedBox(width: 10),
-                Text(esEdicion ? 'Editar presentación' : 'Nueva presentación',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-              ]),
-              const SizedBox(height: 20),
-
-              // Contenido + unidad
-              const Text('Contenido', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-              const SizedBox(height: 6),
-              Row(children: [
-                Expanded(child: TextField(
-                  controller: contenidoCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(
-                    hintText: 'Ej: 250',
-                    filled: true, fillColor: Colors.grey.shade50,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  ),
-                )),
-                const SizedBox(width: 10),
-                DropdownButton<String>(
-                  value: unidad,
-                  items: const [
-                    DropdownMenuItem(value: 'g', child: Text('g')),
-                    DropdownMenuItem(value: 'kg', child: Text('kg')),
-                    DropdownMenuItem(value: 'ml', child: Text('ml')),
-                    DropdownMenuItem(value: 'und', child: Text('und')),
-                  ],
-                  onChanged: (v) => ss(() => unidad = v ?? unidad),
-                ),
-              ]),
-              const SizedBox(height: 16),
-
-              // Precio + B2B
-              Row(children: [
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Precio *', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: precioCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(
-                      prefixText: 'S/ ',
-                      hintText: '0.00',
-                      filled: true, fillColor: Colors.green.shade50,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                    ),
-                  ),
-                ])),
-                const SizedBox(width: 12),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Precio B2B', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: precioB2bCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(
-                      prefixText: 'S/ ',
-                      hintText: 'Opcional',
-                      filled: true, fillColor: Colors.grey.shade50,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                    ),
-                  ),
-                ])),
-              ]),
-              const SizedBox(height: 12),
-
-              // Cantidad mínima para B2B
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('Cant. mínima para precio B2B', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: cantidadB2bCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    hintText: 'Ej: 6 (opcional)',
-                    filled: true, fillColor: Colors.blue.shade50,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  ),
-                ),
-              ]),
-              const SizedBox(height: 16),
-
-              // Pedido mínimo
-              const Text('Pedido mínimo', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-              const SizedBox(height: 6),
-              TextField(
-                controller: pedidoMinimoCtrl,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  hintText: '1',
-                  filled: true, fillColor: Colors.grey.shade50,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Stock (solo cuando el producto usa stock manual)
-              if (_stockManual) ...[
-                const Text('Stock', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: stockCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    hintText: '0',
-                    filled: true, fillColor: Colors.grey.shade50,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-
-              // Molienda
-              const Text('Tipo de molienda', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-              const SizedBox(height: 8),
-              Wrap(spacing: 8, children: [
-                for (final entry in {'ground': 'Molido', 'whole': 'Grano', 'green': 'Verde'}.entries)
-                  FilterChip(
-                    label: Text(entry.value),
-                    selected: molienda.contains(entry.key),
-                    onSelected: (v) => ss(() {
-                      if (v) {
-                        molienda.add(entry.key);
-                      } else {
-                        molienda.remove(entry.key);
-                      }
-                    }),
-                    selectedColor: Colors.brown.shade100,
-                    checkmarkColor: Colors.brown.shade700,
-                    labelStyle: TextStyle(
-                      color: molienda.contains(entry.key) ? Colors.brown.shade700 : Colors.grey.shade700,
-                    ),
-                  ),
-              ]),
-              const SizedBox(height: 16),
-
-              // Predeterminada
-              SwitchListTile(
-                value: predeterminada,
-                onChanged: (v) => ss(() => predeterminada = v),
-                title: const Text('Presentación predeterminada', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                subtitle: const Text('Se usará como precio base del producto', style: TextStyle(fontSize: 11)),
-                contentPadding: EdgeInsets.zero,
-                activeColor: Colors.indigo,
-              ),
-              SwitchListTile(
-                value: visible,
-                onChanged: (v) => ss(() => visible = v),
-                title: const Text('Visible en tienda', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                subtitle: const Text('Si la apagas, esta presentación no aparece en la tienda', style: TextStyle(fontSize: 11)),
-                contentPadding: EdgeInsets.zero,
-                activeColor: Colors.indigo,
-              ),
-              const SizedBox(height: 20),
-
-              SizedBox(width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: guardar,
-                  icon: const Icon(Icons.save_rounded),
-                  label: Text(esEdicion ? 'Guardar cambios' : 'Crear presentación',
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.indigo,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                )),
-            ],
-          )),
-        );
-      }),
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (ctx) => SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(FincasSpacing.screenH, 0, FincasSpacing.screenH, FincasSpacing.l + MediaQuery.of(ctx).viewInsets.bottom),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Nueva presentación', style: FincasText.screenTitle),
+            const SizedBox(height: FincasSpacing.l),
+            PresentacionForm(
+              stockManual: _stockManual,
+              simboloMoneda: _simboloMoneda,
+              onCancelar: () => Navigator.pop(ctx),
+              onGuardar: (d) async {
+                final error = await _guardarPresentacion(d);
+                if (error == null && ctx.mounted) Navigator.pop(ctx);
+                return error;
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 

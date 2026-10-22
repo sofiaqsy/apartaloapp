@@ -83,10 +83,10 @@ Presentacion _pres({double? b2b, int minimo = 1, bool pred = false, bool visible
       imageUrl: imagen,
     );
 
-Widget _tile(Presentacion p, {VoidCallback? editar, VoidCallback? eliminar, String simbolo = 'S/', bool manual = false, double scale = 1.0}) => MaterialApp(
+Widget _tile(Presentacion p, {VoidCallback? editar, VoidCallback? eliminar, String simbolo = 'S/', bool manual = false, double scale = 1.0, bool abierta = false, Widget? form}) => MaterialApp(
       theme: FincasTheme.light(),
       builder: (context, c) => MediaQuery(data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)), child: c!),
-      home: Scaffold(body: SingleChildScrollView(child: PresentacionTile(presentacion: p, onEditar: editar ?? () {}, onEliminar: eliminar ?? () {}, simboloMoneda: simbolo, stockManual: manual))),
+      home: Scaffold(body: SingleChildScrollView(child: PresentacionTile(presentacion: p, onAlternar: editar ?? () {}, onEliminar: eliminar ?? () {}, simboloMoneda: simbolo, stockManual: manual, abierta: abierta, formulario: form))),
     );
 
 void main() {
@@ -207,6 +207,16 @@ void main() {
     });
   });
 
+  group('first presentation opens by itself', () {
+    test('the first one of the list is the one that opens', () {
+      final lista = [_pres(), Presentacion(id: 'pr2', contenido: 1, unidad: 'kg', precio: 80, stock: 0, pedidoMinimo: 1, orden: 1, predeterminada: false, molienda: const [])];
+      expect(primeraPresentacionAbierta(lista), 'pr1');
+    });
+    test('nothing opens when there are no presentations', () {
+      expect(primeraPresentacionAbierta(const []), isNull);
+    });
+  });
+
   group('PresentacionTile', () {
     testWidgets('shows label, price, details and stock', (t) async {
       await t.pumpWidget(_tile(_pres(b2b: 22.5, minimo: 3, molienda: ['ground', 'whole'])));
@@ -246,6 +256,25 @@ void main() {
       await t.tap(find.text('Editar'));
       await t.tap(find.text('Eliminar'));
       expect((editar, eliminar), (1, 1));
+    });
+
+    testWidgets('open: the form replaces the summary, the footer offers Cerrar and Eliminar', (t) async {
+      var alternar = 0;
+      await t.pumpWidget(_tile(_pres(b2b: 22.5), abierta: true, form: const Text('FORMULARIO'), editar: () => alternar++));
+      expect(find.text('FORMULARIO'), findsOneWidget);
+      expect(find.text('S/ 25.00'), findsNothing); // the summary is not repeated above the form
+      expect(find.text('Editar'), findsNothing);
+      expect(find.text('Cerrar'), findsOneWidget);
+      expect(find.text('Eliminar'), findsOneWidget);
+      expect(find.text('Editando'), findsOneWidget);
+      await t.tap(find.text('Cerrar'));
+      expect(alternar, 1);
+    });
+
+    testWidgets('closed: no form is built even if one is provided', (t) async {
+      await t.pumpWidget(_tile(_pres(), form: const Text('FORMULARIO')));
+      expect(find.text('FORMULARIO'), findsNothing);
+      expect(find.text('Cerrar'), findsNothing);
     });
 
     testWidgets('fits 320pt at 2x text with every badge and detail', (t) async {

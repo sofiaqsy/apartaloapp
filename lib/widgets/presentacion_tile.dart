@@ -3,21 +3,31 @@ import '../services/api_service.dart';
 import '../theme/fincas_tokens.dart';
 import 'fincas_widgets.dart';
 
+/// La presentación que se muestra con su formulario abierto al entrar: la primera de la lista.
+String? primeraPresentacionAbierta(List<Presentacion> presentaciones) => presentaciones.isEmpty ? null : presentaciones.first.id;
+
 /// Una presentación del producto: contenido, precios, molienda y stock, con sus acciones.
+/// Cerrada muestra el resumen; abierta muestra su formulario ([formulario]) dentro de la misma tarjeta.
 /// El estado (predeterminada, oculta en tienda) se dice con texto, no solo con color.
 class PresentacionTile extends StatelessWidget {
   const PresentacionTile({
     super.key,
     required this.presentacion,
-    required this.onEditar,
+    required this.onAlternar,
     required this.onEliminar,
+    this.abierta = false,
+    this.formulario,
     this.simboloMoneda = 'S/',
     this.stockManual = false,
   });
 
   final Presentacion presentacion;
-  final VoidCallback onEditar;
+
+  /// Abre o cierra el formulario de esta presentación.
+  final VoidCallback onAlternar;
   final VoidCallback onEliminar;
+  final bool abierta;
+  final Widget? formulario;
   final String simboloMoneda;
   final bool stockManual;
 
@@ -36,16 +46,17 @@ class PresentacionTile extends StatelessWidget {
 
     final largeText = MediaQuery.textScalerOf(context).scale(16) / 16 > 1.3;
     final stock = Text(
-      stockManual ? 'Stock manual: ${p.stock}' : 'Stock: ${p.stock}',
+      abierta ? 'Editando' : (stockManual ? 'Stock manual: ${p.stock}' : 'Stock: ${p.stock}'),
       style: FincasText.metadata.copyWith(fontWeight: FontWeight.w600),
     );
     final acciones = <Widget>[
-      TextButton(onPressed: onEditar, child: const Text('Editar')),
+      if (!abierta) TextButton(onPressed: onAlternar, child: const Text('Editar')),
       TextButton(
         onPressed: onEliminar,
         style: TextButton.styleFrom(foregroundColor: FincasColors.error),
         child: const Text('Eliminar'),
       ),
+      if (abierta) TextButton(onPressed: onAlternar, child: const Text('Cerrar')),
     ];
 
     return Container(
@@ -84,16 +95,23 @@ class PresentacionTile extends StatelessWidget {
                           if (!p.visible) const FincasStatusBadge('Oculta en tienda', tone: FincasTone.warning),
                         ],
                       ),
-                      const SizedBox(height: FincasSpacing.xs),
-                      Text('$simboloMoneda ${p.precio.toStringAsFixed(2)}',
-                          style: FincasText.body.copyWith(fontWeight: FontWeight.w700)),
-                      if (detalles.isNotEmpty) Text(detalles.join(' · '), style: FincasText.metadata),
+                      if (!abierta) ...[
+                        const SizedBox(height: FincasSpacing.xs),
+                        Text('$simboloMoneda ${p.precio.toStringAsFixed(2)}',
+                            style: FincasText.body.copyWith(fontWeight: FontWeight.w700)),
+                        if (detalles.isNotEmpty) Text(detalles.join(' · '), style: FincasText.metadata),
+                      ],
                     ],
                   ),
                 ),
               ],
             ),
           ),
+          if (abierta && formulario != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(FincasSpacing.l, 0, FincasSpacing.l, FincasSpacing.m),
+              child: formulario,
+            ),
           const Divider(),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: FincasSpacing.s),
