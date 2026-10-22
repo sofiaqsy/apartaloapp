@@ -165,16 +165,15 @@ class FincasBusinessCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(name, maxLines: 3, overflow: TextOverflow.ellipsis, style: FincasText.sectionTitle),
-        if (city.isNotEmpty) ...[
+        // Location and role share one row; it wraps on narrow screens or large text.
+        if (city.isNotEmpty || roleLabel.isNotEmpty || isCurrent) ...[
           const SizedBox(height: FincasSpacing.xs),
-          Text(city, maxLines: 2, overflow: TextOverflow.ellipsis, style: FincasText.metadata),
-        ],
-        if (roleLabel.isNotEmpty || isCurrent) ...[
-          const SizedBox(height: FincasSpacing.s),
           Wrap(
             spacing: FincasSpacing.s,
             runSpacing: FincasSpacing.xs,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
+              if (city.isNotEmpty) Text(city, style: FincasText.metadata),
               if (roleLabel.isNotEmpty) FincasStatusBadge(roleLabel),
               if (isCurrent) const FincasStatusBadge('Abierto ahora', tone: FincasTone.success),
             ],

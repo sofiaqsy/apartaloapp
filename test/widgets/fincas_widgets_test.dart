@@ -66,8 +66,9 @@ void main() {
     await t.pumpWidget(_app(BusinessesScreen(session: session, onSelect: (c, b, s) async {}), scale: 2.0));
     expect(t.takeException(), isNull);
     expect(find.text('Tus negocios'), findsOneWidget);
-    await t.scrollUntilVisible(find.text('Registrar un negocio nuevo'), 300, scrollable: find.byType(Scrollable).first);
+    // The actions are pinned below the list, so they are visible without scrolling.
     expect(find.text('Unirme a otro negocio'), findsOneWidget);
+    expect(find.text('Registrar un negocio nuevo'), findsOneWidget);
   });
 
   testWidgets('"Tus negocios": entering a business calls onSelect with that business', (t) async {
@@ -83,5 +84,34 @@ void main() {
   testWidgets('"Tus negocios": empty account shows the empty state, not a blank screen', (t) async {
     await t.pumpWidget(_app(BusinessesScreen(session: AuthSession(status: 'active'), onSelect: (c, b, s) async {})));
     expect(find.text('Aún no tienes negocios'), findsOneWidget);
+    // With nothing to enter yet, joining is the main action.
+    expect(find.widgetWithText(ElevatedButton, 'Unirme a un negocio'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Registrar un negocio nuevo'), findsOneWidget);
+  });
+
+  testWidgets('"Tus negocios": many businesses scroll while the actions stay on screen', (t) async {
+    await _small(t);
+    final many = AuthSession(status: 'active', fullName: 'Keyla', businesses: [
+      for (var i = 0; i < 12; i++) {'businessId': 'BIZ-$i', 'name': 'Negocio número $i', 'city': 'Lima', 'role': 'staff'},
+    ]);
+    await t.pumpWidget(_app(BusinessesScreen(session: many, onSelect: (c, b, s) async {})));
+    expect(t.takeException(), isNull);
+    expect(find.text('Negocio número 11'), findsNothing); // below the fold, reachable by scrolling
+    expect(find.text('Unirme a otro negocio'), findsOneWidget);
+    await t.scrollUntilVisible(find.text('Negocio número 11'), 300, scrollable: find.byType(Scrollable).first);
+    expect(find.text('Negocio número 11'), findsOneWidget);
+    expect(find.text('Unirme a otro negocio'), findsOneWidget);
+  });
+
+  testWidgets('"Tus negocios": the first business is visible with room to spare on a small phone', (t) async {
+    await _small(t);
+    final s = AuthSession(status: 'active', fullName: 'Keyla', businesses: [
+      {'businessId': 'BIZ-1', 'name': 'keyla', 'city': 'lima', 'role': 'owner'},
+    ]);
+    await t.pumpWidget(_app(BusinessesScreen(session: s, onSelect: (c, b, s) async {})));
+    final card = t.getRect(find.byType(FincasBusinessCard));
+    final actions = t.getRect(find.text('Unirme a otro negocio'));
+    expect(card.height, lessThan(130)); // compact: name, then location and role on one row
+    expect(actions.bottom, greaterThan(500)); // actions sit low on a 640pt screen, near the thumb
   });
 }

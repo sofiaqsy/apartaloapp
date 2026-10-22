@@ -103,75 +103,99 @@ class _BusinessesScreenState extends State<BusinessesScreen> {
       ),
       body: SafeArea(
         top: false,
-        child: RefreshIndicator(
-          color: FincasColors.ink,
-          onRefresh: _refresh,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(FincasSpacing.screenH, FincasSpacing.s, FincasSpacing.screenH, FincasSpacing.xxl),
-            children: [
-              if (_loading) const Padding(padding: EdgeInsets.only(bottom: FincasSpacing.m), child: LinearProgressIndicator(minHeight: 3)),
-              // Header: greeting first, small; then the screen title.
-              if (_session.fullName.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: FincasSpacing.xs),
-                  child: Text('Hola, ${_session.fullName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: FincasText.bodySecondary),
-                ),
-              Semantics(header: true, child: const Text('Tus negocios', style: FincasText.screenTitle)),
-              const SizedBox(height: FincasSpacing.xl),
-              if (_error != null) ...[
-                FincasMessageState(title: 'No se pudo actualizar', message: _error!, tone: FincasTone.error),
-                FincasTextButton(label: 'Reintentar', onPressed: _loading ? null : _refresh),
-                const SizedBox(height: FincasSpacing.l),
-              ],
-              if (businesses.isEmpty && pending.isEmpty && _error == null)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: FincasSpacing.xl),
-                  child: FincasMessageState(
-                    title: 'Aún no tienes negocios',
-                    message: 'Únete a uno con un código de invitación o registra el tuyo.',
-                  ),
-                ),
-              ...businesses.map((b) => Padding(
-                    padding: const EdgeInsets.only(bottom: FincasSpacing.m),
-                    child: FincasBusinessCard(
-                      name: (b['name'] ?? '').toString(),
-                      city: (b['city'] ?? '').toString(),
-                      roleLabel: _roleLabel((b['role'] ?? '').toString()),
-                      isCurrent: b['businessId'] == widget.currentBusinessId,
-                      onTap: _loading ? null : () => widget.onSelect(context, b, _session),
-                    ),
-                  )),
-              if (pending.isNotEmpty) ...[
-                const SizedBox(height: FincasSpacing.l),
-                const FincasSectionHeader('En revisión'),
-                ...pending.map((p) {
-                  final isBusiness = p['kind'] == 'business';
-                  final name = (p['businessName'] ?? '').toString();
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: FincasSpacing.m),
-                    child: FincasCard(
-                      tone: FincasTone.warning,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(name.isNotEmpty ? name : 'Solicitud para unirte a un negocio',
-                              maxLines: 2, overflow: TextOverflow.ellipsis,
-                              style: FincasText.sectionTitle.copyWith(color: FincasColors.warning)),
-                          const SizedBox(height: FincasSpacing.xs),
-                          Text(isBusiness ? 'Registro de negocio nuevo. Lo revisa el administrador.' : 'Falta que el dueño apruebe tu acceso.',
-                              style: FincasText.metadata.copyWith(color: FincasColors.warning)),
-                        ],
+        child: Column(
+          children: [
+            Expanded(
+              child: RefreshIndicator(
+                color: FincasColors.ink,
+                onRefresh: _refresh,
+                child: ListView(
+                  // Always scrollable so pull-to-refresh works even with a single business.
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(FincasSpacing.screenH, FincasSpacing.s, FincasSpacing.screenH, FincasSpacing.l),
+                  children: [
+                    if (_loading) const Padding(padding: EdgeInsets.only(bottom: FincasSpacing.s), child: LinearProgressIndicator(minHeight: 3)),
+                    // Header: small greeting, then the title, kept close to the list.
+                    if (_session.fullName.isNotEmpty)
+                      Text('Hola, ${_session.fullName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: FincasText.bodySecondary),
+                    Semantics(header: true, child: const Text('Tus negocios', style: FincasText.screenTitle)),
+                    const SizedBox(height: FincasSpacing.l),
+                    if (_error != null) ...[
+                      FincasMessageState(title: 'No se pudo actualizar', message: _error!, tone: FincasTone.error),
+                      FincasTextButton(label: 'Reintentar', onPressed: _loading ? null : _refresh),
+                      const SizedBox(height: FincasSpacing.m),
+                    ],
+                    if (businesses.isEmpty && pending.isEmpty && _error == null)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: FincasSpacing.xl),
+                        child: FincasMessageState(
+                          title: 'Aún no tienes negocios',
+                          message: 'Únete a uno con el código de invitación que te dio el dueño, o registra el tuyo.',
+                        ),
                       ),
-                    ),
-                  );
-                }),
-              ],
-              const SizedBox(height: FincasSpacing.section),
-              FincasSecondaryButton(label: 'Unirme a otro negocio', onPressed: _loading ? null : _joinWithCode),
-              const SizedBox(height: FincasSpacing.s),
-              FincasTextButton(label: 'Registrar un negocio nuevo', onPressed: _loading ? null : _registerBusiness),
-            ],
-          ),
+                    ...businesses.map((b) => Padding(
+                          padding: const EdgeInsets.only(bottom: FincasSpacing.s),
+                          child: FincasBusinessCard(
+                            name: (b['name'] ?? '').toString(),
+                            city: (b['city'] ?? '').toString(),
+                            roleLabel: _roleLabel((b['role'] ?? '').toString()),
+                            isCurrent: b['businessId'] == widget.currentBusinessId,
+                            onTap: _loading ? null : () => widget.onSelect(context, b, _session),
+                          ),
+                        )),
+                    if (pending.isNotEmpty) ...[
+                      const SizedBox(height: FincasSpacing.m),
+                      const FincasSectionHeader('En revisión'),
+                      ...pending.map((p) {
+                        final isBusiness = p['kind'] == 'business';
+                        final name = (p['businessName'] ?? '').toString();
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: FincasSpacing.s),
+                          child: FincasCard(
+                            tone: FincasTone.warning,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(name.isNotEmpty ? name : 'Solicitud para unirte a un negocio',
+                                    maxLines: 2, overflow: TextOverflow.ellipsis,
+                                    style: FincasText.sectionTitle.copyWith(color: FincasColors.warning)),
+                                const SizedBox(height: FincasSpacing.xs),
+                                Text(isBusiness ? 'Registro de negocio nuevo. Lo revisa el administrador.' : 'Falta que el dueño apruebe tu acceso.',
+                                    style: FincasText.metadata.copyWith(color: FincasColors.warning)),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            // Actions live at the bottom, within thumb reach, and stay visible however long the list is.
+            // With no business yet, joining one becomes the main action.
+            Container(
+              padding: const EdgeInsets.fromLTRB(FincasSpacing.screenH, FincasSpacing.m, FincasSpacing.screenH, FincasSpacing.s),
+              decoration: const BoxDecoration(
+                color: FincasColors.background,
+                border: Border(top: BorderSide(color: FincasColors.divider)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: businesses.isEmpty
+                    ? [
+                        FincasPrimaryButton(label: 'Unirme a un negocio', onPressed: _loading ? null : _joinWithCode),
+                        const SizedBox(height: FincasSpacing.s),
+                        FincasSecondaryButton(label: 'Registrar un negocio nuevo', onPressed: _loading ? null : _registerBusiness),
+                      ]
+                    : [
+                        FincasSecondaryButton(label: 'Unirme a otro negocio', onPressed: _loading ? null : _joinWithCode),
+                        FincasTextButton(label: 'Registrar un negocio nuevo', onPressed: _loading ? null : _registerBusiness),
+                      ],
+              ),
+            ),
+          ],
         ),
       ),
     );
