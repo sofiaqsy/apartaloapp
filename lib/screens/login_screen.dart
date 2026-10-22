@@ -624,9 +624,10 @@ class _LoginScreenState extends State<LoginScreen> {
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: const EdgeInsets.all(24.0),
               child: ConstrainedBox(
-                // Fills the screen when there is room (Spacers center the content) and scrolls when
+                // Always as wide as the screen so narrow content (a loader, a message) stays centered, and as tall
+                // as the screen when there is room (Spacers center the content); it scrolls when
                 // the form or the keyboard needs more height.
-                constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
+                constraints: BoxConstraints(minWidth: constraints.maxWidth - 48, minHeight: constraints.maxHeight - 48),
                 child: IntrinsicHeight(
                   child: Column(
                     children: [
