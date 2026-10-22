@@ -304,7 +304,7 @@ class _MainScreenState extends State<MainScreen> {
 
   Widget _buildNavItem(int index, IconData icon, String label) {
     final isSelected = _currentIndex == index;
-    final color = isSelected ? FincasColors.accent : FincasColors.textSecondary;
+    final color = isSelected ? FincasColors.ink : FincasColors.textSecondary;
 
     return Semantics(
       button: true,
@@ -319,7 +319,7 @@ class _MainScreenState extends State<MainScreen> {
           constraints: const BoxConstraints(minWidth: 64, minHeight: FincasSpacing.minTouch),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
-            color: isSelected ? FincasColors.accentBg : Colors.transparent,
+            color: isSelected ? FincasColors.sand : Colors.transparent,
             borderRadius: BorderRadius.circular(FincasRadii.medium),
           ),
           child: Column(

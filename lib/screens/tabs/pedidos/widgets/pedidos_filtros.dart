@@ -143,7 +143,7 @@ class PedidosSubFiltroChip extends StatelessWidget {
   }
 }
 
-/// Resumen del historial: tres celdas con tinte propio (neutro, salvia, terracota), sin gradientes.
+/// Resumen del historial: vendido, cobrado y por cobrar en una sola franja, sin gradientes.
 class PedidosResumen extends StatelessWidget {
   const PedidosResumen({super.key, required this.vendido, required this.cobrado, required this.porCobrar, this.hayAlerta = false});
   final double vendido;
@@ -151,56 +151,104 @@ class PedidosResumen extends StatelessWidget {
   final double porCobrar;
   final bool hayAlerta;
 
-  Widget _celda(String label, double valor, FincasTone tone, {bool alerta = false}) {
-    final fg = tone == FincasTone.neutral ? FincasColors.textPrimary : _toneFg(tone);
+  Widget _stat(String label, double valor, Color color, {bool alerta = false}) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: FincasSpacing.m - 2, horizontal: FincasSpacing.s),
-        decoration: BoxDecoration(color: _toneBg(tone), borderRadius: BorderRadius.circular(FincasRadii.medium)),
-        child: Column(
-          children: [
-            Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: FincasText.caption.copyWith(color: FincasColors.textSecondary)),
-            const SizedBox(height: 2),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Flexible(
-                  child: Text(
-                    _soles(valor),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: FincasText.sectionTitle.copyWith(fontSize: 16, fontWeight: FontWeight.w700, color: fg),
-                  ),
+      child: Column(
+        children: [
+          Text(label, style: FincasText.caption),
+          const SizedBox(height: 2),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Flexible(
+                child: Text(
+                  _soles(valor),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: FincasText.sectionTitle.copyWith(fontSize: 16, fontWeight: FontWeight.w700, color: color),
                 ),
-                if (alerta) ...[
-                  const SizedBox(width: FincasSpacing.xs),
-                  Icon(Icons.warning_amber_rounded, size: 16, color: fg),
-                ],
+              ),
+              if (alerta) ...[
+                const SizedBox(width: FincasSpacing.xs),
+                Icon(Icons.warning_amber_rounded, size: 16, color: color),
               ],
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    const divider = SizedBox(height: 32, child: VerticalDivider(width: 1, color: FincasColors.divider));
     return Semantics(
       label: 'Resumen. Vendido ${_soles(vendido)}, cobrado ${_soles(cobrado)}, por cobrar ${_soles(porCobrar)}',
       excludeSemantics: true,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(FincasSpacing.l, FincasSpacing.m, FincasSpacing.l, 0),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(FincasSpacing.l, FincasSpacing.s, FincasSpacing.l, 0),
+        padding: const EdgeInsets.symmetric(vertical: FincasSpacing.m),
+        decoration: BoxDecoration(
+          color: FincasColors.surface,
+          borderRadius: BorderRadius.circular(FincasRadii.large),
+          border: Border.all(color: FincasColors.border),
+        ),
         child: Row(
           children: [
-            _celda('Vendido', vendido, FincasTone.neutral),
-            const SizedBox(width: FincasSpacing.s),
-            _celda('Cobrado', cobrado, FincasTone.success),
-            const SizedBox(width: FincasSpacing.s),
-            _celda('Por cobrar', porCobrar, porCobrar > 0 ? FincasTone.error : FincasTone.neutral, alerta: hayAlerta),
+            _stat('Vendido', vendido, FincasColors.textPrimary),
+            divider,
+            _stat('Cobrado', cobrado, FincasColors.success),
+            divider,
+            _stat('Por cobrar', porCobrar, FincasColors.error, alerta: hayAlerta),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Acciones de creación de la pestaña: "Nuevo pedido" es la principal (caramelo) y "Pre-venta" es secundaria
+/// (arena, más ligera). Las dos están siempre visibles; se acomodan en dos filas si el texto es grande.
+class PedidosCrearBotones extends StatelessWidget {
+  const PedidosCrearBotones({super.key, required this.onNuevo, required this.onPreventa});
+  final VoidCallback onNuevo;
+  final VoidCallback onPreventa;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: FincasSpacing.s,
+      runSpacing: FincasSpacing.s,
+      children: [
+        Semantics(
+          button: true,
+          label: 'Pre-venta',
+          excludeSemantics: true,
+          child: Material(
+            color: FincasColors.sand,
+            shape: const StadiumBorder(),
+            child: InkWell(
+              onTap: onPreventa,
+              customBorder: const StadiumBorder(),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: FincasSpacing.minTouch),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: FincasSpacing.xl - 2),
+                  child: Center(widthFactor: 1, child: Text('Pre-venta', style: FincasText.button.copyWith(color: FincasColors.textPrimary))),
+                ),
+              ),
+            ),
+          ),
+        ),
+        FloatingActionButton.extended(
+          heroTag: 'fab_pedidos',
+          onPressed: onNuevo,
+          shape: const StadiumBorder(),
+          label: const Text('Nuevo pedido'),
+        ),
+      ],
     );
   }
 }

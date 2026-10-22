@@ -33,20 +33,6 @@ class PedidoCard extends StatelessWidget {
     }
   }
 
-  static Color _toneFg(FincasTone t) => switch (t) {
-        FincasTone.success => FincasColors.success,
-        FincasTone.warning => FincasColors.warning,
-        FincasTone.error => FincasColors.error,
-        FincasTone.neutral => FincasColors.espresso,
-      };
-
-  static Color _toneBg(FincasTone t) => switch (t) {
-        FincasTone.success => FincasColors.successBg,
-        FincasTone.warning => FincasColors.warningBg,
-        FincasTone.error => FincasColors.errorBg,
-        FincasTone.neutral => FincasColors.sand,
-      };
-
   static FincasTone _pagoTone(String estadoPago) {
     switch (estadoPago) {
       case EstadoPagoHelper.PAGADO:
@@ -108,15 +94,15 @@ class PedidoCard extends StatelessWidget {
 
     final largeText = MediaQuery.textScalerOf(context).scale(16) / 16 > 1.3;
 
-    // Inicial del cliente con el tinte de su estado (caramelo, salvia, terracota); el badge lo dice con texto.
+    // Inicial del cliente sobre arena: neutro, el estado va en el badge.
     final avatar = Container(
       width: 40,
       height: 40,
-      decoration: BoxDecoration(color: _toneBg(estadoTone(estado)), shape: BoxShape.circle),
+      decoration: const BoxDecoration(color: FincasColors.sand, shape: BoxShape.circle),
       alignment: Alignment.center,
       child: Text(
         cliente.isNotEmpty ? cliente[0].toUpperCase() : '?',
-        style: FincasText.sectionTitle.copyWith(color: _toneFg(estadoTone(estado))),
+        style: FincasText.sectionTitle.copyWith(color: FincasColors.espresso),
       ),
     );
 
@@ -164,14 +150,11 @@ class PedidoCard extends StatelessWidget {
         child: Material(
           color: FincasColors.surface,
           shape: RoundedRectangleBorder(borderRadius: radius, side: BorderSide(color: borde, width: mostrarAlerta ? 1.5 : 1)),
-          clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: onTap,
             borderRadius: radius,
-            child: Stack(children: [
-              Positioned(left: 0, top: 0, bottom: 0, child: Container(width: 4, color: _toneFg(estadoTone(estado)))),
-              Padding(
-              padding: const EdgeInsets.fromLTRB(FincasSpacing.l + 2, FincasSpacing.m, FincasSpacing.m + 2, FincasSpacing.m),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: FincasSpacing.m + 2, vertical: FincasSpacing.m),
               child: largeText
                   ? Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -193,7 +176,6 @@ class PedidoCard extends StatelessWidget {
                       ],
                     ),
             ),
-            ]),
           ),
         ),
       ),

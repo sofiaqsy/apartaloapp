@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:apartalo_app/screens/tabs/pedidos/widgets/nuevo_pedido_sheet.dart';
 import 'package:apartalo_app/screens/tabs/pedidos/widgets/pedido_card.dart';
 import 'package:apartalo_app/screens/tabs/pedidos/widgets/pedidos_filtros.dart';
 import 'package:apartalo_app/theme/fincas_theme.dart';
@@ -144,71 +143,61 @@ void main() {
     expect(find.text('No hay pedidos pendientes'), findsOneWidget);
   });
 
-  group('colors carry meaning', () {
-    testWidgets('primary filters: pending is caramel and history is sage when active', (t) async {
+  group('color is reserved for two buttons', () {
+    testWidgets('Pendientes is caramel; Historial stays neutral (ink when active, sand when not)', (t) async {
+      Color fillOf(String label) => t.widget<Material>(find.ancestor(of: find.text(label), matching: find.byType(Material)).first).color!;
       await t.pumpWidget(_app(Row(children: [
         Expanded(child: PedidosFiltroChip(label: 'Pendientes', count: 2, tone: FincasTone.warning, selected: true, onTap: () {})),
-        Expanded(child: PedidosFiltroChip(label: 'Historial', count: 5, tone: FincasTone.success, selected: false, onTap: () {})),
+        Expanded(child: PedidosFiltroChip(label: 'Historial', count: 5, selected: false, onTap: () {})),
       ])));
-      Color fillOf(String label) => t.widget<Material>(find.ancestor(of: find.text(label), matching: find.byType(Material)).first).color!;
-      expect(fillOf('Pendientes'), FincasColors.caramel); // active: solid
-      expect(fillOf('Historial'), FincasColors.sageBg); // inactive: soft tint
+      expect(fillOf('Pendientes'), FincasColors.caramel); // active: solid caramel
+      expect(fillOf('Historial'), FincasColors.sand); // inactive and neutral: no green
+      await t.pumpWidget(_app(Row(children: [
+        Expanded(child: PedidosFiltroChip(label: 'Pendientes', count: 2, tone: FincasTone.warning, selected: false, onTap: () {})),
+        Expanded(child: PedidosFiltroChip(label: 'Historial', count: 5, selected: true, onTap: () {})),
+      ])));
+      expect(fillOf('Pendientes'), FincasColors.caramelBg);
+      expect(fillOf('Historial'), FincasColors.ink); // active history is the main (ink) color
     });
 
-    testWidgets('order card avatar takes the tint of its status', (t) async {
+    testWidgets('order card avatar is neutral: the status is said by its badge, not by a colored strip', (t) async {
       await t.pumpWidget(_app(Column(children: [
         PedidoCard(pedido: _pedido(estado: 'PENDIENTE'), onTap: () {}),
         PedidoCard(pedido: _pedido(estado: 'COMPLETADO'), onTap: () {}),
-        PedidoCard(pedido: _pedido(estado: 'CANCELADO'), onTap: () {}),
       ])));
-      final colors = t.widgetList<Container>(find.byType(Container)).map((c) => c.decoration).whereType<BoxDecoration>().map((d) => d.color).toSet();
-      expect(colors, containsAll([FincasColors.caramelBg, FincasColors.sageBg, FincasColors.errorBg]));
-    });
-
-    testWidgets('summary: collected is sage, owed is terracotta only when there is something owed', (t) async {
-      await t.pumpWidget(_app(const PedidosResumen(vendido: 100, cobrado: 60, porCobrar: 40)));
-      final colors = t.widgetList<Container>(find.byType(Container)).map((c) => c.decoration).whereType<BoxDecoration>().map((d) => d.color).toSet();
-      expect(colors, containsAll([FincasColors.sageBg, FincasColors.errorBg]));
-      await t.pumpWidget(_app(const PedidosResumen(vendido: 100, cobrado: 100, porCobrar: 0)));
-      final colors2 = t.widgetList<Container>(find.byType(Container)).map((c) => c.decoration).whereType<BoxDecoration>().map((d) => d.color).toSet();
-      expect(colors2.contains(FincasColors.errorBg), isFalse);
+      final avatars = t.widgetList<Container>(find.byType(Container)).map((c) => c.decoration).whereType<BoxDecoration>().where((d) => d.shape == BoxShape.circle).map((d) => d.color).toSet();
+      expect(avatars, {FincasColors.sand});
     });
   });
 
-  group('single create action', () {
-    testWidgets('the chooser offers Pedido and Pre-venta and returns the pick', (t) async {
-      NuevoPedidoTipo? picked;
+  group('both creation buttons stay visible', () {
+    testWidgets('Nuevo pedido (main) and Pre-venta (secondary) are both shown and both work', (t) async {
+      var nuevo = 0, pre = 0;
       await t.pumpWidget(MaterialApp(
         theme: FincasTheme.light(),
-        home: Builder(builder: (context) => Scaffold(body: TextButton(onPressed: () async => picked = await showNuevoPedidoSheet(context), child: const Text('open')))),
+        home: Scaffold(floatingActionButton: PedidosCrearBotones(onNuevo: () => nuevo++, onPreventa: () => pre++)),
       ));
-      await t.tap(find.text('open'));
-      await t.pumpAndSettle();
-      expect(find.text('¿Qué quieres crear?'), findsOneWidget);
-      expect(find.text('Pedido'), findsOneWidget);
+      expect(find.text('Nuevo pedido'), findsOneWidget);
       expect(find.text('Pre-venta'), findsOneWidget);
       await t.tap(find.text('Pre-venta'));
-      await t.pumpAndSettle();
-      expect(picked, NuevoPedidoTipo.preventa);
-
-      await t.tap(find.text('open'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('Pedido'));
-      await t.pumpAndSettle();
-      expect(picked, NuevoPedidoTipo.pedido);
+      await t.tap(find.text('Nuevo pedido'));
+      expect((nuevo, pre), (1, 1));
+      // the main one is the caramel accent, the secondary one is the light sand button
+      final main = t.widget<FloatingActionButton>(find.byType(FloatingActionButton));
+      expect(main.backgroundColor ?? FincasTheme.light().floatingActionButtonTheme.backgroundColor, FincasColors.caramel);
+      expect(t.widget<Material>(find.ancestor(of: find.text('Pre-venta'), matching: find.byType(Material)).first).color, FincasColors.sand);
     });
 
-    testWidgets('the chooser can be dismissed without creating anything', (t) async {
-      NuevoPedidoTipo? picked = NuevoPedidoTipo.pedido;
+    testWidgets('on a 320pt screen at 2x text both buttons fit (they wrap to two rows)', (t) async {
+      await _small(t);
       await t.pumpWidget(MaterialApp(
         theme: FincasTheme.light(),
-        home: Builder(builder: (context) => Scaffold(body: TextButton(onPressed: () async => picked = await showNuevoPedidoSheet(context), child: const Text('open')))),
+        builder: (context, c) => MediaQuery(data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(2.0)), child: c!),
+        home: Scaffold(floatingActionButton: Padding(padding: const EdgeInsets.only(left: 16), child: PedidosCrearBotones(onNuevo: () {}, onPreventa: () {}))),
       ));
-      await t.tap(find.text('open'));
-      await t.pumpAndSettle();
-      await t.tapAt(const Offset(10, 10)); // the barrier
-      await t.pumpAndSettle();
-      expect(picked, isNull);
+      expect(t.takeException(), isNull);
+      expect(find.text('Pre-venta'), findsOneWidget);
+      expect(find.text('Nuevo pedido'), findsOneWidget);
     });
   });
 }

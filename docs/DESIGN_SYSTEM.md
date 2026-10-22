@@ -33,10 +33,10 @@ Contrast (WCAG): ink on ivory 14.9:1, white on ink 16.1:1, secondary 6.7:1, mute
 was 4.3:1 and was replaced), espresso 9.3:1, error 6.0:1, success 5.9:1, warning on its tint 6.0:1.
 `test/theme/fincas_tokens_test.dart` fails the build if any text pair drops below 4.5:1 or an outline below 3:1.
 
-Warm accents: three colors, one meaning each (caramel = pending or act now, sage = done or paid, terracotta = owed
-or blocked). They bring life to lists, filters and navigation without leaving the logo's warmth. Use them as a
-solid fill with white text, or as the soft tint with the same color as text; never decoratively. One main action
-per screen: the floating button (caramel) is the only one on the Pedidos tab, and it opens a chooser for the type.
+Warm accents: caramel, sage and terracotta exist as status colors (badges and notices: pending, done, owed), each with
+one meaning. On the Pedidos tab color is deliberately rare: only the **Pendientes** filter and the **Nuevo pedido**
+button use the caramel accent. Everything else stays ink, ivory and sand. Do not color a control without a reason.
+Both creation actions stay visible: "Nuevo pedido" is the main one, "Pre-venta" is a lighter secondary button.
 
 ## Typography (`FincasText`)
 Two roles. **Serif (Fraunces, bundled in `assets/fonts`, SIL OFL)** only for brand moments: the wordmark and the
