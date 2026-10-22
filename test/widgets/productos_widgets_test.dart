@@ -130,28 +130,19 @@ void main() {
   });
 }
 
-// New product sheet: opens straight into manual entry; scan and photo stay one tap away.
+// New product sheet: opens straight into manual entry, with nothing else to choose.
 void nuevoProductoSheetTests() {
   late List<String> creados;
-  late int escanear;
-  late int foto;
 
   Future<void> open(WidgetTester t, {Future<String?> Function(String)? onCrear}) async {
     creados = [];
-    escanear = 0;
-    foto = 0;
     await t.pumpWidget(MaterialApp(
       theme: FincasTheme.light(),
       home: Builder(
         builder: (context) => Scaffold(
           body: TextButton(
             onPressed: () async {
-              lastResult = await showNuevoProductoSheet(
-                context,
-                onCrear: onCrear ?? (n) async { creados.add(n); return null; },
-                onEscanear: () => escanear++,
-                onFoto: () => foto++,
-              );
+              lastResult = await showNuevoProductoSheet(context, onCrear: onCrear ?? (n) async { creados.add(n); return null; });
             },
             child: const Text('abrir'),
           ),
@@ -162,15 +153,15 @@ void nuevoProductoSheetTests() {
     await t.pumpAndSettle();
   }
 
-  testWidgets('opens directly on the manual form, with scan and photo as secondary actions', (t) async {
+  testWidgets('opens directly on the manual form: name, create and cancel only', (t) async {
     await open(t);
     expect(find.text('Nuevo producto'), findsOneWidget);
     expect(find.byType(TextField), findsOneWidget);
     expect(find.text('Crear y configurar'), findsOneWidget);
-    expect(find.text('Escanear código'), findsOneWidget);
-    expect(find.text('Tomar foto'), findsOneWidget);
     expect(find.text('Cancelar'), findsOneWidget);
-    expect(find.text('Elige cómo quieres agregar el producto'), findsNothing); // no extra step first
+    expect(find.text('Escanear código'), findsNothing);
+    expect(find.text('Tomar foto'), findsNothing);
+    expect(find.text('O agrégalo con'), findsNothing);
   });
 
   testWidgets('an empty name shows an inline message and does not call the server', (t) async {
@@ -191,17 +182,15 @@ void nuevoProductoSheetTests() {
     expect(find.text('Nuevo producto'), findsNothing);
   });
 
-  testWidgets('while creating there is a loader and nothing else can be tapped', (t) async {
+  testWidgets('while creating there is a loader and cancel cannot be tapped', (t) async {
     final done = Completer<String?>();
     await open(t, onCrear: (n) => done.future);
     await t.enterText(find.byType(TextField), 'Café');
     await t.tap(find.text('Crear y configurar'));
     await t.pump();
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    await t.tap(find.text('Escanear código'), warnIfMissed: false);
     await t.tap(find.text('Cancelar'), warnIfMissed: false);
     await t.pump();
-    expect(escanear, 0);
     expect(find.text('Nuevo producto'), findsOneWidget); // still open
     done.complete(null);
     await t.pumpAndSettle();
@@ -216,26 +205,6 @@ void nuevoProductoSheetTests() {
     expect(find.text('Ya existe un producto con ese nombre'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(find.text('Nuevo producto'), findsOneWidget);
-  });
-
-  testWidgets('Escanear código: spinner at once, then the sheet closes and the scanner opens once', (t) async {
-    await open(t);
-    await t.tap(find.text('Escanear código'));
-    await t.pump();
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    expect(escanear, 0);
-    await t.pumpAndSettle();
-    expect((escanear, foto), (1, 0));
-    expect(lastResult, false);
-  });
-
-  testWidgets('Tomar foto: spinner at once, then the camera flow opens once', (t) async {
-    await open(t);
-    await t.tap(find.text('Tomar foto'));
-    await t.pump();
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    await t.pumpAndSettle();
-    expect((escanear, foto), (0, 1));
   });
 
   testWidgets('Cancelar closes without creating anything', (t) async {
@@ -257,7 +226,7 @@ void nuevoProductoSheetTests() {
       home: Builder(
         builder: (context) => Scaffold(
           body: TextButton(
-            onPressed: () => showNuevoProductoSheet(context, onCrear: (n) async => null, onEscanear: () {}, onFoto: () {}),
+            onPressed: () => showNuevoProductoSheet(context, onCrear: (n) async => null),
             child: const Text('abrir'),
           ),
         ),

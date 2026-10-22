@@ -742,8 +742,6 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
         }
         return result.error ?? 'Error al guardar';
       },
-      onEscanear: _abrirEscanerCamara,
-      onFoto: _tomarFotoYCrearProducto,
     ).then((creado) {
       _modalAbierto = false;
       if (creado == true && nuevoProducto != null && mounted) {
