@@ -35,13 +35,14 @@ class FincasColors {
   static const focus = espresso;
 
   // Warm accents, one meaning each. They give the interface life without leaving the logo's warmth.
-  //   caramel = pending / act now / create     sage = done / paid     terracotta = owed / blocked
+  //   caramel = pending status     sage = done / paid status     terracotta = owed / blocked status
   static const caramel = Color(0xFF9A4F18);
   static const caramelBg = Color(0xFFF8E7D4);
   static const sage = Color(0xFF4E6B38);
   static const sageBg = Color(0xFFE4ECDA);
-  static const accent = caramel; // main create action (floating button), active navigation
-  static const accentBg = caramelBg;
+  // The interface accent: espresso brown. The Pendientes filter and the Nuevo pedido button share it.
+  static const accent = espresso;
+  static const accentBg = Color(0xFFEDE4E0); // soft tint of the accent (inactive filter)
 
   // Status (foreground / tonal background pairs, each >= 4.5:1)
   static const success = sage;

@@ -144,19 +144,32 @@ void main() {
   });
 
   group('color is reserved for two buttons', () {
-    testWidgets('Pendientes is caramel; Historial stays neutral (ink when active, sand when not)', (t) async {
+    testWidgets('Pendientes (active) and Nuevo pedido are exactly the same color', (t) async {
+      await t.pumpWidget(MaterialApp(
+        theme: FincasTheme.light(),
+        home: Scaffold(
+          body: PedidosFiltroChip(label: 'Pendientes', count: 1, accent: true, selected: true, onTap: () {}),
+          floatingActionButton: PedidosCrearBotones(onNuevo: () {}, onPreventa: () {}),
+        ),
+      ));
+      final chip = t.widget<Material>(find.ancestor(of: find.text('Pendientes'), matching: find.byType(Material)).first).color;
+      final fab = t.widget<FloatingActionButton>(find.byType(FloatingActionButton)).backgroundColor ?? FincasTheme.light().floatingActionButtonTheme.backgroundColor;
+      expect(chip, fab);
+    });
+
+    testWidgets('Pendientes uses the accent (espresso, same as Nuevo pedido); Historial stays neutral (ink when active, sand when not)', (t) async {
       Color fillOf(String label) => t.widget<Material>(find.ancestor(of: find.text(label), matching: find.byType(Material)).first).color!;
       await t.pumpWidget(_app(Row(children: [
-        Expanded(child: PedidosFiltroChip(label: 'Pendientes', count: 2, tone: FincasTone.warning, selected: true, onTap: () {})),
+        Expanded(child: PedidosFiltroChip(label: 'Pendientes', count: 2, accent: true, selected: true, onTap: () {})),
         Expanded(child: PedidosFiltroChip(label: 'Historial', count: 5, selected: false, onTap: () {})),
       ])));
-      expect(fillOf('Pendientes'), FincasColors.caramel); // active: solid caramel
+      expect(fillOf('Pendientes'), FincasColors.accent); // active: solid accent
       expect(fillOf('Historial'), FincasColors.sand); // inactive and neutral: no green
       await t.pumpWidget(_app(Row(children: [
-        Expanded(child: PedidosFiltroChip(label: 'Pendientes', count: 2, tone: FincasTone.warning, selected: false, onTap: () {})),
+        Expanded(child: PedidosFiltroChip(label: 'Pendientes', count: 2, accent: true, selected: false, onTap: () {})),
         Expanded(child: PedidosFiltroChip(label: 'Historial', count: 5, selected: true, onTap: () {})),
       ])));
-      expect(fillOf('Pendientes'), FincasColors.caramelBg);
+      expect(fillOf('Pendientes'), FincasColors.accentBg);
       expect(fillOf('Historial'), FincasColors.ink); // active history is the main (ink) color
     });
 
@@ -182,9 +195,11 @@ void main() {
       await t.tap(find.text('Pre-venta'));
       await t.tap(find.text('Nuevo pedido'));
       expect((nuevo, pre), (1, 1));
-      // the main one is the caramel accent, the secondary one is the light sand button
+      // the main one is the accent, the secondary one is the light sand button
       final main = t.widget<FloatingActionButton>(find.byType(FloatingActionButton));
-      expect(main.backgroundColor ?? FincasTheme.light().floatingActionButtonTheme.backgroundColor, FincasColors.caramel);
+      final mainColor = main.backgroundColor ?? FincasTheme.light().floatingActionButtonTheme.backgroundColor;
+      expect(mainColor, FincasColors.accent);
+      expect(mainColor, FincasColors.espresso);
       expect(t.widget<Material>(find.ancestor(of: find.text('Pre-venta'), matching: find.byType(Material)).first).color, FincasColors.sand);
     });
 

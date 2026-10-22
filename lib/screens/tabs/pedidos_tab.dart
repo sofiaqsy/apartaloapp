@@ -258,7 +258,7 @@ class _PedidosTabState extends State<PedidosTab> with SingleTickerProviderStateM
                       Expanded(
                         child: PedidosFiltroChip(
                           label: 'Pendientes',
-                          tone: FincasTone.warning,
+                          accent: true,
                           count: _countPendientes,
                           selected: _filtroEstado == 'PENDIENTES',
                           onTap: () => _cambiarFiltro('PENDIENTES'),

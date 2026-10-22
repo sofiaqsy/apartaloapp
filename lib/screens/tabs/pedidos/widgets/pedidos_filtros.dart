@@ -18,8 +18,8 @@ Color _toneBg(FincasTone t) => switch (t) {
       FincasTone.neutral => FincasColors.sand,
     };
 
-/// Filtro principal (Pendientes / Historial): relleno del color de su significado cuando está activo,
-/// y su tinte suave cuando no. Pendientes = caramelo, Historial = salvia.
+/// Filtro principal (Pendientes / Historial): relleno sólido cuando está activo y tinte suave cuando no.
+/// Pendientes usa el acento de la interfaz (igual que "Nuevo pedido"); Historial es neutro (tinta y arena).
 class PedidosFiltroChip extends StatelessWidget {
   const PedidosFiltroChip({
     super.key,
@@ -28,23 +28,29 @@ class PedidosFiltroChip extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.tone = FincasTone.neutral,
+    this.accent = false,
   });
   final String label;
   final int count;
   final bool selected;
   final FincasTone tone;
+
+  /// Uses the interface accent (the same color as the Nuevo pedido button) instead of a status tone.
+  final bool accent;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final fg = selected ? FincasColors.textOnInk : _toneFg(tone);
+    final solid = accent ? FincasColors.accent : _toneFg(tone);
+    final soft = accent ? FincasColors.accentBg : _toneBg(tone);
+    final fg = selected ? FincasColors.textOnInk : solid;
     return Semantics(
       button: true,
       selected: selected,
       label: count > 0 ? '$label, $count' : label,
       excludeSemantics: true,
       child: Material(
-        color: selected ? _toneFg(tone) : _toneBg(tone),
+        color: selected ? solid : soft,
         borderRadius: BorderRadius.circular(FincasRadii.medium),
         child: InkWell(
           onTap: onTap,

@@ -24,7 +24,8 @@ action, espresso for emphasis and links, status colors only for status.
 | `textPrimary` | `#252117` | Primary text |
 | `textSecondary` | `#5C574B` | Secondary text |
 | `textMuted` | `#6F695C` | Captions, hints |
-| `caramel` = `warning` / `caramelBg` | `#9A4F18` / `#F8E7D4` | Pending, in review, act now; also `accent` for the main create action and the active tab |
+| `caramel` = `warning` / `caramelBg` | `#9A4F18` / `#F8E7D4` | Pending and in-review status (badges and notices) |
+| `accent` = `espresso` / `accentBg` | `#5A3A36` / `#EDE4E0` | Interface accent: Pendientes filter, Nuevo pedido button |
 | `sage` = `success` / `sageBg` | `#4E6B38` / `#E4ECDA` | Done, paid, positive |
 | `error` (terracotta) / `errorBg` | `#A63A2B` / `#F6E1DD` | Owed, blocked, errors |
 | `disabledBg` / `disabledText` | `#ECE8E0` / `#9A9486` | Disabled controls |
@@ -34,8 +35,8 @@ was 4.3:1 and was replaced), espresso 9.3:1, error 6.0:1, success 5.9:1, warning
 `test/theme/fincas_tokens_test.dart` fails the build if any text pair drops below 4.5:1 or an outline below 3:1.
 
 Warm accents: caramel, sage and terracotta exist as status colors (badges and notices: pending, done, owed), each with
-one meaning. On the Pedidos tab color is deliberately rare: only the **Pendientes** filter and the **Nuevo pedido**
-button use the caramel accent. Everything else stays ink, ivory and sand. Do not color a control without a reason.
+one meaning. The interface accent is espresso (`accent`, soft tint `accentBg`). On the Pedidos tab color is deliberately
+rare: only the **Pendientes** filter and the **Nuevo pedido** button use it, and they are always the same color. Everything else stays ink, ivory and sand. Do not color a control without a reason.
 Both creation actions stay visible: "Nuevo pedido" is the main one, "Pre-venta" is a lighter secondary button.
 
 ## Typography (`FincasText`)
