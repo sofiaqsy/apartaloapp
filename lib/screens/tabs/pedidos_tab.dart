@@ -5,6 +5,7 @@ import '../crear_pedido_screen.dart';
 import 'pedidos/helpers/estado_pago_helper.dart';
 import 'pedidos/widgets/pedido_card.dart';
 import 'pedidos/widgets/detalle_pedido/detalle_pedido_sheet.dart';
+import 'pedidos/widgets/nuevo_pedido_sheet.dart';
 import 'pedidos/widgets/pedidos_filtros.dart';
 import '../../theme/fincas_tokens.dart';
 import '../../widgets/fincas_widgets.dart';
@@ -258,6 +259,7 @@ class _PedidosTabState extends State<PedidosTab> with SingleTickerProviderStateM
                       Expanded(
                         child: PedidosFiltroChip(
                           label: 'Pendientes',
+                          tone: FincasTone.warning,
                           count: _countPendientes,
                           selected: _filtroEstado == 'PENDIENTES',
                           onTap: () => _cambiarFiltro('PENDIENTES'),
@@ -267,6 +269,7 @@ class _PedidosTabState extends State<PedidosTab> with SingleTickerProviderStateM
                       Expanded(
                         child: PedidosFiltroChip(
                           label: 'Historial',
+                          tone: FincasTone.success,
                           count: _countHistorial,
                           selected: _filtroEstado == 'HISTORIAL',
                           onTap: () => _cambiarFiltro('HISTORIAL'),
@@ -324,44 +327,32 @@ class _PedidosTabState extends State<PedidosTab> with SingleTickerProviderStateM
           ],
         ),
       ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          // Acción secundaria: superficie blanca con borde
-          FloatingActionButton.extended(
-            heroTag: 'fab_preventa',
-            onPressed: _abrirNuevaPreventa,
-            elevation: 1,
-            backgroundColor: FincasColors.surface,
-            foregroundColor: FincasColors.textPrimary,
-            shape: const StadiumBorder(side: BorderSide(color: FincasColors.borderStrong)),
-            label: const Text('Pre-venta', style: FincasText.button),
-          ),
-          const SizedBox(height: FincasSpacing.s),
-          // Acción principal
-          FloatingActionButton.extended(
-            heroTag: 'fab_pedidos',
-            onPressed: () async {
-              final nuevoPedido = await Navigator.push<Map<String, dynamic>>(
-                context,
-                MaterialPageRoute(builder: (_) => const CrearPedidoScreen()),
-              );
-              if (!mounted) return;
-              if (nuevoPedido != null) {
-                _cargarPedidos();
-                _mostrarDetallePedido(nuevoPedido);
-              }
-            },
-            elevation: 2,
-            backgroundColor: FincasColors.actionPrimary,
-            foregroundColor: FincasColors.actionPrimaryText,
-            shape: const StadiumBorder(),
-            label: const Text('Nuevo pedido', style: FincasText.button),
-          ),
-        ],
+      // Una sola acción principal de creación; el tipo (pedido o pre-venta) se elige al tocarla.
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'fab_pedidos',
+        onPressed: _nuevo,
+        shape: const StadiumBorder(),
+        label: const Text('Nuevo pedido'),
       ),
     );
+  }
+
+  Future<void> _nuevo() async {
+    final tipo = await showNuevoPedidoSheet(context);
+    if (!mounted || tipo == null) return;
+    if (tipo == NuevoPedidoTipo.preventa) {
+      _abrirNuevaPreventa();
+      return;
+    }
+    final nuevoPedido = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(builder: (_) => const CrearPedidoScreen()),
+    );
+    if (!mounted) return;
+    if (nuevoPedido != null) {
+      _cargarPedidos();
+      _mostrarDetallePedido(nuevoPedido);
+    }
   }
 
   void _cambiarFiltro(String filtro) {

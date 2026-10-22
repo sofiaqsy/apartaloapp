@@ -171,6 +171,12 @@ class FincasTheme {
         linearTrackColor: FincasColors.sand,
         circularTrackColor: Colors.transparent,
       ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: FincasColors.accent,
+        foregroundColor: FincasColors.textOnInk,
+        elevation: 2,
+        extendedTextStyle: FincasText.button,
+      ),
       listTileTheme: const ListTileThemeData(iconColor: FincasColors.textSecondary),
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: FincasColors.surface,

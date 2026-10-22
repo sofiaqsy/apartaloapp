@@ -4,24 +4,47 @@ import '../../../../widgets/fincas_widgets.dart';
 
 String _soles(double v) => 'S/${v.toStringAsFixed(0)}';
 
-/// Filtro principal (Pendientes / Historial): ink cuando está activo, arena cuando no.
+Color _toneFg(FincasTone t) => switch (t) {
+      FincasTone.success => FincasColors.success,
+      FincasTone.error => FincasColors.error,
+      FincasTone.warning => FincasColors.warning,
+      FincasTone.neutral => FincasColors.ink,
+    };
+
+Color _toneBg(FincasTone t) => switch (t) {
+      FincasTone.success => FincasColors.successBg,
+      FincasTone.error => FincasColors.errorBg,
+      FincasTone.warning => FincasColors.warningBg,
+      FincasTone.neutral => FincasColors.sand,
+    };
+
+/// Filtro principal (Pendientes / Historial): relleno del color de su significado cuando está activo,
+/// y su tinte suave cuando no. Pendientes = caramelo, Historial = salvia.
 class PedidosFiltroChip extends StatelessWidget {
-  const PedidosFiltroChip({super.key, required this.label, required this.count, required this.selected, required this.onTap});
+  const PedidosFiltroChip({
+    super.key,
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+    this.tone = FincasTone.neutral,
+  });
   final String label;
   final int count;
   final bool selected;
+  final FincasTone tone;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final fg = selected ? FincasColors.textOnInk : FincasColors.textPrimary;
+    final fg = selected ? FincasColors.textOnInk : _toneFg(tone);
     return Semantics(
       button: true,
       selected: selected,
       label: count > 0 ? '$label, $count' : label,
       excludeSemantics: true,
       child: Material(
-        color: selected ? FincasColors.ink : FincasColors.sand,
+        color: selected ? _toneFg(tone) : _toneBg(tone),
         borderRadius: BorderRadius.circular(FincasRadii.medium),
         child: InkWell(
           onTap: onTap,
@@ -36,14 +59,14 @@ class PedidosFiltroChip extends StatelessWidget {
                   Flexible(
                     child: Text(label,
                         overflow: TextOverflow.ellipsis,
-                        style: FincasText.label.copyWith(color: fg, fontWeight: selected ? FontWeight.w600 : FontWeight.w500, fontSize: 15)),
+                        style: FincasText.label.copyWith(color: fg, fontWeight: selected ? FontWeight.w700 : FontWeight.w600, fontSize: 15)),
                   ),
                   if (count > 0) ...[
                     const SizedBox(width: FincasSpacing.s),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: selected ? FincasColors.textOnInk.withValues(alpha: 0.2) : FincasColors.surface,
+                        color: selected ? FincasColors.textOnInk.withValues(alpha: 0.22) : FincasColors.surface,
                         borderRadius: BorderRadius.circular(FincasRadii.small + 4),
                       ),
                       child: Text('$count', style: FincasText.caption.copyWith(color: fg, fontWeight: FontWeight.w700)),
@@ -120,7 +143,7 @@ class PedidosSubFiltroChip extends StatelessWidget {
   }
 }
 
-/// Resumen del historial: vendido, cobrado y por cobrar en una sola franja, sin gradientes.
+/// Resumen del historial: tres celdas con tinte propio (neutro, salvia, terracota), sin gradientes.
 class PedidosResumen extends StatelessWidget {
   const PedidosResumen({super.key, required this.vendido, required this.cobrado, required this.porCobrar, this.hayAlerta = false});
   final double vendido;
@@ -128,55 +151,53 @@ class PedidosResumen extends StatelessWidget {
   final double porCobrar;
   final bool hayAlerta;
 
-  Widget _stat(String label, double valor, Color color, {bool alerta = false}) {
+  Widget _celda(String label, double valor, FincasTone tone, {bool alerta = false}) {
+    final fg = tone == FincasTone.neutral ? FincasColors.textPrimary : _toneFg(tone);
     return Expanded(
-      child: Column(
-        children: [
-          Text(label, style: FincasText.caption),
-          const SizedBox(height: 2),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Flexible(
-                child: Text(
-                  _soles(valor),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: FincasText.sectionTitle.copyWith(fontSize: 16, fontWeight: FontWeight.w700, color: color),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: FincasSpacing.m - 2, horizontal: FincasSpacing.s),
+        decoration: BoxDecoration(color: _toneBg(tone), borderRadius: BorderRadius.circular(FincasRadii.medium)),
+        child: Column(
+          children: [
+            Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: FincasText.caption.copyWith(color: FincasColors.textSecondary)),
+            const SizedBox(height: 2),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(
+                    _soles(valor),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: FincasText.sectionTitle.copyWith(fontSize: 16, fontWeight: FontWeight.w700, color: fg),
+                  ),
                 ),
-              ),
-              if (alerta) ...[
-                const SizedBox(width: FincasSpacing.xs),
-                Icon(Icons.warning_amber_rounded, size: 16, color: color),
+                if (alerta) ...[
+                  const SizedBox(width: FincasSpacing.xs),
+                  Icon(Icons.warning_amber_rounded, size: 16, color: fg),
+                ],
               ],
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    const divider = SizedBox(height: 32, child: VerticalDivider(width: 1, color: FincasColors.divider));
     return Semantics(
       label: 'Resumen. Vendido ${_soles(vendido)}, cobrado ${_soles(cobrado)}, por cobrar ${_soles(porCobrar)}',
       excludeSemantics: true,
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(FincasSpacing.l, FincasSpacing.s, FincasSpacing.l, 0),
-        padding: const EdgeInsets.symmetric(vertical: FincasSpacing.m),
-        decoration: BoxDecoration(
-          color: FincasColors.surface,
-          borderRadius: BorderRadius.circular(FincasRadii.large),
-          border: Border.all(color: FincasColors.border),
-        ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(FincasSpacing.l, FincasSpacing.m, FincasSpacing.l, 0),
         child: Row(
           children: [
-            _stat('Vendido', vendido, FincasColors.textPrimary),
-            divider,
-            _stat('Cobrado', cobrado, FincasColors.success),
-            divider,
-            _stat('Por cobrar', porCobrar, FincasColors.error, alerta: hayAlerta),
+            _celda('Vendido', vendido, FincasTone.neutral),
+            const SizedBox(width: FincasSpacing.s),
+            _celda('Cobrado', cobrado, FincasTone.success),
+            const SizedBox(width: FincasSpacing.s),
+            _celda('Por cobrar', porCobrar, porCobrar > 0 ? FincasTone.error : FincasTone.neutral, alerta: hayAlerta),
           ],
         ),
       ),

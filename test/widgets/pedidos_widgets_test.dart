@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:apartalo_app/screens/tabs/pedidos/widgets/nuevo_pedido_sheet.dart';
 import 'package:apartalo_app/screens/tabs/pedidos/widgets/pedido_card.dart';
 import 'package:apartalo_app/screens/tabs/pedidos/widgets/pedidos_filtros.dart';
 import 'package:apartalo_app/theme/fincas_theme.dart';
@@ -141,5 +142,73 @@ void main() {
   testWidgets('empty and error states reuse the shared message widget', (t) async {
     await t.pumpWidget(_app(const FincasMessageState(title: 'No hay pedidos pendientes', message: 'Jala hacia abajo para actualizar.')));
     expect(find.text('No hay pedidos pendientes'), findsOneWidget);
+  });
+
+  group('colors carry meaning', () {
+    testWidgets('primary filters: pending is caramel and history is sage when active', (t) async {
+      await t.pumpWidget(_app(Row(children: [
+        Expanded(child: PedidosFiltroChip(label: 'Pendientes', count: 2, tone: FincasTone.warning, selected: true, onTap: () {})),
+        Expanded(child: PedidosFiltroChip(label: 'Historial', count: 5, tone: FincasTone.success, selected: false, onTap: () {})),
+      ])));
+      Color fillOf(String label) => t.widget<Material>(find.ancestor(of: find.text(label), matching: find.byType(Material)).first).color!;
+      expect(fillOf('Pendientes'), FincasColors.caramel); // active: solid
+      expect(fillOf('Historial'), FincasColors.sageBg); // inactive: soft tint
+    });
+
+    testWidgets('order card avatar takes the tint of its status', (t) async {
+      await t.pumpWidget(_app(Column(children: [
+        PedidoCard(pedido: _pedido(estado: 'PENDIENTE'), onTap: () {}),
+        PedidoCard(pedido: _pedido(estado: 'COMPLETADO'), onTap: () {}),
+        PedidoCard(pedido: _pedido(estado: 'CANCELADO'), onTap: () {}),
+      ])));
+      final colors = t.widgetList<Container>(find.byType(Container)).map((c) => c.decoration).whereType<BoxDecoration>().map((d) => d.color).toSet();
+      expect(colors, containsAll([FincasColors.caramelBg, FincasColors.sageBg, FincasColors.errorBg]));
+    });
+
+    testWidgets('summary: collected is sage, owed is terracotta only when there is something owed', (t) async {
+      await t.pumpWidget(_app(const PedidosResumen(vendido: 100, cobrado: 60, porCobrar: 40)));
+      final colors = t.widgetList<Container>(find.byType(Container)).map((c) => c.decoration).whereType<BoxDecoration>().map((d) => d.color).toSet();
+      expect(colors, containsAll([FincasColors.sageBg, FincasColors.errorBg]));
+      await t.pumpWidget(_app(const PedidosResumen(vendido: 100, cobrado: 100, porCobrar: 0)));
+      final colors2 = t.widgetList<Container>(find.byType(Container)).map((c) => c.decoration).whereType<BoxDecoration>().map((d) => d.color).toSet();
+      expect(colors2.contains(FincasColors.errorBg), isFalse);
+    });
+  });
+
+  group('single create action', () {
+    testWidgets('the chooser offers Pedido and Pre-venta and returns the pick', (t) async {
+      NuevoPedidoTipo? picked;
+      await t.pumpWidget(MaterialApp(
+        theme: FincasTheme.light(),
+        home: Builder(builder: (context) => Scaffold(body: TextButton(onPressed: () async => picked = await showNuevoPedidoSheet(context), child: const Text('open')))),
+      ));
+      await t.tap(find.text('open'));
+      await t.pumpAndSettle();
+      expect(find.text('¿Qué quieres crear?'), findsOneWidget);
+      expect(find.text('Pedido'), findsOneWidget);
+      expect(find.text('Pre-venta'), findsOneWidget);
+      await t.tap(find.text('Pre-venta'));
+      await t.pumpAndSettle();
+      expect(picked, NuevoPedidoTipo.preventa);
+
+      await t.tap(find.text('open'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Pedido'));
+      await t.pumpAndSettle();
+      expect(picked, NuevoPedidoTipo.pedido);
+    });
+
+    testWidgets('the chooser can be dismissed without creating anything', (t) async {
+      NuevoPedidoTipo? picked = NuevoPedidoTipo.pedido;
+      await t.pumpWidget(MaterialApp(
+        theme: FincasTheme.light(),
+        home: Builder(builder: (context) => Scaffold(body: TextButton(onPressed: () async => picked = await showNuevoPedidoSheet(context), child: const Text('open')))),
+      ));
+      await t.tap(find.text('open'));
+      await t.pumpAndSettle();
+      await t.tapAt(const Offset(10, 10)); // the barrier
+      await t.pumpAndSettle();
+      expect(picked, isNull);
+    });
   });
 }

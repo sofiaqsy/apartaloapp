@@ -24,14 +24,19 @@ action, espresso for emphasis and links, status colors only for status.
 | `textPrimary` | `#252117` | Primary text |
 | `textSecondary` | `#5C574B` | Secondary text |
 | `textMuted` | `#6F695C` | Captions, hints |
-| `success` / `successBg` | `#2F6B3F` / `#E4EFE6` | Positive status |
-| `warning` / `warningBg` | `#7A4F00` / `#F6EAD0` | In review, caution |
-| `error` / `errorBg` | `#A63A2B` / `#F6E1DD` | Errors, blocked |
+| `caramel` = `warning` / `caramelBg` | `#9A4F18` / `#F8E7D4` | Pending, in review, act now; also `accent` for the main create action and the active tab |
+| `sage` = `success` / `sageBg` | `#4E6B38` / `#E4ECDA` | Done, paid, positive |
+| `error` (terracotta) / `errorBg` | `#A63A2B` / `#F6E1DD` | Owed, blocked, errors |
 | `disabledBg` / `disabledText` | `#ECE8E0` / `#9A9486` | Disabled controls |
 
 Contrast (WCAG): ink on ivory 14.9:1, white on ink 16.1:1, secondary 6.7:1, muted 5.1:1 (the first guess `#7A7467`
 was 4.3:1 and was replaced), espresso 9.3:1, error 6.0:1, success 5.9:1, warning on its tint 6.0:1.
 `test/theme/fincas_tokens_test.dart` fails the build if any text pair drops below 4.5:1 or an outline below 3:1.
+
+Warm accents: three colors, one meaning each (caramel = pending or act now, sage = done or paid, terracotta = owed
+or blocked). They bring life to lists, filters and navigation without leaving the logo's warmth. Use them as a
+solid fill with white text, or as the soft tint with the same color as text; never decoratively. One main action
+per screen: the floating button (caramel) is the only one on the Pedidos tab, and it opens a chooser for the type.
 
 ## Typography (`FincasText`)
 Two roles. **Serif (Fraunces, bundled in `assets/fonts`, SIL OFL)** only for brand moments: the wordmark and the

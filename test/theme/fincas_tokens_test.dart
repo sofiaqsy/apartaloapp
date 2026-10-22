@@ -36,6 +36,13 @@ void main() {
       expect(contrast(FincasColors.warning, FincasColors.warningBg), greaterThanOrEqualTo(4.5));
       expect(contrast(FincasColors.error, FincasColors.errorBg), greaterThanOrEqualTo(4.5));
     });
+    test('accents: white on caramel and sage fills, accent text on its tint', () {
+      expect(contrast(FincasColors.textOnInk, FincasColors.caramel), greaterThanOrEqualTo(4.5));
+      expect(contrast(FincasColors.textOnInk, FincasColors.sage), greaterThanOrEqualTo(4.5));
+      expect(contrast(FincasColors.caramel, FincasColors.caramelBg), greaterThanOrEqualTo(4.5));
+      expect(contrast(FincasColors.sage, FincasColors.sageBg), greaterThanOrEqualTo(4.5));
+      expect(contrast(FincasColors.textPrimary, FincasColors.caramelBg), greaterThanOrEqualTo(4.5));
+    });
     test('espresso on sand (badges, links on tonal fills)', () => expect(contrast(FincasColors.espresso, FincasColors.sand), greaterThanOrEqualTo(4.5)));
   });
 

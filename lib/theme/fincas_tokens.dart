@@ -34,12 +34,21 @@ class FincasColors {
   static const divider = sand;
   static const focus = espresso;
 
+  // Warm accents, one meaning each. They give the interface life without leaving the logo's warmth.
+  //   caramel = pending / act now / create     sage = done / paid     terracotta = owed / blocked
+  static const caramel = Color(0xFF9A4F18);
+  static const caramelBg = Color(0xFFF8E7D4);
+  static const sage = Color(0xFF4E6B38);
+  static const sageBg = Color(0xFFE4ECDA);
+  static const accent = caramel; // main create action (floating button), active navigation
+  static const accentBg = caramelBg;
+
   // Status (foreground / tonal background pairs, each >= 4.5:1)
-  static const success = Color(0xFF2F6B3F);
-  static const successBg = Color(0xFFE4EFE6);
-  static const warning = Color(0xFF7A4F00);
-  static const warningBg = Color(0xFFF6EAD0);
-  static const error = Color(0xFFA63A2B);
+  static const success = sage;
+  static const successBg = sageBg;
+  static const warning = caramel;
+  static const warningBg = caramelBg;
+  static const error = Color(0xFFA63A2B); // terracotta
   static const errorBg = Color(0xFFF6E1DD);
 
   // Disabled (exempt from contrast rules, but still legible)
