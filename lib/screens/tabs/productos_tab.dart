@@ -5,6 +5,9 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../services/api_service.dart';
 import '../../services/vision_service.dart';
 import '../detalle_producto_screen.dart';
+import '../../theme/fincas_tokens.dart';
+import '../../widgets/fincas_widgets.dart';
+import 'productos/widgets/producto_list_card.dart';
 
 class ProductosTab extends StatefulWidget {
   final bool isActive;
@@ -620,78 +623,69 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
+    final pendingCount = _productos.where((p) => p['pendingTueste'] == true).length;
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: FincasColors.background,
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         behavior: HitTestBehavior.translucent,
         child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            color: Colors.white,
-            child: Column(
-              children: [
-                TextField(
-                  focusNode: _searchFocusNode,
-                  onChanged: (value) {
-                    Future.delayed(const Duration(milliseconds: 500), () {
-                      if (value == _busqueda || (value.isEmpty && _busqueda.isEmpty)) return;
-                      _buscar(value);
-                    });
-                  },
-                  decoration: InputDecoration(
-                    hintText: 'Buscar producto por nombre...',
-                    prefixIcon: const Icon(Icons.search),
-                    filled: true,
-                    fillColor: Colors.grey.shade100,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(FincasSpacing.l, FincasSpacing.s, FincasSpacing.l, FincasSpacing.m),
+              decoration: const BoxDecoration(
+                color: FincasColors.surface,
+                border: Border(bottom: BorderSide(color: FincasColors.divider)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    focusNode: _searchFocusNode,
+                    textInputAction: TextInputAction.search,
+                    onChanged: (value) {
+                      Future.delayed(const Duration(milliseconds: 500), () {
+                        if (value == _busqueda || (value.isEmpty && _busqueda.isEmpty)) return;
+                        _buscar(value);
+                      });
+                    },
+                    decoration: InputDecoration(
+                      hintText: 'Buscar producto por nombre...',
+                      prefixIcon: const Icon(Icons.search, color: FincasColors.textSecondary),
+                      fillColor: FincasColors.background,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(FincasRadii.medium), borderSide: BorderSide.none),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(FincasRadii.medium), borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: FincasSpacing.l, vertical: FincasSpacing.m),
+                    ),
                   ),
-                ),
-                if (_total > 0 && !_isLoading)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text('$_total producto${_total != 1 ? 's' : ''}', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
-                  ),
-                Builder(builder: (_) {
-                  final pendingCount = _productos.where((p) => p['pendingTueste'] == true).length;
-                  if (pendingCount == 0) return const SizedBox.shrink();
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.red.shade300),
-                      ),
-                      child: Row(
+                  // Conteo y aviso en una sola línea: el aviso solo aparece si hay algo pendiente.
+                  if ((_total > 0 && !_isLoading) || pendingCount > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: FincasSpacing.s),
+                      child: Wrap(
+                        spacing: FincasSpacing.s,
+                        runSpacing: FincasSpacing.xs,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          Icon(Icons.local_fire_department_rounded, color: Colors.red.shade600, size: 18),
-                          const SizedBox(width: 8),
-                          Text(
-                            '$pendingCount producto${pendingCount != 1 ? 's' : ''} con tueste pendiente',
-                            style: TextStyle(color: Colors.red.shade700, fontSize: 13, fontWeight: FontWeight.w600),
-                          ),
+                          if (_total > 0 && !_isLoading)
+                            Text('$_total producto${_total != 1 ? 's' : ''}', style: FincasText.metadata),
+                          if (pendingCount > 0)
+                            FincasStatusBadge('$pendingCount con tueste pendiente', tone: FincasTone.warning),
                         ],
                       ),
                     ),
-                  );
-                }),
-              ],
+                ],
+              ),
             ),
-          ),
-          Expanded(child: _buildBody()),
-        ],
+            Expanded(child: _buildBody()),
+          ],
+        ),
       ),
-      ),
+      // Una sola acción principal.
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _mostrarOpcionesNuevoProducto,
-        backgroundColor: Colors.orange.shade600,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('Nuevo', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+        shape: const StadiumBorder(),
+        label: const Text('Nuevo producto'),
       ),
     );
   }
@@ -700,82 +694,56 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
     _modalAbierto = true;
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40, height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2),
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(FincasSpacing.screenH, 0, FincasSpacing.screenH, FincasSpacing.l),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Agregar producto', style: FincasText.screenTitle),
+              const SizedBox(height: FincasSpacing.xs),
+              const Text('Elige cómo quieres agregar el producto', style: FincasText.bodySecondary),
+              const SizedBox(height: FincasSpacing.l),
+              _buildOpcionNuevoProducto(
+                icon: Icons.qr_code_scanner,
+                titulo: 'Escanear código de barras',
+                subtitulo: 'Busca info automáticamente',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _abrirEscanerCamara();
+                },
               ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Agregar producto',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Elige cómo quieres agregar el producto',
-              style: TextStyle(color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 24),
-            
-            // Opción 1: Escanear código
-            _buildOpcionNuevoProducto(
-              icon: Icons.qr_code_scanner,
-              color: Colors.blue,
-              titulo: 'Escanear código de barras',
-              subtitulo: 'Busca info automáticamente',
-              onTap: () {
-                Navigator.pop(ctx);
-                _abrirEscanerCamara();
-              },
-            ),
-            const SizedBox(height: 12),
-            
-            // Opción 2: Tomar foto
-            _buildOpcionNuevoProducto(
-              icon: Icons.camera_alt,
-              color: Colors.green,
-              titulo: 'Tomar foto del producto',
-              subtitulo: 'Guarda imagen del producto',
-              onTap: () {
-                Navigator.pop(ctx);
-                _tomarFotoYCrearProducto();
-              },
-            ),
-            const SizedBox(height: 12),
-            
-            // Opción 3: Manual
-            _buildOpcionNuevoProducto(
-              icon: Icons.edit,
-              color: Colors.orange,
-              titulo: 'Ingresar manualmente',
-              subtitulo: 'Escribe nombre y precio',
-              onTap: () {
-                Navigator.pop(ctx);
-                _crearProductoManual();
-              },
-            ),
-            
-            const SizedBox(height: 16),
-            TextButton(
-              onPressed: () {
-                _modalAbierto = false;
-                Navigator.pop(ctx);
-              },
-              child: const Text('Cancelar'),
-            ),
-          ],
+              const SizedBox(height: FincasSpacing.s),
+              _buildOpcionNuevoProducto(
+                icon: Icons.camera_alt,
+                titulo: 'Tomar foto del producto',
+                subtitulo: 'Guarda imagen del producto',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _tomarFotoYCrearProducto();
+                },
+              ),
+              const SizedBox(height: FincasSpacing.s),
+              _buildOpcionNuevoProducto(
+                icon: Icons.edit,
+                titulo: 'Ingresar manualmente',
+                subtitulo: 'Escribe nombre y precio',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _crearProductoManual();
+                },
+              ),
+              FincasTextButton(
+                label: 'Cancelar',
+                onPressed: () {
+                  _modalAbierto = false;
+                  Navigator.pop(ctx);
+                },
+              ),
+            ],
+          ),
         ),
       ),
     ).whenComplete(() => _modalAbierto = false);
@@ -783,42 +751,36 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
 
   Widget _buildOpcionNuevoProducto({
     required IconData icon,
-    required Color color,
     required String titulo,
     required String subtitulo,
     required VoidCallback onTap,
   }) {
-    return Material(
-      color: Colors.grey.shade50,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+    return Semantics(
+      button: true,
+      label: '$titulo. $subtitulo',
+      excludeSemantics: true,
+      child: FincasCard(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 50, height: 50,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(icon, color: color, size: 26),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(color: FincasColors.sand, borderRadius: BorderRadius.circular(FincasRadii.medium)),
+              child: Icon(icon, color: FincasColors.espresso, size: 24),
+            ),
+            const SizedBox(width: FincasSpacing.m),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(titulo, style: FincasText.sectionTitle.copyWith(fontSize: 16)),
+                  Text(subtitulo, style: FincasText.metadata),
+                ],
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                    Text(subtitulo, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right, color: Colors.grey.shade400),
-            ],
-          ),
+            ),
+            const Icon(Icons.chevron_right, color: FincasColors.textMuted),
+          ],
         ),
       ),
     );
@@ -963,27 +925,27 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
   }
 
   Widget _buildSkeletonProducto(double opacity) {
-    final c = Colors.grey.withOpacity(opacity);
-    final cl = Colors.grey.withOpacity(opacity * 0.6);
+    final c = FincasColors.sand.withValues(alpha: 0.5 + opacity);
+    final cl = FincasColors.sand.withValues(alpha: 0.3 + opacity);
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+      margin: const EdgeInsets.symmetric(horizontal: FincasSpacing.l, vertical: FincasSpacing.xs + 1),
+      padding: const EdgeInsets.all(FincasSpacing.l),
+      decoration: BoxDecoration(
+        color: FincasColors.surface,
+        borderRadius: BorderRadius.circular(FincasRadii.large),
+        border: Border.all(color: FincasColors.border),
+      ),
       child: Row(children: [
-        Container(width: 52, height: 52, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(10))),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(height: 13, width: 120, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(4))),
-          const SizedBox(height: 6),
-          Container(height: 11, width: 80, decoration: BoxDecoration(color: cl, borderRadius: BorderRadius.circular(4))),
-          const SizedBox(height: 6),
-          Container(height: 11, width: 60, decoration: BoxDecoration(color: cl, borderRadius: BorderRadius.circular(4))),
-        ])),
-        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Container(height: 16, width: 55, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(4))),
-          const SizedBox(height: 6),
-          Container(height: 20, width: 40, decoration: BoxDecoration(color: cl, borderRadius: BorderRadius.circular(8))),
-        ]),
+        Container(width: 48, height: 48, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(FincasRadii.medium - 2))),
+        const SizedBox(width: FincasSpacing.m),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(height: 14, width: 140, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(4))),
+            const SizedBox(height: 8),
+            Container(height: 11, width: 90, decoration: BoxDecoration(color: cl, borderRadius: BorderRadius.circular(4))),
+          ]),
+        ),
+        Container(height: 16, width: 56, decoration: BoxDecoration(color: cl, borderRadius: BorderRadius.circular(4))),
       ]),
     );
   }
@@ -993,10 +955,11 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
       return AnimatedBuilder(
         animation: _shimmerCtrl,
         builder: (_, __) {
-          final opacity = 0.25 + _shimmerCtrl.value * 0.25;
+          final opacity = _shimmerCtrl.value * 0.3;
           return ListView.builder(
-            padding: const EdgeInsets.only(top: 8, bottom: 100),
-            itemCount: 10,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.only(top: FincasSpacing.s, bottom: 100),
+            itemCount: 8,
             itemBuilder: (_, __) => _buildSkeletonProducto(opacity),
           );
         },
@@ -1004,279 +967,71 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
     }
 
     if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 64, color: Colors.red.shade300),
-            const SizedBox(height: 16),
-            Text('Error: $_error'),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(onPressed: () => _cargarProductos(refresh: true), icon: const Icon(Icons.refresh), label: const Text('Reintentar')),
-          ],
-        ),
+      return ListView(
+        padding: const EdgeInsets.symmetric(horizontal: FincasSpacing.xl, vertical: FincasSpacing.xxxl),
+        children: [
+          const FincasMessageState(
+            title: 'No se pudieron cargar los productos',
+            message: 'Revisa tu conexión e intenta de nuevo.',
+            tone: FincasTone.error,
+          ),
+          const SizedBox(height: FincasSpacing.xl),
+          Center(
+            child: SizedBox(
+              width: 220,
+              child: FincasSecondaryButton(label: 'Reintentar', onPressed: () => _cargarProductos(refresh: true)),
+            ),
+          ),
+        ],
       );
     }
 
     if (_productos.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.inventory_2_outlined, size: 80, color: Colors.grey.shade400),
-            const SizedBox(height: 16),
-            Text(_busqueda.isEmpty ? 'No hay productos' : 'Sin resultados',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
-            const SizedBox(height: 8),
-            Text(_busqueda.isEmpty ? 'Toca el botón "Nuevo" para agregar uno' : 'No se encontraron productos con "$_busqueda"',
-              style: TextStyle(color: Colors.grey.shade500), textAlign: TextAlign.center),
-            if (_busqueda.isEmpty) ...[
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: _mostrarOpcionesNuevoProducto,
-                icon: const Icon(Icons.add),
-                label: const Text('Agregar producto'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange.shade600,
-                  foregroundColor: Colors.white,
-                ),
+      final sinBusqueda = _busqueda.isEmpty;
+      return ListView(
+        padding: const EdgeInsets.symmetric(horizontal: FincasSpacing.xl, vertical: FincasSpacing.xxxl),
+        children: [
+          FincasMessageState(
+            title: sinBusqueda ? 'Aún no hay productos' : 'Sin resultados',
+            message: sinBusqueda ? 'Agrega el primero para empezar a vender.' : 'No se encontraron productos con "$_busqueda".',
+          ),
+          if (sinBusqueda) ...[
+            const SizedBox(height: FincasSpacing.xl),
+            Center(
+              child: SizedBox(
+                width: 260,
+                child: FincasPrimaryButton(label: 'Agregar producto', onPressed: _mostrarOpcionesNuevoProducto),
               ),
-            ],
+            ),
           ],
-        ),
+        ],
       );
     }
 
     return RefreshIndicator(
+      color: FincasColors.ink,
       onRefresh: () => _cargarProductos(refresh: true),
       child: ListView.builder(
         controller: _scrollController,
-        padding: const EdgeInsets.only(top: 8, bottom: 100),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(top: FincasSpacing.s, bottom: 100), // espacio para el botón flotante
         itemCount: _productos.length + (_hayMas ? 1 : 0),
         itemBuilder: (context, index) {
           if (index == _productos.length) return _buildLoadingMore();
           final producto = _productos[index];
-          return _ProductoCard(producto: producto, onTap: () => _irAEditarProducto(producto));
+          return ProductoListCard(producto: producto, onTap: () => _irAEditarProducto(producto));
         },
       ),
     );
   }
 
   Widget _buildLoadingMore() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      alignment: Alignment.center,
-      child: _isLoadingMore
-          ? const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-              SizedBox(width: 12),
-              Text('Cargando más...'),
-            ])
-          : TextButton(onPressed: _cargarMasProductos, child: const Text('Cargar más')),
-    );
-  }
-}
-
-class _ProductoCard extends StatelessWidget {
-  final Map<String, dynamic> producto;
-  final VoidCallback onTap;
-
-  const _ProductoCard({required this.producto, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final nombre = producto['nombre'] ?? 'Sin nombre';
-    final rawPresentaciones = producto['presentaciones'] as List?;
-    final presentaciones = rawPresentaciones
-            ?.map((p) => Map<String, dynamic>.from(p as Map))
-            .toList() ??
-        [];
-
-    // Use first presentation image, then product cover, then nothing
-    String? imagenUrl;
-    if (presentaciones.isNotEmpty) {
-      imagenUrl = presentaciones.first['imageUrl'] as String?;
-    }
-    if (imagenUrl == null || imagenUrl.isEmpty) {
-      imagenUrl = producto['imagenUrl'] as String?;
-    }
-
-    final pendingTueste = producto['pendingTueste'] == true;
-
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-      Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        elevation: 1,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Fila de cabecera: imagen + nombre
-                Row(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: imagenUrl != null && imagenUrl.isNotEmpty
-                          ? Image.network(
-                              imagenUrl,
-                              width: 48, height: 48,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => _placeholderImagen(),
-                            )
-                          : _placeholderImagen(),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        nombre,
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Icon(Icons.chevron_right, color: Colors.grey.shade400),
-                  ],
-                ),
-
-                // Presentaciones
-                if (presentaciones.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  const Divider(height: 1),
-                  const SizedBox(height: 8),
-                  ...presentaciones.map((pp) => _PresentacionRow(pp: pp)),
-                ] else ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'Sin presentaciones — toca para agregar',
-                    style: TextStyle(fontSize: 12, color: Colors.orange.shade600, fontStyle: FontStyle.italic),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    ),
-    if (pendingTueste)
-      Positioned(
-        top: 2,
-        right: 12,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: Colors.red.shade600,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.local_fire_department_rounded, size: 12, color: Colors.white),
-              SizedBox(width: 4),
-              Text(
-                'Tueste pendiente',
-                style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ],
-    );
-  }
-
-  Widget _placeholderImagen() {
-    return Container(
-      width: 48, height: 48,
-      decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(10)),
-      child: Icon(Icons.inventory_2_rounded, color: Colors.blue.shade300, size: 24),
-    );
-  }
-}
-
-class _PresentacionRow extends StatelessWidget {
-  final Map<String, dynamic> pp;
-  const _PresentacionRow({required this.pp});
-
-  @override
-  Widget build(BuildContext context) {
-    final contenido = (pp['contenido'] as num?) ?? 0;
-    final unidad = pp['unidad']?.toString() ?? '';
-    final precio = (pp['precio'] as num?)?.toDouble() ?? 0;
-    final stock = (pp['stock'] as num?)?.toInt() ?? 0;
-    final predeterminada = pp['predeterminada'] == true;
-    final stockBajo = stock < 5;
-
-    // Friendly label
-    String etiqueta;
-    if (unidad == 'g' && contenido >= 1000) {
-      final kg = contenido.toDouble() / 1000;
-      etiqueta = '${kg % 1 == 0 ? kg.toInt() : kg}kg';
-    } else {
-      etiqueta = '${contenido % 1 == 0 ? contenido.toInt() : contenido}$unidad';
-    }
-
-    final imageUrl = pp['imageUrl'] as String?;
-
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          if (imageUrl != null && imageUrl.isNotEmpty)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: Image.network(
-                imageUrl,
-                width: 32, height: 32,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox(width: 32),
-              ),
-            )
-          else
-            const SizedBox(width: 0),
-          if (imageUrl != null && imageUrl.isNotEmpty) const SizedBox(width: 8),
-          if (predeterminada)
-            Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: Icon(Icons.star, size: 12, color: Colors.amber.shade600),
-            ),
-          Text(etiqueta, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-          const SizedBox(width: 8),
-          Text('S/ ${precio.toStringAsFixed(2)}',
-              style: TextStyle(fontSize: 13, color: Colors.green.shade700, fontWeight: FontWeight.w600)),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-            decoration: BoxDecoration(
-              color: stockBajo ? Colors.red.shade50 : Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (stockBajo)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 3),
-                    child: Icon(Icons.warning_rounded, size: 12, color: Colors.red.shade400),
-                  ),
-                Text('$stock',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: stockBajo ? Colors.red.shade600 : Colors.grey.shade700,
-                    )),
-              ],
-            ),
-          ),
-        ],
+      padding: const EdgeInsets.all(FincasSpacing.l),
+      child: Center(
+        child: _isLoadingMore
+            ? const FincasLoader(message: 'Cargando más...')
+            : FincasTextButton(label: 'Cargar más', onPressed: _cargarMasProductos),
       ),
     );
   }
