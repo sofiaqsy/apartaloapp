@@ -116,7 +116,7 @@ void main() {
           ]),
         );
 
-    testWidgets('sub-filters are three equal pills that use the full width of the screen', (t) async {
+    testWidgets('sub-filters are three compact, equal pills that use the full width of the screen', (t) async {
       t.view.physicalSize = const Size(390 * 3, 844 * 3);
       t.view.devicePixelRatio = 3;
       addTearDown(t.view.reset);
@@ -127,7 +127,7 @@ void main() {
       expect(r[0].width, closeTo(r[1].width, 0.5));
       expect(r[1].width, closeTo(r[2].width, 0.5));
       for (final x in r) {
-        expect(x.height, greaterThanOrEqualTo(44));
+        expect(x.height, inInclusiveRange(34, 40)); // compact pills, not tall bars
       }
     });
 

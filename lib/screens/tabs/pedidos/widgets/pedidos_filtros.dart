@@ -155,9 +155,10 @@ class PedidosSubFiltroChip extends StatelessWidget {
           onTap: onTap,
           customBorder: const StadiumBorder(),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 44),
+            // Compacta, como los filtros de Clientes: 36pt de alto (crece solo si el texto es grande).
+            constraints: const BoxConstraints(minHeight: 36),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: FincasSpacing.s, vertical: FincasSpacing.xs),
+              padding: const EdgeInsets.symmetric(horizontal: FincasSpacing.s, vertical: 2),
               child: Center(child: contenido),
             ),
           ),
