@@ -164,6 +164,28 @@ void nuevoProductoSheetTests() {
     expect(find.text('O agrégalo con'), findsNothing);
   });
 
+  testWidgets('the sheet appears first; the keyboard is requested only after it has finished rising', (t) async {
+    creados = [];
+    await t.pumpWidget(MaterialApp(
+      theme: FincasTheme.light(),
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(onPressed: () => showNuevoProductoSheet(context, onCrear: (n) async => null), child: const Text('abrir')),
+        ),
+      ),
+    ));
+    await t.tap(find.text('abrir'));
+    await t.pump(); // first frame of the sheet
+    expect(find.text('Nuevo producto'), findsOneWidget); // visible at once
+    final campoNombre = t.widget<TextField>(find.byType(TextField));
+    expect(campoNombre.autofocus, isFalse); // no keyboard request while building
+    expect(campoNombre.focusNode!.hasFocus, isFalse);
+    await t.pump(const Duration(milliseconds: 100));
+    expect(campoNombre.focusNode!.hasFocus, isFalse); // still not asked while the sheet is rising
+    await t.pump(const Duration(milliseconds: 400));
+    expect(campoNombre.focusNode!.hasFocus, isTrue); // asked after it arrived
+  });
+
   testWidgets('an empty name shows an inline message and does not call the server', (t) async {
     await open(t);
     await t.tap(find.text('Crear y configurar'));

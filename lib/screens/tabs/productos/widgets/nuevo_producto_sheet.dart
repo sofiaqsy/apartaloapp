@@ -30,14 +30,29 @@ class _NuevoProductoForm extends StatefulWidget {
 class _NuevoProductoFormState extends State<_NuevoProductoForm> {
   // El estado de la hoja es dueño del controlador: se libera cuando la hoja desaparece de verdad.
   final _nombre = TextEditingController();
+  final _foco = FocusNode();
   bool _creando = false;
   String? _error;
 
   bool get _ocupado => _creando;
 
   @override
+  void initState() {
+    super.initState();
+    // El teclado de iOS tarda mucho en arrancar la primera vez y congela la pantalla mientras lo hace.
+    // Si se pide al construir (autofocus), la hoja no aparece hasta que termina. Por eso la hoja se
+    // muestra primero y el foco se pide cuando ya terminó de subir.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 350), () {
+        if (mounted && !_ocupado) _foco.requestFocus();
+      });
+    });
+  }
+
+  @override
   void dispose() {
     _nombre.dispose();
+    _foco.dispose();
     super.dispose();
   }
 
@@ -74,7 +89,7 @@ class _NuevoProductoFormState extends State<_NuevoProductoForm> {
             const SizedBox(height: FincasSpacing.l),
             TextField(
               controller: _nombre,
-              autofocus: true,
+              focusNode: _foco,
               enabled: !_ocupado,
               textCapitalization: TextCapitalization.words,
               textInputAction: TextInputAction.done,
