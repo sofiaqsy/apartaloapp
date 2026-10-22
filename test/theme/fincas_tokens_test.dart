@@ -47,6 +47,10 @@ void main() {
       expect(contrast(FincasColors.accent, FincasColors.accentBg), greaterThanOrEqualTo(4.5));
       expect(contrast(FincasColors.textOnInk, FincasColors.accent), greaterThanOrEqualTo(4.5));
     });
+    test('muted accent: white text on it and its text on the soft tint', () {
+      expect(contrast(FincasColors.textOnInk, FincasColors.accentMuted), greaterThanOrEqualTo(4.5));
+      expect(contrast(FincasColors.accentMuted, FincasColors.accentBg), greaterThanOrEqualTo(4.5));
+    });
     test('espresso on sand (badges, links on tonal fills)', () => expect(contrast(FincasColors.espresso, FincasColors.sand), greaterThanOrEqualTo(4.5)));
   });
 

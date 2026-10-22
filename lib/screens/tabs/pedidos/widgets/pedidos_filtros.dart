@@ -19,7 +19,7 @@ Color _toneBg(FincasTone t) => switch (t) {
     };
 
 /// Filtro principal (Pendientes / Historial): relleno sólido cuando está activo y tinte suave cuando no.
-/// Pendientes usa el acento de la interfaz (igual que "Nuevo pedido"); Historial es neutro (tinta y arena).
+/// Pendientes usa un espresso suave (de la misma familia que "Nuevo pedido"); Historial es neutro (tinta y arena).
 class PedidosFiltroChip extends StatelessWidget {
   const PedidosFiltroChip({
     super.key,
@@ -28,21 +28,21 @@ class PedidosFiltroChip extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.tone = FincasTone.neutral,
-    this.accent = false,
+    this.mutedAccent = false,
   });
   final String label;
   final int count;
   final bool selected;
   final FincasTone tone;
 
-  /// Uses the interface accent (the same color as the Nuevo pedido button) instead of a status tone.
-  final bool accent;
+  /// Uses a softer espresso (same family as the Nuevo pedido button) instead of a status tone.
+  final bool mutedAccent;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final solid = accent ? FincasColors.accent : _toneFg(tone);
-    final soft = accent ? FincasColors.accentBg : _toneBg(tone);
+    final solid = mutedAccent ? FincasColors.accentMuted : _toneFg(tone);
+    final soft = mutedAccent ? FincasColors.accentBg : _toneBg(tone);
     final fg = selected ? FincasColors.textOnInk : solid;
     return Semantics(
       button: true,

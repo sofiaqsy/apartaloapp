@@ -43,6 +43,7 @@ class FincasColors {
   // The interface accent: espresso brown. The Pendientes filter and the Nuevo pedido button share it.
   static const accent = espresso;
   static const accentBg = Color(0xFFEDE4E0); // soft tint of the accent (inactive filter)
+  static const accentMuted = Color(0xFF7A5650); // the accent, softer: selected Pendientes filter (white text 6.4:1)
 
   // Status (foreground / tonal background pairs, each >= 4.5:1)
   static const success = sage;
