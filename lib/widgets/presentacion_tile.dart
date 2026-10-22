@@ -59,13 +59,12 @@ class PresentacionTile extends StatelessWidget {
       if (abierta) TextButton(onPressed: onAlternar, child: const Text('Cerrar')),
     ];
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: FincasSpacing.s),
-      decoration: BoxDecoration(
-        color: FincasColors.surface,
-        borderRadius: BorderRadius.circular(FincasRadii.large),
-        border: Border.all(color: FincasColors.border),
-      ),
+    // Material (no una caja con color): los interruptores del formulario abierto pintan su tinta sobre él.
+    return Padding(
+      padding: const EdgeInsets.only(bottom: FincasSpacing.s),
+      child: Material(
+      color: FincasColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(FincasRadii.large), side: const BorderSide(color: FincasColors.border)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -128,6 +127,37 @@ class PresentacionTile extends StatelessWidget {
           ),
         ],
       ),
+      ),
     );
   }
 }
+
+/// Tarjeta de una presentación nueva: está en la misma lista que las demás, abierta y con su formulario.
+/// [onCancelar] la quita sin guardar nada.
+class PresentacionNuevaCard extends StatelessWidget {
+  const PresentacionNuevaCard({super.key, required this.formulario});
+  final Widget formulario;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: FincasSpacing.s),
+      child: Material(
+        color: FincasColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(FincasRadii.large), side: const BorderSide(color: FincasColors.accent)),
+        child: Padding(
+          padding: const EdgeInsets.all(FincasSpacing.l),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Semantics(header: true, child: const Text('Nueva presentación', style: FincasText.sectionTitle)),
+              const SizedBox(height: FincasSpacing.m),
+              formulario,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+

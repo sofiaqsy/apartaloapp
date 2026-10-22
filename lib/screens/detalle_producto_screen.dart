@@ -39,6 +39,8 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
   String _simboloMoneda = 'S/'; // símbolo de la moneda del producto
   String? _presentacionAbiertaId; // la presentación cuyo formulario está abierto
   bool _primeraPresentacionAbierta = false; // la primera se abre sola una vez, al cargar
+  bool _nuevaPresentacionAbierta = false; // la tarjeta de presentación nueva está en la lista
+  final GlobalKey _nuevaPresentacionKey = GlobalKey();
   bool _infoExpandida = true; // sección "Información general" expandida
   bool _presentacionesExpandida = true; // sección "Presentaciones" expandida
   // Presentaciones
@@ -1187,7 +1189,7 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
                 ),
                 if (_loadingPresentaciones)
                   const Padding(padding: EdgeInsets.all(FincasSpacing.l), child: Center(child: FincasLoader(message: 'Cargando presentaciones...')))
-                else if (_presentaciones.isEmpty)
+                else if (_presentaciones.isEmpty && !_nuevaPresentacionAbierta)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: FincasSpacing.m),
                     child: FincasMessageState(
@@ -1212,8 +1214,24 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
                           onGuardar: (d) => _guardarPresentacion(d, existente: p),
                         ),
                       )),
+                // Presentación nueva: una tarjeta más de la lista, abierta con su formulario
+                if (_nuevaPresentacionAbierta)
+                  PresentacionNuevaCard(
+                    key: _nuevaPresentacionKey,
+                    formulario: PresentacionForm(
+                      stockManual: _stockManual,
+                      simboloMoneda: _simboloMoneda,
+                      onCancelar: () => setState(() => _nuevaPresentacionAbierta = false),
+                      onGuardar: (d) async {
+                        final error = await _guardarPresentacion(d);
+                        if (error == null && mounted) setState(() => _nuevaPresentacionAbierta = false);
+                        return error;
+                      },
+                    ),
+                  ),
                 const SizedBox(height: FincasSpacing.s),
-                FincasSecondaryButton(label: 'Agregar presentación', onPressed: _mostrarFormPresentacion),
+                if (!_nuevaPresentacionAbierta)
+                  FincasSecondaryButton(label: 'Agregar presentación', onPressed: _abrirNuevaPresentacion),
                     ],
                   ),
                 ),
@@ -2031,36 +2049,20 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
     return null;
   }
 
-  /// Hoja para crear una presentación nueva (las existentes se editan abriendo su tarjeta).
-  void _mostrarFormPresentacion() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      useSafeArea: true,
-      builder: (ctx) => SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(FincasSpacing.screenH, 0, FincasSpacing.screenH, FincasSpacing.l + MediaQuery.of(ctx).viewInsets.bottom),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text('Nueva presentación', style: FincasText.screenTitle),
-            const SizedBox(height: FincasSpacing.l),
-            PresentacionForm(
-              stockManual: _stockManual,
-              simboloMoneda: _simboloMoneda,
-              onCancelar: () => Navigator.pop(ctx),
-              onGuardar: (d) async {
-                final error = await _guardarPresentacion(d);
-                if (error == null && ctx.mounted) Navigator.pop(ctx);
-                return error;
-              },
-            ),
-          ],
-        ),
-      ),
-    );
+  /// Abre la tarjeta de presentación nueva dentro de la lista y la lleva a la vista.
+  void _abrirNuevaPresentacion() {
+    setState(() {
+      _nuevaPresentacionAbierta = true;
+      _presentacionAbiertaId = null; // las demás se cierran para que la nueva quede a la vista
+      _presentacionesExpandida = true;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final contexto = _nuevaPresentacionKey.currentContext;
+      if (contexto != null) {
+        Scrollable.ensureVisible(contexto, duration: const Duration(milliseconds: 250), curve: Curves.easeInOut, alignment: 0.05);
+      }
+    });
   }
-
 
   // ── Impresión de etiqueta de muestra ────────────────────────────────────────
 

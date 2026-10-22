@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:apartalo_app/models/producto_info.dart';
 import 'package:apartalo_app/services/api_service.dart';
 import 'package:apartalo_app/theme/fincas_theme.dart';
+import 'package:apartalo_app/widgets/presentacion_form.dart';
 import 'package:apartalo_app/widgets/presentacion_tile.dart';
 import 'package:apartalo_app/widgets/producto_presentaciones_ajustes.dart';
 
@@ -207,6 +208,67 @@ void main() {
     });
   });
 
+  group('new presentation card (inline, same list as the others)', () {
+    Widget lista({required PresentacionDatos? Function() capturar, VoidCallback? cancelar, double scale = 1.0}) => MaterialApp(
+          theme: FincasTheme.light(),
+          builder: (context, c) => MediaQuery(data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)), child: c!),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(children: [
+                PresentacionTile(presentacion: _pres(), onAlternar: () {}, onEliminar: () {}),
+                PresentacionNuevaCard(
+                  formulario: PresentacionForm(
+                    onCancelar: cancelar ?? () {},
+                    onGuardar: (d) async {
+                      _guardado = d;
+                      return null;
+                    },
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        );
+
+    testWidgets('sits in the same column as the existing presentations, with its form already open', (t) async {
+      await t.pumpWidget(lista(capturar: () => null));
+      expect(find.text('Nueva presentación'), findsOneWidget);
+      expect(find.text('Crear presentación'), findsOneWidget);
+      final existente = t.getRect(find.byType(PresentacionTile));
+      final nueva = t.getRect(find.byType(PresentacionNuevaCard));
+      expect(nueva.left, existente.left); // same level: same left edge...
+      expect(nueva.width, existente.width); // ...and same width
+      expect(nueva.top, greaterThan(existente.bottom - 1)); // right below the others
+    });
+
+    testWidgets('Cancelar removes it without saving, and creating sends the data', (t) async {
+      var cancelado = 0;
+      _guardado = null;
+      await t.pumpWidget(lista(capturar: () => _guardado, cancelar: () => cancelado++));
+      await t.ensureVisible(find.text('Cancelar'));
+      await t.tap(find.text('Cancelar'));
+      expect(cancelado, 1);
+      expect(_guardado, isNull);
+
+      await t.enterText(find.byWidgetPredicate((w) => w is TextField && w.decoration?.labelText == 'Contenido'), '500');
+      await t.enterText(find.byWidgetPredicate((w) => w is TextField && w.decoration?.labelText == 'Precio público'), '45');
+      await t.pump();
+      await t.ensureVisible(find.text('Crear presentación'));
+      await t.tap(find.text('Crear presentación'));
+      await t.pumpAndSettle();
+      expect((_guardado!.contenido, _guardado!.precio), (500.0, 45.0));
+    });
+
+    testWidgets('fits 320pt at 2x text', (t) async {
+      t.view.physicalSize = const Size(320 * 3, 640 * 3);
+      t.view.devicePixelRatio = 3;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(lista(capturar: () => null, scale: 2.0));
+      expect(t.takeException(), isNull);
+    });
+  });
+
   group('first presentation opens by itself', () {
     test('the first one of the list is the one that opens', () {
       final lista = [_pres(), Presentacion(id: 'pr2', contenido: 1, unidad: 'kg', precio: 80, stock: 0, pedidoMinimo: 1, orden: 1, predeterminada: false, molienda: const [])];
@@ -271,6 +333,13 @@ void main() {
       expect(alternar, 1);
     });
 
+    testWidgets('open with the REAL form (switches inside) raises no framework error', (t) async {
+      await t.pumpWidget(_tile(_pres(), abierta: true, form: PresentacionForm(presentacion: _pres(), onGuardar: (d) async => null)));
+      expect(t.takeException(), isNull);
+      expect(find.text('Predeterminada'), findsWidgets);
+      expect(find.byType(Switch), findsNWidgets(2));
+    });
+
     testWidgets('closed: no form is built even if one is provided', (t) async {
       await t.pumpWidget(_tile(_pres(), form: const Text('FORMULARIO')));
       expect(find.text('FORMULARIO'), findsNothing);
@@ -290,3 +359,5 @@ void main() {
 extension on bool {
   bool get not => !this;
 }
+
+PresentacionDatos? _guardado;
