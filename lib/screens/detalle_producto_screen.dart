@@ -1,5 +1,8 @@
 import '../widgets/fincas_widgets.dart';
+import '../theme/fincas_tokens.dart';
+import '../widgets/presentacion_tile.dart';
 import '../widgets/producto_info_general.dart';
+import '../widgets/producto_presentaciones_ajustes.dart';
 import '../models/producto_info.dart';
 import 'dart:async';
 import 'dart:io';
@@ -30,6 +33,9 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
   bool _isLoading = false;
   bool _hasChanges = false;
   bool _infoDirty = false; // cambios sin guardar en "Información general"
+  bool _ajustesDirty = false; // cambios sin guardar en los ajustes de presentaciones
+  bool _stockManual = false; // el stock de cada presentación se escribe a mano
+  String _simboloMoneda = 'S/'; // símbolo de la moneda del producto
   // Presentaciones
   List<Presentacion> _presentaciones = [];
   bool _loadingPresentaciones = false;
@@ -506,7 +512,7 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
   }
 
   Future<void> _confirmPop() async {
-    if (!_hasChanges && !_infoDirty) {
+    if (!_hasChanges && !_infoDirty && !_ajustesDirty) {
       if (mounted) Navigator.of(context).pop();
       return;
     }
@@ -537,7 +543,7 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
     return DefaultTabController(
       length: 3,
       child: PopScope(
-        canPop: !_hasChanges && !_infoDirty,
+        canPop: !_hasChanges && !_infoDirty && !_ajustesDirty,
         onPopInvokedWithResult: (didPop, _) {
           if (!didPop) _confirmPop();
         },
@@ -1121,65 +1127,70 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Header row
-          Row(children: [
-            Icon(Icons.layers_outlined, size: 18, color: Colors.indigo.shade600),
-            const SizedBox(width: 8),
-            Text('Presentaciones',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Colors.indigo.shade800)),
-            const Spacer(),
-            if (_loadingPresentaciones)
-              const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-            else
-              GestureDetector(
-                onTap: _cargarPresentaciones,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: Icon(Icons.refresh_rounded, size: 18, color: Colors.grey.shade400),
+          // Sección "Presentaciones": encabezado, ajustes (stock manual, lote verde, moneda) y la lista
+          FincasCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Presentaciones', style: FincasText.sectionTitle),
+                          Text('Variantes con su precio, stock y B2B', style: FincasText.metadata),
+                        ],
+                      ),
+                    ),
+                    if (_loadingPresentaciones)
+                      const Padding(
+                        padding: EdgeInsets.all(FincasSpacing.m),
+                        child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5)),
+                      )
+                    else
+                      IconButton(tooltip: 'Actualizar presentaciones', onPressed: _cargarPresentaciones, icon: const Icon(Icons.refresh_rounded)),
+                  ],
                 ),
-              ),
-            GestureDetector(
-              onTap: _mostrarFormPresentacion,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.indigo.shade50,
-                  borderRadius: BorderRadius.circular(20),
+                const Divider(),
+                const SizedBox(height: FincasSpacing.s),
+                ProductoPresentacionesAjustes(
+                  productId: widget.producto['codigo']?.toString() ?? '',
+                  onAjustes: (a) {
+                    if (mounted && (a.stockManual != _stockManual || a.simboloMoneda != _simboloMoneda)) {
+                      setState(() { _stockManual = a.stockManual; _simboloMoneda = a.simboloMoneda; });
+                    }
+                  },
+                  onDirtyChanged: (sucio) {
+                    if (mounted && _ajustesDirty != sucio) setState(() => _ajustesDirty = sucio);
+                  },
                 ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.add, size: 14, color: Colors.indigo.shade600),
-                  const SizedBox(width: 4),
-                  Text('Agregar', style: TextStyle(fontSize: 12, color: Colors.indigo.shade600, fontWeight: FontWeight.w600)),
-                ]),
-              ),
+                if (_loadingPresentaciones)
+                  const Padding(padding: EdgeInsets.all(FincasSpacing.l), child: Center(child: FincasLoader(message: 'Cargando presentaciones...')))
+                else if (_presentaciones.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: FincasSpacing.m),
+                    child: FincasMessageState(
+                      title: 'Sin presentaciones',
+                      message: 'Agrega una para que el producto aparezca con precio.',
+                    ),
+                  )
+                else
+                  ..._presentaciones.map((p) => PresentacionTile(
+                        presentacion: p,
+                        simboloMoneda: _simboloMoneda,
+                        stockManual: _stockManual,
+                        onEditar: () => _mostrarFormPresentacion(presentacion: p),
+                        onEliminar: () => _eliminarPresentacion(p),
+                      )),
+                const SizedBox(height: FincasSpacing.s),
+                FincasSecondaryButton(label: 'Agregar presentación', onPressed: _mostrarFormPresentacion),
+              ],
             ),
-          ]),
-          const SizedBox(height: 12),
-          if (_loadingPresentaciones)
-            const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator(strokeWidth: 2)))
-          else if (_presentaciones.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.orange.shade200),
-              ),
-              child: Row(children: [
-                Icon(Icons.info_outline, size: 16, color: Colors.orange.shade600),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text('Sin presentaciones. Agrega una para que el producto aparezca con precio.',
-                      style: TextStyle(fontSize: 12, color: Colors.orange.shade700)),
-                ),
-              ]),
-            )
-          else
-            ..._presentaciones.map(_buildPresentacionTile),
+          ),
 
-          const SizedBox(height: 20),
-          Divider(color: Colors.grey.shade300),
-          const SizedBox(height: 16),
+          const SizedBox(height: FincasSpacing.l),
 
           // Información general: nombre, descripciones, categoría y atributos del café
           ProductoInfoGeneral(
@@ -1936,116 +1947,6 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
     );
   }
 
-  Widget _buildPresentacionTile(Presentacion p) {
-    final moliendaLabels = {'ground': 'Molido', 'whole': 'Grano', 'green': 'Verde'};
-    final moliendaStr = p.molienda.map((m) => moliendaLabels[m] ?? m).join(', ');
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.indigo.shade100),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 4, offset: const Offset(0, 2))],
-      ),
-      child: Column(
-        children: [
-          // Header row: image + label + price + actions
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
-            child: Row(children: [
-              if (p.imageUrl != null && p.imageUrl!.isNotEmpty) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: CachedNetworkImage(
-                    imageUrl: p.imageUrl!,
-                    width: 48, height: 48,
-                    fit: BoxFit.cover,
-                    memCacheWidth: 96,
-                    placeholder: (_, __) => Container(
-                      width: 48, height: 48,
-                      color: Colors.grey.shade100,
-                      child: Center(
-                        child: SizedBox(
-                          width: 16, height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 1.5,
-                            color: Colors.grey.shade300,
-                          ),
-                        ),
-                      ),
-                    ),
-                    errorWidget: (_, __, ___) => const SizedBox.shrink(),
-                  ),
-                ),
-                const SizedBox(width: 10),
-              ],
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  if (p.predeterminada) ...[
-                    Icon(Icons.star, size: 13, color: Colors.amber.shade600),
-                    const SizedBox(width: 4),
-                  ],
-                  Text(p.etiqueta, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                  if (!p.visible) ...[
-                    const SizedBox(width: 8),
-                    const FincasStatusBadge('Oculta en tienda'),
-                  ],
-                ]),
-                const SizedBox(height: 2),
-                Row(children: [
-                  Text('S/ ${p.precio.toStringAsFixed(2)}',
-                      style: TextStyle(fontSize: 14, color: Colors.green.shade700, fontWeight: FontWeight.w700)),
-                  if (p.precioB2b != null) ...[
-                    const SizedBox(width: 8),
-                    Text('B2B: S/ ${p.precioB2b!.toStringAsFixed(2)}',
-                        style: TextStyle(fontSize: 11, color: Colors.blue.shade600)),
-                  ],
-                  if (moliendaStr.isNotEmpty) ...[
-                    const SizedBox(width: 8),
-                    Text(moliendaStr, style: TextStyle(fontSize: 11, color: Colors.brown.shade500)),
-                  ],
-                ]),
-              ])),
-              GestureDetector(
-                onTap: () => _mostrarFormPresentacion(presentacion: p),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  child: Icon(Icons.edit_outlined, size: 18, color: Colors.indigo.shade400),
-                ),
-              ),
-              GestureDetector(
-                onTap: () => _eliminarPresentacion(p),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                  child: Icon(Icons.delete_outline, size: 18, color: Colors.red.shade300),
-                ),
-              ),
-            ]),
-          ),
-          // Stock (solo lectura — se deriva del lote disponible)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
-              border: Border(top: BorderSide(color: Colors.indigo.shade50)),
-            ),
-            child: Row(children: [
-              Icon(Icons.inventory_outlined, size: 14, color: Colors.grey.shade500),
-              const SizedBox(width: 6),
-              Text('Stock: ', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-              Text('${p.stock}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
-              const SizedBox(width: 4),
-              Text('unidades', style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
-            ]),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _eliminarPresentacion(Presentacion p) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -2084,6 +1985,7 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
         text: esEdicion && presentacion.cantidadB2b != null ? presentacion.cantidadB2b.toString() : '');
     final pedidoMinimoCtrl = TextEditingController(
         text: esEdicion ? presentacion.pedidoMinimo.toString() : '1');
+    final stockCtrl = TextEditingController(text: esEdicion ? presentacion.stock.toString() : '0');
 
     String unidad = esEdicion ? presentacion.unidad : 'g';
     bool predeterminada = esEdicion ? presentacion.predeterminada : false;
@@ -2105,7 +2007,8 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
           }
           final b2b = precioB2bCtrl.text.trim().isNotEmpty ? double.tryParse(precioB2bCtrl.text.trim()) : null;
           final cantB2b = cantidadB2bCtrl.text.trim().isNotEmpty ? int.tryParse(cantidadB2bCtrl.text.trim()) : null;
-          final stock = esEdicion ? presentacion.stock : 0; // stock no se edita aquí
+          // Con stock manual el stock se escribe aquí; si no, lo calcula el sistema desde los tuestes.
+          final stock = _stockManual ? (int.tryParse(stockCtrl.text.trim()) ?? 0) : (esEdicion ? presentacion.stock : 0);
           final pedidoMinimo = int.tryParse(pedidoMinimoCtrl.text.trim()) ?? 1;
 
           Navigator.pop(ctx);
@@ -2272,6 +2175,23 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
                 ),
               ),
               const SizedBox(height: 16),
+
+              // Stock (solo cuando el producto usa stock manual)
+              if (_stockManual) ...[
+                const Text('Stock', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: stockCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    hintText: '0',
+                    filled: true, fillColor: Colors.grey.shade50,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
 
               // Molienda
               const Text('Tipo de molienda', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
