@@ -278,34 +278,37 @@ class _PedidosTabState extends State<PedidosTab> with SingleTickerProviderStateM
                   // Subfiltros del historial
                   if (_filtroEstado == 'HISTORIAL') ...[
                     const SizedBox(height: FincasSpacing.s),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          PedidosSubFiltroChip(
+                    Row(
+                      children: [
+                        Expanded(
+                          child: PedidosSubFiltroChip(
                             label: 'Todos',
                             count: _countHistorial,
                             selected: _subFiltroHistorial == 'TODOS',
                             onTap: () => _cambiarSubFiltro('TODOS'),
                           ),
-                          const SizedBox(width: FincasSpacing.s),
-                          PedidosSubFiltroChip(
+                        ),
+                        const SizedBox(width: FincasSpacing.s),
+                        Expanded(
+                          child: PedidosSubFiltroChip(
                             label: 'Pagados',
                             count: _countPagados,
                             tone: FincasTone.success,
                             selected: _subFiltroHistorial == 'PAGADOS',
                             onTap: () => _cambiarSubFiltro('PAGADOS'),
                           ),
-                          const SizedBox(width: FincasSpacing.s),
-                          PedidosSubFiltroChip(
+                        ),
+                        const SizedBox(width: FincasSpacing.s),
+                        Expanded(
+                          child: PedidosSubFiltroChip(
                             label: 'Por cobrar',
                             count: _countPorCobrar,
                             tone: FincasTone.error,
                             selected: _subFiltroHistorial == 'PENDIENTE_PAGO',
                             onTap: () => _cambiarSubFiltro('PENDIENTE_PAGO'),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ],
                 ],

@@ -105,20 +105,56 @@ void main() {
       expect(find.bySemanticsLabel('Pendientes, 3'), findsOneWidget);
     });
 
-    testWidgets('sub-filter chips are at least 44pt tall and scroll horizontally on a small phone', (t) async {
+    Widget subRow({bool sel0 = true, bool sel1 = false, bool sel2 = false}) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(children: [
+            Expanded(child: PedidosSubFiltroChip(label: 'Todos', count: 120, selected: sel0, onTap: () {})),
+            const SizedBox(width: 8),
+            Expanded(child: PedidosSubFiltroChip(label: 'Pagados', count: 90, tone: FincasTone.success, selected: sel1, onTap: () {})),
+            const SizedBox(width: 8),
+            Expanded(child: PedidosSubFiltroChip(label: 'Por cobrar', count: 30, tone: FincasTone.error, selected: sel2, onTap: () {})),
+          ]),
+        );
+
+    testWidgets('sub-filters are three equal pills that use the full width of the screen', (t) async {
+      t.view.physicalSize = const Size(390 * 3, 844 * 3);
+      t.view.devicePixelRatio = 3;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(_app(subRow()));
+      final r = [for (final f in ['Todos', 'Pagados', 'Por cobrar']) t.getRect(find.ancestor(of: find.text(f), matching: find.byType(PedidosSubFiltroChip)).first)];
+      expect(r[0].left, closeTo(16, 0.5)); // starts at the screen margin
+      expect(r[2].right, closeTo(390 - 16, 0.5)); // ends at the other margin: nothing is left empty
+      expect(r[0].width, closeTo(r[1].width, 0.5));
+      expect(r[1].width, closeTo(r[2].width, 0.5));
+      for (final x in r) {
+        expect(x.height, greaterThanOrEqualTo(44));
+      }
+    });
+
+    testWidgets('sub-filters: selected is a solid pill (ink, green, red by meaning), the others are sand', (t) async {
+      Color fillOf(String label) => t.widget<Material>(find.ancestor(of: find.text(label), matching: find.byType(Material)).first).color!;
+      await t.pumpWidget(_app(subRow()));
+      expect(fillOf('Todos'), FincasColors.ink);
+      expect(fillOf('Pagados'), FincasColors.sand);
+      await t.pumpWidget(_app(subRow(sel0: false, sel1: true)));
+      expect(fillOf('Pagados'), FincasColors.success);
+      await t.pumpWidget(_app(subRow(sel0: false, sel2: true)));
+      expect(fillOf('Por cobrar'), FincasColors.error);
+    });
+
+    testWidgets('sub-filters fit 320pt at 2x text (the count goes under the label)', (t) async {
       await _small(t);
-      await t.pumpWidget(_app(SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(children: [
-          PedidosSubFiltroChip(label: 'Todos', count: 120, selected: true, onTap: () {}),
-          const SizedBox(width: 8),
-          PedidosSubFiltroChip(label: 'Pagados', count: 90, tone: FincasTone.success, selected: false, onTap: () {}),
-          const SizedBox(width: 8),
-          PedidosSubFiltroChip(label: 'Por cobrar', count: 30, tone: FincasTone.error, selected: false, onTap: () {}),
-        ]),
-      ), scale: 2.0));
+      await t.pumpWidget(_app(subRow(), scale: 2.0));
       expect(t.takeException(), isNull);
-      expect(t.getSize(find.byType(PedidosSubFiltroChip).first).height, greaterThanOrEqualTo(44));
+      expect(find.text('30'), findsOneWidget);
+    });
+
+    testWidgets('sub-filter tap reports the selection', (t) async {
+      var taps = 0;
+      await t.pumpWidget(_app(Row(children: [Expanded(child: PedidosSubFiltroChip(label: 'Pagados', count: 3, selected: false, onTap: () => taps++))])));
+      await t.tap(find.text('Pagados'));
+      expect(taps, 1);
+      expect(find.bySemanticsLabel('Pagados, 3'), findsOneWidget);
     });
 
     testWidgets('summary shows the three amounts and the alert only when there is something to collect', (t) async {

@@ -88,7 +88,9 @@ class PedidosFiltroChip extends StatelessWidget {
   }
 }
 
-/// Subfiltro del historial: píldora con borde; el tono marca el significado (pagado, por cobrar).
+/// Subfiltro del historial (Todos / Pagados / Por cobrar): píldora como en Clientes, rellena cuando está activa
+/// y arena cuando no. Se usa dentro de un Row con Expanded para repartir todo el ancho de la pantalla.
+/// El tono marca el significado (pagado, por cobrar); Todos es neutro (tinta).
 class PedidosSubFiltroChip extends StatelessWidget {
   const PedidosSubFiltroChip({
     super.key,
@@ -104,43 +106,59 @@ class PedidosSubFiltroChip extends StatelessWidget {
   final FincasTone tone;
   final VoidCallback onTap;
 
-  Color get _fg => switch (tone) {
-        FincasTone.success => FincasColors.success,
-        FincasTone.error => FincasColors.error,
-        FincasTone.warning => FincasColors.warning,
-        FincasTone.neutral => FincasColors.espresso,
-      };
-  Color get _bg => switch (tone) {
-        FincasTone.success => FincasColors.successBg,
-        FincasTone.error => FincasColors.errorBg,
-        FincasTone.warning => FincasColors.warningBg,
-        FincasTone.neutral => FincasColors.sand,
-      };
-
   @override
   Widget build(BuildContext context) {
-    final text = count > 0 ? '$label ($count)' : label;
+    final solid = _toneFg(tone);
+    final fg = selected ? FincasColors.textOnInk : FincasColors.textPrimary;
+    final largeText = MediaQuery.textScalerOf(context).scale(16) / 16 > 1.3;
+    final labelStyle = FincasText.label.copyWith(color: fg, fontWeight: selected ? FontWeight.w700 : FontWeight.w600);
+
+    final Widget contenido;
+    if (count <= 0) {
+      contenido = Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: labelStyle);
+    } else if (largeText) {
+      // Con texto grande la cantidad pasa debajo de la etiqueta.
+      contenido = Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: labelStyle),
+          Text('$count', style: FincasText.caption.copyWith(color: fg, fontWeight: FontWeight.w700)),
+        ],
+      );
+    } else {
+      contenido = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: labelStyle)),
+          const SizedBox(width: FincasSpacing.xs + 2),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+            decoration: BoxDecoration(
+              color: selected ? FincasColors.textOnInk.withValues(alpha: 0.22) : FincasColors.surface,
+              borderRadius: BorderRadius.circular(FincasRadii.small + 4),
+            ),
+            child: Text('$count', style: FincasText.caption.copyWith(color: fg, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      );
+    }
+
     return Semantics(
       button: true,
       selected: selected,
-      label: text,
+      label: count > 0 ? '$label, $count' : label,
       excludeSemantics: true,
       child: Material(
-        color: selected ? _bg : Colors.transparent,
-        shape: StadiumBorder(side: BorderSide(color: selected ? _fg : FincasColors.border)),
+        color: selected ? solid : FincasColors.sand,
+        shape: const StadiumBorder(),
         child: InkWell(
           onTap: onTap,
           customBorder: const StadiumBorder(),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 44),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: FincasSpacing.l),
-              child: Center(
-                widthFactor: 1,
-                child: Text(text,
-                    style: FincasText.label.copyWith(
-                        color: selected ? _fg : FincasColors.textSecondary, fontWeight: selected ? FontWeight.w600 : FontWeight.w500)),
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: FincasSpacing.s, vertical: FincasSpacing.xs),
+              child: Center(child: contenido),
             ),
           ),
         ),
