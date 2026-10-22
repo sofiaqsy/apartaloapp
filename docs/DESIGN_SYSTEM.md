@@ -81,5 +81,5 @@ The app-wide theme already replaced the blue seed, but about 400 hardcoded `Colo
 been migrated; they will look mixed until they are.
 
 ## Status
-Redesigned: Pedidos tab and the top/bottom bars, Productos tab (list, cards, add-product sheet), splash and launch background (now exactly `#252117`), sign-in and onboarding, "Tus negocios".
+Redesigned: Pedidos tab and the top/bottom bars, Productos tab (list, cards, new-product sheet that opens on manual entry), splash and launch background (now exactly `#252117`), sign-in and onboarding, "Tus negocios".
 Not yet migrated: order and product detail screens, clients, reports, settings, team and request screens, and the new-product dialogs.

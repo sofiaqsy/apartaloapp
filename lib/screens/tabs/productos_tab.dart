@@ -7,7 +7,7 @@ import '../../services/vision_service.dart';
 import '../detalle_producto_screen.dart';
 import '../../theme/fincas_tokens.dart';
 import '../../widgets/fincas_widgets.dart';
-import 'productos/widgets/agregar_producto_sheet.dart';
+import 'productos/widgets/nuevo_producto_sheet.dart';
 import 'productos/widgets/producto_list_card.dart';
 
 class ProductosTab extends StatefulWidget {
@@ -684,21 +684,11 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
       ),
       // Una sola acción principal.
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _mostrarOpcionesNuevoProducto,
+        onPressed: _crearProductoManual,
         shape: const StadiumBorder(),
         label: const Text('Nuevo producto'),
       ),
     );
-  }
-
-  void _mostrarOpcionesNuevoProducto() {
-    _modalAbierto = true;
-    showAgregarProductoSheet(
-      context,
-      onEscanear: _abrirEscanerCamara,
-      onFoto: _tomarFotoYCrearProducto,
-      onManual: _crearProductoManual,
-    ).whenComplete(() => _modalAbierto = false);
   }
 
   void _abrirEscanerCamara() {
@@ -727,117 +717,30 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
     _crearProductoManual(imagenPath: image.path);
   }
 
+  /// Abre la hoja de nuevo producto (entrada manual). Si se crea, abre su edición.
   void _crearProductoManual({String? imagenPath}) {
     _modalAbierto = true;
-    final nombreController = TextEditingController();
-    bool guardando = false;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      isDismissible: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setModalState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 80, height: 80,
-                  decoration: BoxDecoration(color: Colors.orange.shade50, shape: BoxShape.circle),
-                  child: Icon(Icons.inventory_2_outlined, color: Colors.orange.shade600, size: 40),
-                ),
-                const SizedBox(height: 20),
-                const Text('Nuevo producto', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                Text('Luego podrás agregar presentaciones con precio y stock.',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 14), textAlign: TextAlign.center),
-                const SizedBox(height: 20),
-
-                TextField(
-                  controller: nombreController,
-                  style: const TextStyle(fontSize: 18),
-                  textCapitalization: TextCapitalization.words,
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    labelText: 'Nombre del producto *',
-                    hintText: 'Ej: Café Blend',
-                    filled: true,
-                    fillColor: Colors.grey.shade50,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                    prefixIcon: const Icon(Icons.inventory_2),
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton.icon(
-                    onPressed: guardando ? null : () async {
-                      final nombre = nombreController.text.trim();
-                      if (nombre.isEmpty) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          const SnackBar(content: Text('Ingresa el nombre'), backgroundColor: Colors.orange),
-                        );
-                        return;
-                      }
-
-                      setModalState(() => guardando = true);
-
-                      final result = await ApiService.crearProducto(nombre: nombre);
-
-                      if (!ctx.mounted) return;
-
-                      if (result.isSuccess) {
-                        HapticFeedback.heavyImpact();
-                        _modalAbierto = false;
-                        Navigator.pop(ctx);
-                        _cargarProductos(refresh: true);
-                        final nuevoProducto = result.data!;
-                        if (mounted) _irAEditarProducto(nuevoProducto);
-                      } else {
-                        setModalState(() => guardando = false);
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          SnackBar(content: Text(result.error ?? 'Error al guardar'), backgroundColor: Colors.red),
-                        );
-                      }
-                    },
-                    icon: guardando
-                        ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : const Icon(Icons.arrow_forward, color: Colors.white, size: 24),
-                    label: Text(
-                      guardando ? 'Creando...' : 'Crear y configurar',
-                      style: const TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.w600),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green.shade600,
-                      disabledBackgroundColor: Colors.green.shade400,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: guardando ? null : () {
-                    _modalAbierto = false;
-                    Navigator.pop(ctx);
-                  },
-                  child: const Text('Cancelar'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    ).whenComplete(() => _modalAbierto = false);
+    Map<String, dynamic>? nuevoProducto;
+    showNuevoProductoSheet(
+      context,
+      onCrear: (nombre) async {
+        final result = await ApiService.crearProducto(nombre: nombre);
+        if (result.isSuccess) {
+          HapticFeedback.heavyImpact();
+          nuevoProducto = result.data;
+          return null;
+        }
+        return result.error ?? 'Error al guardar';
+      },
+      onEscanear: _abrirEscanerCamara,
+      onFoto: _tomarFotoYCrearProducto,
+    ).then((creado) {
+      _modalAbierto = false;
+      if (creado == true && nuevoProducto != null && mounted) {
+        _cargarProductos(refresh: true);
+        _irAEditarProducto(nuevoProducto!);
+      }
+    });
   }
 
   Widget _buildSkeletonProducto(double opacity) {
@@ -916,7 +819,7 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
             Center(
               child: SizedBox(
                 width: 260,
-                child: FincasPrimaryButton(label: 'Agregar producto', onPressed: _mostrarOpcionesNuevoProducto),
+                child: FincasPrimaryButton(label: 'Agregar producto', onPressed: _crearProductoManual),
               ),
             ),
           ],

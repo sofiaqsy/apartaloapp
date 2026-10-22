@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:apartalo_app/screens/tabs/productos/widgets/agregar_producto_sheet.dart';
+import 'dart:async';
+import 'package:apartalo_app/screens/tabs/productos/widgets/nuevo_producto_sheet.dart';
 import 'package:apartalo_app/screens/tabs/productos/widgets/producto_list_card.dart';
 import 'package:apartalo_app/theme/fincas_theme.dart';
 
@@ -21,7 +22,7 @@ Map<String, dynamic> _producto({String nombre = 'Café Rosal', bool tueste = fal
     };
 
 void main() {
-  agregarSheetTests();
+  nuevoProductoSheetTests();
   test('presentation labels', () {
     expect(etiquetaPresentacion(250, 'g'), '250g');
     expect(etiquetaPresentacion(1000, 'g'), '1kg');
@@ -80,22 +81,29 @@ void main() {
   });
 }
 
-// Sheet: tap feedback while the camera or the form is opening.
-void agregarSheetTests() {
-  Future<List<int>> open(WidgetTester t, {Duration pausa = const Duration(milliseconds: 150)}) async {
-    final calls = [0, 0, 0];
+// New product sheet: opens straight into manual entry; scan and photo stay one tap away.
+void nuevoProductoSheetTests() {
+  late List<String> creados;
+  late int escanear;
+  late int foto;
+
+  Future<void> open(WidgetTester t, {Future<String?> Function(String)? onCrear}) async {
+    creados = [];
+    escanear = 0;
+    foto = 0;
     await t.pumpWidget(MaterialApp(
       theme: FincasTheme.light(),
       home: Builder(
         builder: (context) => Scaffold(
           body: TextButton(
-            onPressed: () => showAgregarProductoSheet(
-              context,
-              pausa: pausa,
-              onEscanear: () => calls[0]++,
-              onFoto: () => calls[1]++,
-              onManual: () => calls[2]++,
-            ),
+            onPressed: () async {
+              lastResult = await showNuevoProductoSheet(
+                context,
+                onCrear: onCrear ?? (n) async { creados.add(n); return null; },
+                onEscanear: () => escanear++,
+                onFoto: () => foto++,
+              );
+            },
             child: const Text('abrir'),
           ),
         ),
@@ -103,44 +111,96 @@ void agregarSheetTests() {
     ));
     await t.tap(find.text('abrir'));
     await t.pumpAndSettle();
-    return calls;
   }
 
-  testWidgets('tapping an option shows a loader at once, then closes the sheet and runs the action once', (t) async {
-    final calls = await open(t);
-    expect(find.byType(CircularProgressIndicator), findsNothing);
-    await t.tap(find.text('Tomar foto del producto'));
-    await t.pump(); // first frame after the tap
-    expect(find.byType(CircularProgressIndicator), findsOneWidget); // feedback before anything else opens
-    expect(find.text('Abriendo...'), findsOneWidget);
-    expect(calls, [0, 0, 0]); // the action waits until the indicator has been painted
-    await t.pumpAndSettle();
-    expect(calls, [0, 1, 0]);
-    expect(find.text('Agregar producto'), findsNothing); // sheet closed
+  testWidgets('opens directly on the manual form, with scan and photo as secondary actions', (t) async {
+    await open(t);
+    expect(find.text('Nuevo producto'), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+    expect(find.text('Crear y configurar'), findsOneWidget);
+    expect(find.text('Escanear código'), findsOneWidget);
+    expect(find.text('Tomar foto'), findsOneWidget);
+    expect(find.text('Cancelar'), findsOneWidget);
+    expect(find.text('Elige cómo quieres agregar el producto'), findsNothing); // no extra step first
   });
 
-  testWidgets('while one option is loading the others are disabled and a second tap is ignored', (t) async {
-    final calls = await open(t);
-    await t.tap(find.text('Escanear código de barras'));
+  testWidgets('an empty name shows an inline message and does not call the server', (t) async {
+    await open(t);
+    await t.tap(find.text('Crear y configurar'));
     await t.pump();
-    await t.tap(find.text('Ingresar manualmente'), warnIfMissed: false);
-    await t.tap(find.text('Escanear código de barras'), warnIfMissed: false);
+    expect(find.text('Ingresa el nombre del producto'), findsOneWidget);
+    expect(creados, isEmpty);
+  });
+
+  testWidgets('creating sends the trimmed name and closes the sheet with true', (t) async {
+    await open(t);
+    await t.enterText(find.byType(TextField), '  Café Blend  ');
+    await t.tap(find.text('Crear y configurar'));
+    await t.pumpAndSettle();
+    expect(creados, ['Café Blend']);
+    expect(lastResult, true);
+    expect(find.text('Nuevo producto'), findsNothing);
+  });
+
+  testWidgets('while creating there is a loader and nothing else can be tapped', (t) async {
+    final done = Completer<String?>();
+    await open(t, onCrear: (n) => done.future);
+    await t.enterText(find.byType(TextField), 'Café');
+    await t.tap(find.text('Crear y configurar'));
+    await t.pump();
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    await t.tap(find.text('Escanear código'), warnIfMissed: false);
+    await t.tap(find.text('Cancelar'), warnIfMissed: false);
+    await t.pump();
+    expect(escanear, 0);
+    expect(find.text('Nuevo producto'), findsOneWidget); // still open
+    done.complete(null);
+    await t.pumpAndSettle();
+    expect(lastResult, true);
+  });
+
+  testWidgets('a server error is shown under the field and the form is usable again', (t) async {
+    await open(t, onCrear: (n) async => 'Ya existe un producto con ese nombre');
+    await t.enterText(find.byType(TextField), 'Café');
+    await t.tap(find.text('Crear y configurar'));
+    await t.pumpAndSettle();
+    expect(find.text('Ya existe un producto con ese nombre'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('Nuevo producto'), findsOneWidget);
+  });
+
+  testWidgets('Escanear código: spinner at once, then the sheet closes and the scanner opens once', (t) async {
+    await open(t);
+    await t.tap(find.text('Escanear código'));
+    await t.pump();
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(escanear, 0);
+    await t.pumpAndSettle();
+    expect((escanear, foto), (1, 0));
+    expect(lastResult, false);
+  });
+
+  testWidgets('Tomar foto: spinner at once, then the camera flow opens once', (t) async {
+    await open(t);
+    await t.tap(find.text('Tomar foto'));
+    await t.pump();
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     await t.pumpAndSettle();
-    expect(calls, [1, 0, 0]);
+    expect((escanear, foto), (0, 1));
   });
 
-  testWidgets('Cancelar closes the sheet without running anything', (t) async {
-    final calls = await open(t);
+  testWidgets('Cancelar closes without creating anything', (t) async {
+    await open(t);
     await t.tap(find.text('Cancelar'));
     await t.pumpAndSettle();
-    expect(calls, [0, 0, 0]);
-    expect(find.text('Agregar producto'), findsNothing);
+    expect(creados, isEmpty);
+    expect(lastResult, false);
   });
 
-  testWidgets('the sheet fits a short phone at 2x text (it scrolls instead of overflowing)', (t) async {
+  testWidgets('fits a 320x568 phone at 2x text with the keyboard open', (t) async {
     t.view.physicalSize = const Size(320 * 3, 568 * 3);
     t.view.devicePixelRatio = 3;
+    t.view.viewInsets = const FakeViewPadding(bottom: 260 * 3);
     addTearDown(t.view.reset);
     await t.pumpWidget(MaterialApp(
       theme: FincasTheme.light(),
@@ -148,7 +208,7 @@ void agregarSheetTests() {
       home: Builder(
         builder: (context) => Scaffold(
           body: TextButton(
-            onPressed: () => showAgregarProductoSheet(context, onEscanear: () {}, onFoto: () {}, onManual: () {}),
+            onPressed: () => showNuevoProductoSheet(context, onCrear: (n) async => null, onEscanear: () {}, onFoto: () {}),
             child: const Text('abrir'),
           ),
         ),
@@ -157,15 +217,8 @@ void agregarSheetTests() {
     await t.tap(find.text('abrir'));
     await t.pumpAndSettle();
     expect(t.takeException(), isNull);
-    expect(find.text('Agregar producto'), findsOneWidget);
-  });
-
-  testWidgets('manual entry also gets the loader', (t) async {
-    final calls = await open(t);
-    await t.tap(find.text('Ingresar manualmente'));
-    await t.pump();
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    await t.pumpAndSettle();
-    expect(calls, [0, 0, 1]);
+    expect(find.text('Nuevo producto'), findsOneWidget);
   });
 }
+
+bool? lastResult;
