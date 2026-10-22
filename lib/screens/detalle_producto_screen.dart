@@ -1,3 +1,6 @@
+import '../widgets/fincas_widgets.dart';
+import '../widgets/producto_info_general.dart';
+import '../models/producto_info.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -26,6 +29,7 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
   File? _nuevaFoto;
   bool _isLoading = false;
   bool _hasChanges = false;
+  bool _infoDirty = false; // cambios sin guardar en "Información general"
   // Presentaciones
   List<Presentacion> _presentaciones = [];
   bool _loadingPresentaciones = false;
@@ -81,6 +85,20 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
     _imagenUrlExistente = p['imagenUrl'];
     _nombreController.addListener(_onChanged);
     _descripcionController.addListener(_onChanged);
+  }
+
+  /// "Información general" ya guardó: se actualizan el título y los datos del producto de la lista
+  /// sin contar el cambio como pendiente.
+  void _infoGuardada(ProductoInfo info) {
+    _nombreController.removeListener(_onChanged);
+    _descripcionController.removeListener(_onChanged);
+    _nombreController.text = info.nombre;
+    _descripcionController.text = info.descripcionBreve;
+    _nombreController.addListener(_onChanged);
+    _descripcionController.addListener(_onChanged);
+    widget.producto['nombre'] = info.nombre;
+    widget.producto['descripcion'] = info.descripcionBreve;
+    if (mounted) setState(() {});
   }
 
   void _onChanged() {
@@ -488,7 +506,7 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
   }
 
   Future<void> _confirmPop() async {
-    if (!_hasChanges) {
+    if (!_hasChanges && !_infoDirty) {
       if (mounted) Navigator.of(context).pop();
       return;
     }
@@ -519,7 +537,7 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
     return DefaultTabController(
       length: 3,
       child: PopScope(
-        canPop: !_hasChanges,
+        canPop: !_hasChanges && !_infoDirty,
         onPopInvokedWithResult: (didPop, _) {
           if (!didPop) _confirmPop();
         },
@@ -1163,51 +1181,13 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
           Divider(color: Colors.grey.shade300),
           const SizedBox(height: 16),
 
-          // Edit product section
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Icon(Icons.edit_outlined, size: 16, color: Colors.grey.shade600),
-                const SizedBox(width: 8),
-                Text('Editar producto',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Colors.grey.shade700)),
-              ]),
-              const SizedBox(height: 16),
-              _buildCampo(
-                label: 'Nombre del producto *',
-                controller: _nombreController,
-                hint: 'Ej: Café Blend',
-              ),
-              const SizedBox(height: 16),
-              _buildCampo(
-                label: 'Descripción (opcional)',
-                controller: _descripcionController,
-                hint: 'Descripción del producto...',
-                maxLines: 3,
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton.icon(
-                  onPressed: _isLoading || !_hasChanges ? null : _guardarCambios,
-                  icon: const Icon(Icons.save_rounded),
-                  label: const Text('Guardar Cambios', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade600,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: Colors.grey.shade300,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ),
-            ]),
+          // Información general: nombre, descripciones, categoría y atributos del café
+          ProductoInfoGeneral(
+            productId: widget.producto['codigo']?.toString() ?? '',
+            onDirtyChanged: (sucio) {
+              if (mounted && _infoDirty != sucio) setState(() => _infoDirty = sucio);
+            },
+            onGuardado: _infoGuardada,
           ),
           const SizedBox(height: 32),
         ],
@@ -2007,6 +1987,10 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
                     const SizedBox(width: 4),
                   ],
                   Text(p.etiqueta, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                  if (!p.visible) ...[
+                    const SizedBox(width: 8),
+                    const FincasStatusBadge('Oculta en tienda'),
+                  ],
                 ]),
                 const SizedBox(height: 2),
                 Row(children: [
@@ -2103,6 +2087,7 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
 
     String unidad = esEdicion ? presentacion.unidad : 'g';
     bool predeterminada = esEdicion ? presentacion.predeterminada : false;
+    bool visible = esEdicion ? presentacion.visible : true; // visible en tienda
     List<String> molienda = esEdicion ? List<String>.from(presentacion.molienda) : [];
 
     showModalBottomSheet(
@@ -2138,6 +2123,7 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
               stock: stock,
               pedidoMinimo: pedidoMinimo,
               predeterminada: predeterminada,
+              visible: visible,
               molienda: molienda,
             );
           } else {
@@ -2151,6 +2137,7 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
               stock: stock,
               pedidoMinimo: pedidoMinimo,
               predeterminada: predeterminada,
+              visible: visible,
               molienda: molienda,
             );
           }
@@ -2316,6 +2303,14 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
                 onChanged: (v) => ss(() => predeterminada = v),
                 title: const Text('Presentación predeterminada', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                 subtitle: const Text('Se usará como precio base del producto', style: TextStyle(fontSize: 11)),
+                contentPadding: EdgeInsets.zero,
+                activeColor: Colors.indigo,
+              ),
+              SwitchListTile(
+                value: visible,
+                onChanged: (v) => ss(() => visible = v),
+                title: const Text('Visible en tienda', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                subtitle: const Text('Si la apagas, esta presentación no aparece en la tienda', style: TextStyle(fontSize: 11)),
                 contentPadding: EdgeInsets.zero,
                 activeColor: Colors.indigo,
               ),

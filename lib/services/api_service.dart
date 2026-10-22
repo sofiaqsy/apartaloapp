@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_config.dart';
+import '../models/producto_info.dart';
 
 /// Servicio para comunicación con Fincas Core API
 class ApiService {
@@ -343,6 +344,7 @@ class ApiService {
     int pedidoMinimo = 1,
     int orden = 0,
     bool predeterminada = false,
+    bool visible = true,
     List<String> molienda = const [],
   }) async {
     try {
@@ -359,6 +361,7 @@ class ApiService {
           'pedidoMinimo': pedidoMinimo,
           'orden': orden,
           'predeterminada': predeterminada,
+          'visible': visible,
           'molienda': molienda,
         }),
       ).timeout(const Duration(seconds: 10));
@@ -382,6 +385,7 @@ class ApiService {
     int? pedidoMinimo,
     int? orden,
     bool? predeterminada,
+    bool? visible,
     List<String>? molienda,
   }) async {
     try {
@@ -395,6 +399,7 @@ class ApiService {
       if (pedidoMinimo != null) body['pedidoMinimo'] = pedidoMinimo;
       if (orden != null) body['orden'] = orden;
       if (predeterminada != null) body['predeterminada'] = predeterminada;
+      if (visible != null) body['visible'] = visible;
       if (molienda != null) body['molienda'] = molienda;
 
       final response = await http.put(
@@ -407,6 +412,47 @@ class ApiService {
       return ApiResponse.error(data['error'] ?? 'Error actualizando presentación');
     } catch (e) {
       return ApiResponse.error('Error de conexión: $e');
+    }
+  }
+
+  // ==================== INFORMACIÓN GENERAL DEL PRODUCTO ====================
+
+  static String _mensajeError(http.Response r, String porDefecto) {
+    try {
+      final data = jsonDecode(r.body);
+      if (data is Map && data['error'] != null) return data['error'].toString();
+    } catch (_) {}
+    return porDefecto;
+  }
+
+  /// Información general (nombre, descripciones, categoría, atributos del café) y los catálogos de los selectores.
+  static Future<ApiResponse<ProductoInfoData>> getProductoInfo(String productId) async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/api/productos/$businessId/$productId/info'), headers: headers)
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        return ApiResponse.success(ProductoInfoData.fromMap(Map<String, dynamic>.from(jsonDecode(response.body) as Map)));
+      }
+      return ApiResponse.error(_mensajeError(response, 'No se pudo cargar la información'));
+    } catch (e) {
+      return ApiResponse.error('Error de conexión. Revisa tu internet.');
+    }
+  }
+
+  /// Guarda solo los campos enviados en [cambios].
+  static Future<ApiResponse<ProductoInfo>> actualizarProductoInfo(String productId, Map<String, dynamic> cambios) async {
+    try {
+      final response = await http
+          .put(Uri.parse('$baseUrl/api/productos/$businessId/$productId/info'), headers: headers, body: jsonEncode(cambios))
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map;
+        return ApiResponse.success(ProductoInfo.fromMap(Map<String, dynamic>.from(data['producto'] as Map)));
+      }
+      return ApiResponse.error(_mensajeError(response, 'No se pudo guardar la información'));
+    } catch (e) {
+      return ApiResponse.error('Error de conexión. Revisa tu internet.');
     }
   }
 
@@ -1771,6 +1817,7 @@ class Presentacion {
   final int pedidoMinimo;
   final int orden;
   final bool predeterminada;
+  final bool visible; // visible en tienda
   final List<String> molienda;
   final String? imageUrl;
 
@@ -1785,6 +1832,7 @@ class Presentacion {
     required this.pedidoMinimo,
     required this.orden,
     required this.predeterminada,
+    this.visible = true,
     required this.molienda,
     this.imageUrl,
   });
@@ -1800,6 +1848,7 @@ class Presentacion {
         pedidoMinimo:  (m['pedidoMinimo'] as num?)?.toInt() ?? 1,
         orden:         (m['orden'] as num?)?.toInt() ?? 0,
         predeterminada: m['predeterminada'] == true,
+        visible:       m['visible'] != false, // si el servidor no lo envía, se asume visible
         molienda:      (m['molienda'] as List?)?.map((e) => e.toString()).toList() ?? [],
         imageUrl:      (m['imageUrl'] ?? m['image_url']) as String?,
       );
