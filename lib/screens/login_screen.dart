@@ -3,6 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
+import '../services/session_store.dart';
+import 'businesses_screen.dart';
 import 'main_screen.dart';
 
 enum _Step { signIn, pending, onboarding, ownerForm, businessPending, enterCode, joinPending, explore, revoked }
@@ -248,37 +250,22 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  /// After an explicit sign-in, show the businesses of the account (and the options to join or
+  /// register another one) instead of entering one automatically.
   Future<void> _openBusiness(AuthSession session) async {
-    Map<String, dynamic>? business;
-    if (session.businesses.length == 1) {
-      business = session.businesses.first;
-    } else {
-      if (!mounted) return;
-      business = await _mostrarSelectorNegocio(session.businesses);
-    }
-    if (business == null) return;
-    await _iniciarSesion(business);
-  }
-
-  Future<void> _iniciarSesion(Map<String, dynamic> negocio) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('business_id', negocio['businessId']);
-    await prefs.setString('business_name', negocio['name']);
-    await prefs.setString('business_direccion', negocio['address'] ?? '');
-    await prefs.setString('business_ciudad', negocio['city'] ?? '');
-    // Antes se decidía por teléfono; ahora toda cuenta activa con negocio es miembro.
-    await prefs.setBool('is_tostador', true);
-    await prefs.setString('business_role', (negocio['role'] ?? '').toString());
-    await prefs.setBool('is_platform_admin', _session?.isAdmin ?? false);
-
-    ApiService.businessId = negocio['businessId'];
-    ApiService.businessName = negocio['name'] ?? '';
-    ApiService.businessDireccion = negocio['address'] ?? '';
-    ApiService.businessCiudad = negocio['city'] ?? '';
-    ApiService.isTostador = true;
-
-    await NotificationService().resendTokenAfterLogin();
-    _goToMain(negocio['businessId'], negocio['name']);
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => BusinessesScreen(
+          session: session,
+          onSelect: (business, s) async {
+            await SessionStore.activateBusiness(business, isPlatformAdmin: s.isAdmin);
+            if (!mounted) return;
+            _goToMain(business['businessId'], business['name']);
+          },
+        ),
+      ),
+    );
   }
 
   void _goToMain(String businessId, String businessName) {
@@ -294,47 +281,6 @@ class _LoginScreenState extends State<LoginScreen> {
     await AuthService.signOut();
     if (!mounted) return;
     setState(() { _step = _Step.signIn; _errorMessage = null; _session = null; });
-  }
-
-  Future<Map<String, dynamic>?> _mostrarSelectorNegocio(List<Map<String, dynamic>> negocios) {
-    return showModalBottomSheet<Map<String, dynamic>>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 10),
-              width: 40, height: 4,
-              decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
-            ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 4, 20, 16),
-              child: Text('Selecciona tu negocio', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-            ),
-            ...negocios.map((n) => ListTile(
-              leading: CircleAvatar(
-                backgroundColor: Colors.blue.shade50,
-                child: Text(
-                  (n['name'] ?? '?').toString().substring(0, 1).toUpperCase(),
-                  style: TextStyle(color: Colors.blue.shade700, fontWeight: FontWeight.bold),
-                ),
-              ),
-              title: Text(n['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: (n['city'] ?? '').toString().isNotEmpty ? Text(n['city']) : null,
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.pop(ctx, n),
-            )),
-            const SizedBox(height: 16),
-          ],
-        ),
-      ),
-    );
   }
 
   // ── UI ───────────────────────────────────────────────────────────────────

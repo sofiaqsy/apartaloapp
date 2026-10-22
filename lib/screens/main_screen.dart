@@ -12,6 +12,8 @@ import 'tabs/clientes_tab.dart';
 import 'tabs/pedidos_tab.dart';
 import 'settings/settings_screen.dart';
 import 'team_screen.dart';
+import 'businesses_screen.dart';
+import '../services/session_store.dart';
 import 'business_requests_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -64,6 +66,40 @@ class _MainScreenState extends State<MainScreen> {
         _isOwner = prefs.getString('business_role') == 'owner';
         _isPlatformAdmin = prefs.getBool('is_platform_admin') ?? false;
       });
+    }
+  }
+
+  /// "Mis negocios": switch business or ask to join / register another one.
+  Future<void> _openBusinesses() async {
+    try {
+      final session = await AuthService.fetchSession();
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => BusinessesScreen(
+            session: session,
+            currentBusinessId: widget.businessId,
+            onSelect: (business, s) async {
+              if (business['businessId'] == widget.businessId) {
+                Navigator.of(context).pop();
+                return;
+              }
+              await SessionStore.activateBusiness(business, isPlatformAdmin: s.isAdmin);
+              if (!mounted) return;
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(
+                  builder: (_) => MainScreen(businessId: business['businessId'], businessName: business['name']),
+                ),
+                (route) => false,
+              );
+            },
+          ),
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo cargar tus negocios. Revisa tu internet.')));
+      }
     }
   }
 
@@ -189,6 +225,9 @@ class _MainScreenState extends State<MainScreen> {
                     ),
                   );
                   break;
+                case 'businesses':
+                  _openBusinesses();
+                  break;
                 case 'team':
                   Navigator.push(
                     context,
@@ -219,6 +258,7 @@ class _MainScreenState extends State<MainScreen> {
                   ],
                 ),
               ),
+              const PopupMenuItem(value: 'businesses', child: Text('Mis negocios')),
               if (_isOwner)
                 const PopupMenuItem(value: 'team', child: Text('Equipo')),
               if (_isPlatformAdmin)

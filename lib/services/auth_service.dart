@@ -14,6 +14,7 @@ class AuthSession {
     this.businesses = const [],
     this.businessName = '',
     this.isAdmin = false,
+    this.pending = const [],
   });
 
   /// active | pending | join_pending | no_invitation | revoked
@@ -24,6 +25,9 @@ class AuthSession {
 
   /// Platform administrator: can approve new business requests.
   final bool isAdmin;
+
+  /// Requests still in review: {kind: join | business, businessName}.
+  final List<Map<String, dynamic>> pending;
   final String fullName;
   final bool hasPhone;
   final List<Map<String, dynamic>> businesses;
@@ -38,6 +42,7 @@ class AuthSession {
       hasPhone: profile['hasPhone'] == true,
       businessName: (json['businessName'] ?? '').toString(),
       isAdmin: profile['isAdmin'] == true,
+      pending: ((json['pending'] as List?) ?? const []).map((p) => Map<String, dynamic>.from(p as Map)).toList(),
       businesses: ((json['businesses'] as List?) ?? const [])
           .map((b) => Map<String, dynamic>.from(b as Map))
           .toList(),
