@@ -7,6 +7,7 @@ import '../../services/vision_service.dart';
 import '../detalle_producto_screen.dart';
 import '../../theme/fincas_tokens.dart';
 import '../../widgets/fincas_widgets.dart';
+import 'productos/widgets/agregar_producto_sheet.dart';
 import 'productos/widgets/producto_list_card.dart';
 
 class ProductosTab extends StatefulWidget {
@@ -692,98 +693,12 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
 
   void _mostrarOpcionesNuevoProducto() {
     _modalAbierto = true;
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(FincasSpacing.screenH, 0, FincasSpacing.screenH, FincasSpacing.l),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text('Agregar producto', style: FincasText.screenTitle),
-              const SizedBox(height: FincasSpacing.xs),
-              const Text('Elige cómo quieres agregar el producto', style: FincasText.bodySecondary),
-              const SizedBox(height: FincasSpacing.l),
-              _buildOpcionNuevoProducto(
-                icon: Icons.qr_code_scanner,
-                titulo: 'Escanear código de barras',
-                subtitulo: 'Busca info automáticamente',
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _abrirEscanerCamara();
-                },
-              ),
-              const SizedBox(height: FincasSpacing.s),
-              _buildOpcionNuevoProducto(
-                icon: Icons.camera_alt,
-                titulo: 'Tomar foto del producto',
-                subtitulo: 'Guarda imagen del producto',
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _tomarFotoYCrearProducto();
-                },
-              ),
-              const SizedBox(height: FincasSpacing.s),
-              _buildOpcionNuevoProducto(
-                icon: Icons.edit,
-                titulo: 'Ingresar manualmente',
-                subtitulo: 'Escribe nombre y precio',
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _crearProductoManual();
-                },
-              ),
-              FincasTextButton(
-                label: 'Cancelar',
-                onPressed: () {
-                  _modalAbierto = false;
-                  Navigator.pop(ctx);
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
+    showAgregarProductoSheet(
+      context,
+      onEscanear: _abrirEscanerCamara,
+      onFoto: _tomarFotoYCrearProducto,
+      onManual: _crearProductoManual,
     ).whenComplete(() => _modalAbierto = false);
-  }
-
-  Widget _buildOpcionNuevoProducto({
-    required IconData icon,
-    required String titulo,
-    required String subtitulo,
-    required VoidCallback onTap,
-  }) {
-    return Semantics(
-      button: true,
-      label: '$titulo. $subtitulo',
-      excludeSemantics: true,
-      child: FincasCard(
-        onTap: onTap,
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(color: FincasColors.sand, borderRadius: BorderRadius.circular(FincasRadii.medium)),
-              child: Icon(icon, color: FincasColors.espresso, size: 24),
-            ),
-            const SizedBox(width: FincasSpacing.m),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(titulo, style: FincasText.sectionTitle.copyWith(fontSize: 16)),
-                  Text(subtitulo, style: FincasText.metadata),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right, color: FincasColors.textMuted),
-          ],
-        ),
-      ),
-    );
   }
 
   void _abrirEscanerCamara() {
@@ -804,8 +719,9 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
 
   Future<void> _tomarFotoYCrearProducto() async {
     final picker = ImagePicker();
-    final image = await picker.pickImage(source: ImageSource.camera, maxWidth: 800);
-    
+    // El selector tarda en abrir la cámara: el indicador queda debajo y se cierra al volver con la foto.
+    final image = await runWithFincasLoader(context, 'Abriendo cámara...', () => picker.pickImage(source: ImageSource.camera, maxWidth: 800));
+
     if (image == null || !mounted) return;
     
     _crearProductoManual(imagenPath: image.path);
@@ -1106,6 +1022,24 @@ class _EscanerCamaraScreenState extends State<_EscanerCamaraScreen> {
                 child: const Text('Apunta al código de barras', style: TextStyle(color: Colors.white, fontSize: 16)),
               ),
             ),
+          ),
+          // La cámara tarda en arrancar: indicador hasta que esté lista (fondo negro, texto claro).
+          ValueListenableBuilder<MobileScannerState>(
+            valueListenable: _controller,
+            builder: (context, state, _) => state.isInitialized
+                ? const SizedBox.shrink()
+                : Container(
+                    color: Colors.black,
+                    alignment: Alignment.center,
+                    child: const Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(width: 32, height: 32, child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white)),
+                        SizedBox(height: 16),
+                        Text('Abriendo cámara...', style: TextStyle(color: Colors.white, fontSize: 15)),
+                      ],
+                    ),
+                  ),
           ),
         ],
       ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:apartalo_app/screens/tabs/productos/widgets/agregar_producto_sheet.dart';
 import 'package:apartalo_app/screens/tabs/productos/widgets/producto_list_card.dart';
 import 'package:apartalo_app/theme/fincas_theme.dart';
 
@@ -20,6 +21,7 @@ Map<String, dynamic> _producto({String nombre = 'Café Rosal', bool tueste = fal
     };
 
 void main() {
+  agregarSheetTests();
   test('presentation labels', () {
     expect(etiquetaPresentacion(250, 'g'), '250g');
     expect(etiquetaPresentacion(1000, 'g'), '1kg');
@@ -75,5 +77,95 @@ void main() {
       scale: 2.0,
     ));
     expect(t.takeException(), isNull);
+  });
+}
+
+// Sheet: tap feedback while the camera or the form is opening.
+void agregarSheetTests() {
+  Future<List<int>> open(WidgetTester t, {Duration pausa = const Duration(milliseconds: 150)}) async {
+    final calls = [0, 0, 0];
+    await t.pumpWidget(MaterialApp(
+      theme: FincasTheme.light(),
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => showAgregarProductoSheet(
+              context,
+              pausa: pausa,
+              onEscanear: () => calls[0]++,
+              onFoto: () => calls[1]++,
+              onManual: () => calls[2]++,
+            ),
+            child: const Text('abrir'),
+          ),
+        ),
+      ),
+    ));
+    await t.tap(find.text('abrir'));
+    await t.pumpAndSettle();
+    return calls;
+  }
+
+  testWidgets('tapping an option shows a loader at once, then closes the sheet and runs the action once', (t) async {
+    final calls = await open(t);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    await t.tap(find.text('Tomar foto del producto'));
+    await t.pump(); // first frame after the tap
+    expect(find.byType(CircularProgressIndicator), findsOneWidget); // feedback before anything else opens
+    expect(find.text('Abriendo...'), findsOneWidget);
+    expect(calls, [0, 0, 0]); // the action waits until the indicator has been painted
+    await t.pumpAndSettle();
+    expect(calls, [0, 1, 0]);
+    expect(find.text('Agregar producto'), findsNothing); // sheet closed
+  });
+
+  testWidgets('while one option is loading the others are disabled and a second tap is ignored', (t) async {
+    final calls = await open(t);
+    await t.tap(find.text('Escanear código de barras'));
+    await t.pump();
+    await t.tap(find.text('Ingresar manualmente'), warnIfMissed: false);
+    await t.tap(find.text('Escanear código de barras'), warnIfMissed: false);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    await t.pumpAndSettle();
+    expect(calls, [1, 0, 0]);
+  });
+
+  testWidgets('Cancelar closes the sheet without running anything', (t) async {
+    final calls = await open(t);
+    await t.tap(find.text('Cancelar'));
+    await t.pumpAndSettle();
+    expect(calls, [0, 0, 0]);
+    expect(find.text('Agregar producto'), findsNothing);
+  });
+
+  testWidgets('the sheet fits a short phone at 2x text (it scrolls instead of overflowing)', (t) async {
+    t.view.physicalSize = const Size(320 * 3, 568 * 3);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(MaterialApp(
+      theme: FincasTheme.light(),
+      builder: (context, c) => MediaQuery(data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(2.0)), child: c!),
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => showAgregarProductoSheet(context, onEscanear: () {}, onFoto: () {}, onManual: () {}),
+            child: const Text('abrir'),
+          ),
+        ),
+      ),
+    ));
+    await t.tap(find.text('abrir'));
+    await t.pumpAndSettle();
+    expect(t.takeException(), isNull);
+    expect(find.text('Agregar producto'), findsOneWidget);
+  });
+
+  testWidgets('manual entry also gets the loader', (t) async {
+    final calls = await open(t);
+    await t.tap(find.text('Ingresar manualmente'));
+    await t.pump();
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    await t.pumpAndSettle();
+    expect(calls, [0, 0, 1]);
   });
 }
