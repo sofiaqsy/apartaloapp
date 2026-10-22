@@ -578,10 +578,20 @@ class _LoginScreenState extends State<LoginScreen> {
       case _Step.revoked:
         return _message('Acceso bloqueado', 'El acceso de esta cuenta fue desactivado. Contacta al administrador.');
       case _Step.signIn:
-        if (_checking) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
-            child: Center(child: CircularProgressIndicator()),
+        // One single loader instead of a spinner on every button plus a bar.
+        if (_checking || _isLoading) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Column(
+              children: [
+                const SizedBox(width: 32, height: 32, child: CircularProgressIndicator(strokeWidth: 3)),
+                const SizedBox(height: 14),
+                Text(
+                  _checking ? 'Verificando tu sesión...' : 'Iniciando sesión...',
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
           );
         }
         return Column(
@@ -631,11 +641,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 8),
                       Text('Gestiona tu negocio fácilmente', style: TextStyle(fontSize: 16, color: Colors.grey.shade600)),
                       const Spacer(),
-                      if (_isLoading)
-                        const Padding(
-                          padding: EdgeInsets.only(bottom: 12),
-                          child: LinearProgressIndicator(minHeight: 3),
-                        ),
                       _stepContent(),
                       const SizedBox(height: 24),
                     ],
