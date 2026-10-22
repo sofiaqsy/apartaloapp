@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'dart:async';
+import 'package:apartalo_app/screens/tabs/productos/widgets/nuevo_producto_fab.dart';
 import 'package:apartalo_app/screens/tabs/productos/widgets/nuevo_producto_sheet.dart';
 import 'package:apartalo_app/screens/tabs/productos/widgets/producto_list_card.dart';
 import 'package:apartalo_app/theme/fincas_theme.dart';
@@ -22,6 +23,54 @@ Map<String, dynamic> _producto({String nombre = 'Café Rosal', bool tueste = fal
     };
 
 void main() {
+  group('NuevoProductoFab', () {
+    Widget fab({required bool abriendo, required VoidCallback onPressed}) => MaterialApp(
+          theme: FincasTheme.light(),
+          home: Scaffold(floatingActionButton: NuevoProductoFab(abriendo: abriendo, onPressed: onPressed)),
+        );
+
+    testWidgets('idle: label only, no spinner, tap works', (t) async {
+      var taps = 0;
+      await t.pumpWidget(fab(abriendo: false, onPressed: () => taps++));
+      expect(find.text('Nuevo producto'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      await t.tap(find.text('Nuevo producto'));
+      expect(taps, 1);
+    });
+
+    testWidgets('opening: a spinner and "Abriendo..." replace the label, and extra taps do nothing', (t) async {
+      var taps = 0;
+      await t.pumpWidget(fab(abriendo: true, onPressed: () => taps++));
+      await t.pump(const Duration(milliseconds: 200)); // the spinner never settles
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.text('Abriendo...'), findsOneWidget);
+      expect(find.text('Nuevo producto'), findsNothing);
+      await t.tap(find.text('Abriendo...'));
+      expect(taps, 0);
+      expect(find.bySemanticsLabel('Nuevo producto, abriendo'), findsOneWidget);
+    });
+
+    testWidgets('keeps the accent color while opening (it does not turn grey)', (t) async {
+      await t.pumpWidget(fab(abriendo: true, onPressed: () {}));
+      await t.pump(const Duration(milliseconds: 200)); // the spinner never settles
+      final fabWidget = t.widget<FloatingActionButton>(find.byType(FloatingActionButton));
+      expect(fabWidget.onPressed, isNotNull);
+    });
+
+    testWidgets('fits a 320pt screen at 2x text', (t) async {
+      t.view.physicalSize = const Size(320 * 3, 640 * 3);
+      t.view.devicePixelRatio = 3;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(MaterialApp(
+        theme: FincasTheme.light(),
+        builder: (context, c) => MediaQuery(data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(2.0)), child: c!),
+        home: Scaffold(floatingActionButton: NuevoProductoFab(abriendo: true, onPressed: () {})),
+      ));
+      await t.pump(const Duration(milliseconds: 200)); // the spinner never settles
+      expect(t.takeException(), isNull);
+    });
+  });
+
   nuevoProductoSheetTests();
   test('presentation labels', () {
     expect(etiquetaPresentacion(250, 'g'), '250g');

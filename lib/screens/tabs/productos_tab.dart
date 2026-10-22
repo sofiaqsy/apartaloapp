@@ -7,6 +7,7 @@ import '../../services/vision_service.dart';
 import '../detalle_producto_screen.dart';
 import '../../theme/fincas_tokens.dart';
 import '../../widgets/fincas_widgets.dart';
+import 'productos/widgets/nuevo_producto_fab.dart';
 import 'productos/widgets/nuevo_producto_sheet.dart';
 import 'productos/widgets/producto_list_card.dart';
 
@@ -41,6 +42,7 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
   bool _buscandoProducto = false;
   bool _modalAbierto = false;
   bool _enOtraPantalla = false;
+  bool _abriendoNuevo = false; // el formulario de nuevo producto se está abriendo: el botón muestra un indicador
   
   static const int _limite = 20;
 
@@ -683,11 +685,7 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
         ),
       ),
       // Una sola acción principal.
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _crearProductoManual,
-        shape: const StadiumBorder(),
-        label: const Text('Nuevo producto'),
-      ),
+      floatingActionButton: NuevoProductoFab(abriendo: _abriendoNuevo, onPressed: _nuevoProducto),
     );
   }
 
@@ -715,6 +713,18 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
     if (image == null || !mounted) return;
     
     _crearProductoManual(imagenPath: image.path);
+  }
+
+  /// Toque en "Nuevo producto": muestra el indicador al instante y abre la hoja un frame después.
+  Future<void> _nuevoProducto() async {
+    if (_abriendoNuevo) return;
+    setState(() => _abriendoNuevo = true);
+    await WidgetsBinding.instance.endOfFrame; // deja pintar el indicador antes del trabajo de abrir la hoja
+    if (!mounted) return;
+    _crearProductoManual();
+    // La hoja tarda unos 300 ms en subir y abrir el teclado: el indicador cubre ese tiempo.
+    await Future.delayed(const Duration(milliseconds: 350));
+    if (mounted) setState(() => _abriendoNuevo = false);
   }
 
   /// Abre la hoja de nuevo producto (entrada manual). Si se crea, abre su edición.
@@ -819,7 +829,7 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
             Center(
               child: SizedBox(
                 width: 260,
-                child: FincasPrimaryButton(label: 'Agregar producto', onPressed: _crearProductoManual),
+                child: FincasPrimaryButton(label: 'Agregar producto', loading: _abriendoNuevo, onPressed: _nuevoProducto),
               ),
             ),
           ],
