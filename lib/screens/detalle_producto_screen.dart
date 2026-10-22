@@ -1,6 +1,7 @@
 import '../widgets/fincas_widgets.dart';
 import '../theme/fincas_tokens.dart';
 import '../widgets/presentacion_form.dart';
+import '../widgets/presentacion_fotos.dart';
 import '../widgets/presentacion_tile.dart';
 import '../widgets/producto_info_general.dart';
 import '../widgets/producto_presentaciones_ajustes.dart';
@@ -68,10 +69,11 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
     _cargarPresentaciones();
   }
 
-  Future<void> _cargarPresentaciones() async {
+  /// [silencioso]: recarga sin tapar la lista con el indicador, para no cerrar los formularios abiertos.
+  Future<void> _cargarPresentaciones({bool silencioso = false}) async {
     final productId = widget.producto['codigo']?.toString() ?? '';
     if (productId.isEmpty) return;
-    if (mounted) setState(() => _loadingPresentaciones = true);
+    if (!silencioso && mounted) setState(() => _loadingPresentaciones = true);
     final result = await ApiService.getPresentaciones(productId);
     if (mounted) setState(() {
       _presentaciones    = result.isSuccess ? (result.data?.presentaciones  ?? [])    : [];
@@ -1162,12 +1164,6 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
                   subtitulo: 'Variantes con su precio, stock y B2B',
                   expandida: _presentacionesExpandida,
                   onAlternar: () => setState(() => _presentacionesExpandida = !_presentacionesExpandida),
-                  trailing: _loadingPresentaciones
-                      ? const Padding(
-                          padding: EdgeInsets.all(FincasSpacing.m),
-                          child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5)),
-                        )
-                      : IconButton(tooltip: 'Actualizar presentaciones', onPressed: _cargarPresentaciones, icon: const Icon(Icons.refresh_rounded)),
                 ),
                 FincasPlegable(
                   expandida: _presentacionesExpandida,
@@ -1206,27 +1202,49 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
                         abierta: p.id == _presentacionAbiertaId,
                         onAlternar: () => setState(() => _presentacionAbiertaId = p.id == _presentacionAbiertaId ? null : p.id),
                         onEliminar: () => _eliminarPresentacion(p),
-                        formulario: PresentacionForm(
-                          key: ValueKey('form-${p.id}'),
-                          presentacion: p,
-                          stockManual: _stockManual,
-                          simboloMoneda: _simboloMoneda,
-                          onGuardar: (d) => _guardarPresentacion(d, existente: p),
+                        formulario: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            PresentacionForm(
+                              key: ValueKey('form-${p.id}'),
+                              presentacion: p,
+                              stockManual: _stockManual,
+                              simboloMoneda: _simboloMoneda,
+                              onGuardar: (d) => _guardarPresentacion(d, existente: p),
+                            ),
+                            const SizedBox(height: FincasSpacing.l),
+                            const Divider(),
+                            const SizedBox(height: FincasSpacing.m),
+                            PresentacionFotos(
+                              key: ValueKey('fotos-${p.id}'),
+                              fotos: p.fotos,
+                              max: ApiService.maxFotosPresentacion,
+                              onSubir: (archivo) => _subirFotoPresentacion(p, archivo),
+                              onQuitar: (foto) => _quitarFotoPresentacion(p, foto),
+                            ),
+                          ],
                         ),
                       )),
                 // Presentación nueva: una tarjeta más de la lista, abierta con su formulario
                 if (_nuevaPresentacionAbierta)
                   PresentacionNuevaCard(
                     key: _nuevaPresentacionKey,
-                    formulario: PresentacionForm(
-                      stockManual: _stockManual,
-                      simboloMoneda: _simboloMoneda,
-                      onCancelar: () => setState(() => _nuevaPresentacionAbierta = false),
-                      onGuardar: (d) async {
-                        final error = await _guardarPresentacion(d);
-                        if (error == null && mounted) setState(() => _nuevaPresentacionAbierta = false);
-                        return error;
-                      },
+                    formulario: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        PresentacionForm(
+                          stockManual: _stockManual,
+                          simboloMoneda: _simboloMoneda,
+                          onCancelar: () => setState(() => _nuevaPresentacionAbierta = false),
+                          onGuardar: (d) async {
+                            final error = await _guardarPresentacion(d);
+                            if (error == null && mounted) setState(() => _nuevaPresentacionAbierta = false);
+                            return error;
+                          },
+                        ),
+                        const SizedBox(height: FincasSpacing.s),
+                        const Text('Guarda la presentación para poder agregarle fotos.', style: FincasText.caption),
+                      ],
                     ),
                   ),
                 const SizedBox(height: FincasSpacing.s),
@@ -2044,9 +2062,30 @@ class _DetalleProductoScreenState extends State<DetalleProductoScreen> {
             molienda: d.molienda,
           );
     if (!result.isSuccess) return result.error ?? 'No se pudo guardar la presentación';
-    await _cargarPresentaciones();
+    await _cargarPresentaciones(silencioso: true);
     if (mounted) _mostrarSnackBar(existente != null ? 'Presentación actualizada' : 'Presentación creada', FincasColors.ink);
     return null;
+  }
+
+  /// Sube una foto a la presentación y recarga sus fotos sin cerrar el formulario abierto.
+  Future<String?> _subirFotoPresentacion(Presentacion p, File archivo) async {
+    final error = await ApiService.subirFotoPresentacion(
+      productId: widget.producto['codigo']?.toString() ?? '',
+      presentationId: p.id,
+      archivo: archivo,
+    );
+    if (error == null) await _cargarPresentaciones(silencioso: true);
+    return error;
+  }
+
+  Future<String?> _quitarFotoPresentacion(Presentacion p, FotoPresentacion foto) async {
+    final error = await ApiService.eliminarFotoPresentacion(
+      productId: widget.producto['codigo']?.toString() ?? '',
+      presentationId: p.id,
+      fotoId: foto.id,
+    );
+    if (error == null) await _cargarPresentaciones(silencioso: true);
+    return error;
   }
 
   /// Abre la tarjeta de presentación nueva dentro de la lista y la lleva a la vista.

@@ -456,6 +456,52 @@ class ApiService {
     }
   }
 
+  // ==================== FOTOS DE UNA PRESENTACIÓN ====================
+
+  static const int maxFotosPresentacion = 3;
+
+  /// Sube una foto a una presentación: pide una URL firmada, sube los bytes y registra la foto.
+  /// Devuelve null si salió bien, o el mensaje de error.
+  static Future<String?> subirFotoPresentacion({required String productId, required String presentationId, required File archivo}) async {
+    try {
+      final ext = archivo.path.split('.').last.toLowerCase();
+      final mime = ext == 'png' ? 'image/png' : (ext == 'webp' ? 'image/webp' : 'image/jpeg');
+      final base = '$baseUrl/api/productos/$businessId/$productId/presentaciones/$presentationId/fotos';
+
+      final firma = await http
+          .post(Uri.parse('$base/firma'), headers: headers, body: jsonEncode({'mimeType': mime}))
+          .timeout(const Duration(seconds: 15));
+      if (firma.statusCode != 200) return _mensajeError(firma, 'No se pudo preparar la subida');
+      final datos = jsonDecode(firma.body) as Map<String, dynamic>;
+
+      final bytes = await archivo.readAsBytes();
+      final put = await http
+          .put(Uri.parse(datos['signedUrl'] as String), headers: {'Content-Type': mime}, body: bytes)
+          .timeout(const Duration(seconds: 60));
+      if (put.statusCode != 200 && put.statusCode != 204) return 'No se pudo subir la foto (${put.statusCode})';
+
+      final registro = await http
+          .post(Uri.parse(base), headers: headers, body: jsonEncode({'path': datos['path'], 'mimeType': mime}))
+          .timeout(const Duration(seconds: 15));
+      if (registro.statusCode != 201) return _mensajeError(registro, 'No se pudo guardar la foto');
+      return null;
+    } catch (e) {
+      return 'Error de conexión. Revisa tu internet.';
+    }
+  }
+
+  /// Quita una foto de una presentación. Devuelve null si salió bien, o el mensaje de error.
+  static Future<String?> eliminarFotoPresentacion({required String productId, required String presentationId, required String fotoId}) async {
+    try {
+      final r = await http
+          .delete(Uri.parse('$baseUrl/api/productos/$businessId/$productId/presentaciones/$presentationId/fotos/$fotoId'), headers: headers)
+          .timeout(const Duration(seconds: 15));
+      return r.statusCode == 200 ? null : _mensajeError(r, 'No se pudo quitar la foto');
+    } catch (e) {
+      return 'Error de conexión. Revisa tu internet.';
+    }
+  }
+
   static Future<ApiResponse<void>> eliminarPresentacion({
     required String productId,
     required String presentationId,
@@ -1806,6 +1852,15 @@ class ProximoEvento {
   );
 }
 
+/// Foto de una presentación (hasta 3).
+class FotoPresentacion {
+  final String id;
+  final String url;
+  const FotoPresentacion({required this.id, required this.url});
+
+  factory FotoPresentacion.fromMap(Map<String, dynamic> m) => FotoPresentacion(id: m['id']?.toString() ?? '', url: m['url']?.toString() ?? '');
+}
+
 class Presentacion {
   final String id;
   final num contenido;
@@ -1820,6 +1875,7 @@ class Presentacion {
   final bool visible; // visible en tienda
   final List<String> molienda;
   final String? imageUrl;
+  final List<FotoPresentacion> fotos;
 
   const Presentacion({
     required this.id,
@@ -1835,6 +1891,7 @@ class Presentacion {
     this.visible = true,
     required this.molienda,
     this.imageUrl,
+    this.fotos = const [],
   });
 
   factory Presentacion.fromMap(Map<String, dynamic> m) => Presentacion(
@@ -1851,6 +1908,7 @@ class Presentacion {
         visible:       m['visible'] != false, // si el servidor no lo envía, se asume visible
         molienda:      (m['molienda'] as List?)?.map((e) => e.toString()).toList() ?? [],
         imageUrl:      (m['imageUrl'] ?? m['image_url']) as String?,
+        fotos:         ((m['fotos'] as List?) ?? const []).map((f) => FotoPresentacion.fromMap(Map<String, dynamic>.from(f as Map))).toList(),
       );
 
   String get etiqueta {
