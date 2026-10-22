@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../theme/fincas_tokens.dart';
 
 /// Determina el estado de pago de un pedido
 class EstadoPagoHelper {
@@ -76,9 +77,8 @@ class EstadoPagoHelper {
   
   /// Obtiene el color de alerta según días sin pago
   static Color getColorAlerta(int diasSinPago) {
-    if (diasSinPago <= 2) return Colors.amber.shade600;
-    if (diasSinPago <= 5) return Colors.orange.shade600;
-    return Colors.red.shade600;
+    if (diasSinPago <= 5) return FincasColors.warning;
+    return FincasColors.error;
   }
   
   /// Obtiene el texto de alerta
@@ -91,11 +91,11 @@ class EstadoPagoHelper {
   /// Obtiene el color del estado de pago
   static Color getColorEstadoPago(String estadoPago) {
     switch (estadoPago) {
-      case PAGADO: return Colors.green;
-      case PARCIAL: return Colors.amber.shade700;
-      case PENDIENTE_PAGO: return Colors.red.shade400;
-      case NO_APLICA: return Colors.blueGrey;
-      default: return Colors.grey;
+      case PAGADO: return FincasColors.success;
+      case PARCIAL: return FincasColors.warning;
+      case PENDIENTE_PAGO: return FincasColors.error;
+      case NO_APLICA: return FincasColors.textMuted;
+      default: return FincasColors.textMuted;
     }
   }
 

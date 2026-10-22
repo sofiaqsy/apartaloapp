@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:apartalo_app/theme/fincas_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:apartalo_app/screens/tabs/pedidos/helpers/estado_pago_helper.dart';
 
@@ -81,25 +82,30 @@ void main() {
     });
   });
 
+  // Colors come from the Fincas design tokens (status colors), not from Material swatches.
   group('EstadoPagoHelper.getColorEstadoPago', () {
-    test('PAGADO is green', () {
-      expect(EstadoPagoHelper.getColorEstadoPago('PAGADO'), Colors.green);
+    test('PAGADO is the success color', () {
+      expect(EstadoPagoHelper.getColorEstadoPago('PAGADO'), FincasColors.success);
     });
 
-    test('PARCIAL is amber', () {
-      final color = EstadoPagoHelper.getColorEstadoPago('PARCIAL');
-      expect(color, isA<Color>());
-      // amber family has red=255, green~191
-      expect(color.red, greaterThan(200));
+    test('PARCIAL is the warning color', () {
+      expect(EstadoPagoHelper.getColorEstadoPago('PARCIAL'), FincasColors.warning);
     });
 
-    test('PENDIENTE_PAGO is red family', () {
-      final color = EstadoPagoHelper.getColorEstadoPago('PENDIENTE_PAGO');
-      expect(color.red, greaterThan(color.blue));
+    test('PENDIENTE_PAGO is the error color', () {
+      expect(EstadoPagoHelper.getColorEstadoPago('PENDIENTE_PAGO'), FincasColors.error);
     });
 
-    test('unknown estado returns grey', () {
-      expect(EstadoPagoHelper.getColorEstadoPago('OTRO'), Colors.grey);
+    test('unknown estado returns the muted color', () {
+      expect(EstadoPagoHelper.getColorEstadoPago('OTRO'), FincasColors.textMuted);
+    });
+  });
+
+  group('EstadoPagoHelper.getColorAlerta', () {
+    test('up to 5 days is a warning, beyond that an error', () {
+      expect(EstadoPagoHelper.getColorAlerta(0), FincasColors.warning);
+      expect(EstadoPagoHelper.getColorAlerta(5), FincasColors.warning);
+      expect(EstadoPagoHelper.getColorAlerta(6), FincasColors.error);
     });
   });
 

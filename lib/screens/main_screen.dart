@@ -15,6 +15,7 @@ import 'team_screen.dart';
 import 'businesses_screen.dart';
 import '../services/session_store.dart';
 import '../widgets/fincas_widgets.dart';
+import '../theme/fincas_tokens.dart';
 import 'business_requests_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -163,54 +164,44 @@ class _MainScreenState extends State<MainScreen> {
     final printerProvider = context.watch<PrinterProvider>();
     
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: FincasColors.background,
       appBar: AppBar(
-        title: Text(
-          _getTitle(),
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
+        title: Text(_getTitle(), style: FincasText.sectionTitle.copyWith(fontSize: 20)),
         centerTitle: false,
-        backgroundColor: Colors.blue.shade600,
-        foregroundColor: Colors.white,
+        backgroundColor: FincasColors.background,
+        foregroundColor: FincasColors.ink,
         elevation: 0,
+        scrolledUnderElevation: 0,
         actions: [
-          // Indicador de impresora
-          GestureDetector(
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => SettingsScreen(businessName: widget.businessName),
+          // Indicador de impresora (verde cuando está conectada); el texto lo lee VoiceOver
+          Semantics(
+            button: true,
+            label: printerProvider.isConnected ? 'Impresora conectada' : 'Impresora desconectada',
+            excludeSemantics: true,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SettingsScreen(businessName: widget.businessName),
+                ),
               ),
-            ),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              margin: const EdgeInsets.only(right: 4),
-              decoration: BoxDecoration(
-                color: printerProvider.isConnected 
-                    ? Colors.green.withOpacity(0.2) 
-                    : Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    printerProvider.isConnected ? Icons.print : Icons.print_disabled,
-                    size: 18,
-                    color: printerProvider.isConnected ? Colors.green.shade100 : Colors.white70,
-                  ),
-                  if (printerProvider.isConnected) ...[
-                    const SizedBox(width: 4),
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: Colors.green,
-                        shape: BoxShape.circle,
-                      ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: printerProvider.isConnected ? FincasColors.successBg : FincasColors.sand,
+                      borderRadius: BorderRadius.circular(FincasRadii.small + 2),
                     ),
-                  ],
-                ],
+                    child: Icon(
+                      printerProvider.isConnected ? Icons.print : Icons.print_disabled,
+                      size: 20,
+                      color: printerProvider.isConnected ? FincasColors.success : FincasColors.textSecondary,
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -252,7 +243,7 @@ class _MainScreenState extends State<MainScreen> {
                   children: [
                     Icon(
                       Icons.settings,
-                      color: Colors.blue.shade600,
+                      color: FincasColors.espresso,
                     ),
                     const SizedBox(width: 8),
                     const Text('Configuración'),
@@ -269,7 +260,7 @@ class _MainScreenState extends State<MainScreen> {
                 value: 'logout',
                 child: Row(
                   children: [
-                    Icon(Icons.logout, color: Colors.red),
+                    Icon(Icons.logout, color: FincasColors.error),
                     SizedBox(width: 8),
                     Text('Cerrar sesión'),
                   ],
@@ -289,15 +280,9 @@ class _MainScreenState extends State<MainScreen> {
         ],
       ),
       bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 10,
-              offset: const Offset(0, -2),
-            ),
-          ],
+        decoration: const BoxDecoration(
+          color: FincasColors.surface,
+          border: Border(top: BorderSide(color: FincasColors.divider)),
         ),
         child: SafeArea(
           child: Padding(
@@ -319,34 +304,35 @@ class _MainScreenState extends State<MainScreen> {
 
   Widget _buildNavItem(int index, IconData icon, String label) {
     final isSelected = _currentIndex == index;
-    
-    return GestureDetector(
-      onTap: () => setState(() => _currentIndex = index),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.blue.shade50 : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? Colors.blue.shade600 : Colors.grey.shade500,
-              size: 26,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? Colors.blue.shade600 : Colors.grey.shade500,
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+    final color = isSelected ? FincasColors.ink : FincasColors.textSecondary;
+
+    return Semantics(
+      button: true,
+      selected: isSelected,
+      label: label,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() => _currentIndex = index),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          constraints: const BoxConstraints(minWidth: 64, minHeight: FincasSpacing.minTouch),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected ? FincasColors.sand : Colors.transparent,
+            borderRadius: BorderRadius.circular(FincasRadii.medium),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: color, size: 24),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: TextStyle(color: color, fontSize: 12, fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
