@@ -118,14 +118,34 @@ void main() {
       h.subir = (_) => done.future;
       await abrirYElegir(t, 'Tomar foto');
       await t.pump();
-      expect(find.text('Subiendo...'), findsOneWidget);
+      expect(find.text('Subiendo foto...'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsWidgets);
       await t.tap(find.descendant(of: find.byType(PresentacionFotos), matching: find.byType(OutlinedButton)), warnIfMissed: false);
       await t.pump();
       expect(h.subidos, hasLength(1));
       done.complete(null);
       await t.pumpAndSettle();
-      expect(find.text('Subiendo...'), findsNothing);
+      expect(find.text('Subiendo foto...'), findsNothing);
+    });
+
+    testWidgets('the loader says "Abriendo cámara..." while the picker is open and "Subiendo..." only once there is a photo', (t) async {
+      final abrir = Completer<File?>();
+      final subir = Completer<String?>();
+      final h = await _pump(t);
+      h.elegir = (_) => abrir.future;
+      h.subir = (_) => subir.future;
+      await abrirYElegir(t, 'Tomar foto');
+      await t.pump();
+      expect(find.text('Abriendo cámara...'), findsOneWidget);
+      expect(find.text('Subiendo foto...'), findsNothing);
+      abrir.complete(File('/tmp/foto.jpg'));
+      await t.pump();
+      await t.pump();
+      expect(find.text('Subiendo foto...'), findsOneWidget);
+      expect(find.text('Abriendo cámara...'), findsNothing);
+      subir.complete(null);
+      await t.pumpAndSettle();
+      expect(find.text('Subiendo foto...'), findsNothing);
     });
 
     testWidgets('an upload error is shown to the person', (t) async {

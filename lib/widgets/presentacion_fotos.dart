@@ -29,8 +29,18 @@ class PresentacionFotos extends StatefulWidget {
   final ElegirFoto? _elegir;
   final int max;
 
+  /// Tamaño razonable para una foto de producto (1280 px): se procesa y se sube más rápido que una foto completa
+  /// de 48 megapíxeles. `requestFullMetadata: false` evita pedir el permiso de la fototeca y leer los metadatos
+  /// completos, trabajo extra que hace más lenta la cámara y que aquí no se necesita.
   static Future<File?> _elegirPorDefecto(ImageSource origen) async {
-    final x = await ImagePicker().pickImage(source: origen, maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
+    final x = await ImagePicker().pickImage(
+      source: origen,
+      maxWidth: 1280,
+      maxHeight: 1280,
+      imageQuality: 80,
+      requestFullMetadata: false,
+      preferredCameraDevice: CameraDevice.rear,
+    );
     return x == null ? null : File(x.path);
   }
 
@@ -39,7 +49,8 @@ class PresentacionFotos extends StatefulWidget {
 }
 
 class _PresentacionFotosState extends State<PresentacionFotos> {
-  bool _subiendo = false;
+  bool _subiendo = false; // hay una foto en curso (abriendo la cámara o subiendo)
+  bool _abriendo = false; // todavía se está abriendo la cámara o la galería
   String? _quitandoId;
   String? _error;
 
@@ -69,20 +80,21 @@ class _PresentacionFotosState extends State<PresentacionFotos> {
       ),
     );
     if (origen == null || !mounted) return;
-    setState(() { _subiendo = true; _error = null; });
+    setState(() { _subiendo = true; _abriendo = true; _error = null; });
     String? error;
     try {
       final archivo = await (widget._elegir ?? PresentacionFotos._elegirPorDefecto)(origen);
       if (archivo == null) {
-        if (mounted) setState(() => _subiendo = false);
+        if (mounted) setState(() { _subiendo = false; _abriendo = false; });
         return; // canceló la cámara o la galería
       }
+      if (mounted) setState(() => _abriendo = false); // ya hay foto: ahora se sube
       error = await widget.onSubir(archivo);
     } catch (_) {
       error = 'No se pudo abrir la cámara o la galería.';
     }
     if (!mounted) return;
-    setState(() { _subiendo = false; _error = error; });
+    setState(() { _subiendo = false; _abriendo = false; _error = error; });
   }
 
   Future<void> _quitar(FotoPresentacion foto) async {
@@ -139,21 +151,33 @@ class _PresentacionFotosState extends State<PresentacionFotos> {
         const Text('Fotos', style: FincasText.label),
         Text('Hasta ${widget.max} fotos de esta presentación', style: FincasText.caption),
         const SizedBox(height: FincasSpacing.s),
-        if (widget.fotos.isNotEmpty || _subiendo)
+        if (widget.fotos.isNotEmpty)
           Wrap(
             spacing: FincasSpacing.s,
             runSpacing: FincasSpacing.xs,
             children: [
               for (final f in widget.fotos) _miniatura(f),
-              if (_subiendo)
-                Container(
-                  width: 96,
-                  height: 96,
-                  decoration: BoxDecoration(color: FincasColors.sand, borderRadius: BorderRadius.circular(FincasRadii.medium)),
-                  alignment: Alignment.center,
-                  child: const FincasLoader(message: 'Subiendo...'),
-                ),
             ],
+          ),
+        if (_subiendo)
+          Padding(
+            padding: const EdgeInsets.only(top: FincasSpacing.s),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: FincasSpacing.l, vertical: FincasSpacing.m),
+              decoration: BoxDecoration(color: FincasColors.sand, borderRadius: BorderRadius.circular(FincasRadii.medium)),
+              child: Row(
+                children: [
+                  const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5)),
+                  const SizedBox(width: FincasSpacing.m),
+                  Expanded(
+                    child: Semantics(
+                      liveRegion: true,
+                      child: Text(_abriendo ? 'Abriendo cámara...' : 'Subiendo foto...', style: FincasText.bodySecondary.copyWith(color: FincasColors.textPrimary)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         if (_error != null)
           Padding(
