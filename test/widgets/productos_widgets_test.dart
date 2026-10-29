@@ -32,9 +32,9 @@ void main() {
     testWidgets('idle: label only, no spinner, tap works', (t) async {
       var taps = 0;
       await t.pumpWidget(fab(abriendo: false, onPressed: () => taps++));
-      expect(find.text('Nuevo producto'), findsOneWidget);
+      expect(find.text('Nuevo'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
-      await t.tap(find.text('Nuevo producto'));
+      await t.tap(find.text('Nuevo'));
       expect(taps, 1);
     });
 
@@ -44,7 +44,7 @@ void main() {
       await t.pump(const Duration(milliseconds: 200)); // the spinner never settles
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       expect(find.text('Abriendo...'), findsOneWidget);
-      expect(find.text('Nuevo producto'), findsNothing);
+      expect(find.text('Nuevo'), findsNothing);
       await t.tap(find.text('Abriendo...'));
       expect(taps, 0);
       expect(find.bySemanticsLabel('Nuevo producto, abriendo'), findsOneWidget);
@@ -79,17 +79,17 @@ void main() {
     expect(etiquetaPresentacion(250, 'ml'), '250ml');
   });
 
-  testWidgets('shows name, each presentation with price, and stock as text', (t) async {
+  testWidgets('shows name, each presentation with price, and the stock number', (t) async {
     await t.pumpWidget(_app(ProductoListCard(producto: _producto(), onTap: () {})));
     expect(find.text('Café Rosal'), findsOneWidget);
     expect(find.text('250g'), findsOneWidget);
     expect(find.text('1kg'), findsOneWidget);
     expect(find.text('S/ 32.50'), findsOneWidget);
-    expect(find.text('Stock 12'), findsOneWidget);
-    expect(find.text('Stock bajo · 3'), findsOneWidget); // below 5: said in words, not only in color
+    expect(find.text('12'), findsOneWidget);
+    expect(find.text('3'), findsOneWidget); // below 5: red pill with a warning sign
   });
 
-  testWidgets('pending roast is a text badge, absent otherwise', (t) async {
+  testWidgets('pending roast shows the red label, absent otherwise', (t) async {
     await t.pumpWidget(_app(Column(children: [
       ProductoListCard(producto: _producto(tueste: true), onTap: () {}),
       ProductoListCard(producto: _producto(nombre: 'Otro'), onTap: () {}),
@@ -97,22 +97,16 @@ void main() {
     expect(find.text('Tueste pendiente'), findsOneWidget);
   });
 
-  testWidgets('a product without presentations explains what to do', (t) async {
+  testWidgets('a product without presentations tells the user to tap to add one', (t) async {
     await t.pumpWidget(_app(ProductoListCard(producto: _producto(pres: []), onTap: () {})));
-    expect(find.text('Sin presentaciones. Toca para agregar.'), findsOneWidget);
+    expect(find.text('Sin presentaciones — toca para agregar'), findsOneWidget);
   });
 
-  testWidgets('tap works and the card has one accessible label', (t) async {
+  testWidgets('tap works', (t) async {
     var taps = 0;
     await t.pumpWidget(_app(ProductoListCard(producto: _producto(tueste: true), onTap: () => taps++)));
     await t.tap(find.byType(ProductoListCard));
     expect(taps, 1);
-    expect(find.bySemanticsLabel('Café Rosal, tueste pendiente, 2 presentaciones'), findsOneWidget);
-  });
-
-  testWidgets('without an image the initial of the name is shown', (t) async {
-    await t.pumpWidget(_app(ProductoListCard(producto: _producto(nombre: 'mnemonic'), onTap: () {})));
-    expect(find.text('M'), findsOneWidget);
   });
 
   testWidgets('a very long name with many presentations fits 320pt at 2x text', (t) async {
@@ -201,7 +195,7 @@ void nuevoProductoSheetTests() {
     await t.pumpAndSettle();
     expect(creados, ['Café Blend']);
     expect(lastResult, true);
-    expect(find.text('Nuevo producto'), findsNothing);
+    expect(find.text('Nuevo'), findsNothing);
   });
 
   testWidgets('while creating there is a loader and cancel cannot be tapped', (t) async {

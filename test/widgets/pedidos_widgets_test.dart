@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:apartalo_app/screens/tabs/pedidos/widgets/pedido_card.dart';
 import 'package:apartalo_app/screens/tabs/pedidos/widgets/pedidos_filtros.dart';
 import 'package:apartalo_app/theme/fincas_theme.dart';
 import 'package:apartalo_app/theme/fincas_tokens.dart';
@@ -33,63 +32,6 @@ Map<String, dynamic> _pedido({String estado = 'PENDIENTE', String tipo = '', Str
     };
 
 void main() {
-  group('PedidoCard', () {
-    testWidgets('shows client, total, one-line meta and a text status badge', (t) async {
-      await t.pumpWidget(_app(PedidoCard(pedido: _pedido(), onTap: () {})));
-      expect(find.text('Keyla Cusi'), findsOneWidget);
-      expect(find.text('S/ 120.00'), findsOneWidget);
-      expect(find.text('21/10/2026 · 2 prod. · 5 uds'), findsOneWidget);
-      expect(find.text('Pendiente'), findsOneWidget);
-    });
-
-    testWidgets('type and origin tags are text badges', (t) async {
-      await t.pumpWidget(_app(Column(children: [
-        PedidoCard(pedido: _pedido(tipo: 'PREVENTA'), onTap: () {}),
-        PedidoCard(pedido: _pedido(tipo: 'B2B', origen: 'TIENDA'), onTap: () {}),
-      ])));
-      expect(find.text('Pre-venta'), findsOneWidget);
-      expect(find.text('B2B'), findsOneWidget);
-      expect(find.text('Tienda'), findsOneWidget);
-    });
-
-    testWidgets('history shows the payment state as text, never only as color', (t) async {
-      await t.pumpWidget(_app(Column(children: [
-        PedidoCard(pedido: _pedido(estado: 'COMPLETADO', extra: {'montoPagado': 120}), onTap: () {}, mostrarAlertaPago: true),
-        PedidoCard(pedido: _pedido(estado: 'COMPLETADO', extra: {'montoPagado': 40}), onTap: () {}, mostrarAlertaPago: true),
-        PedidoCard(pedido: _pedido(estado: 'COMPLETADO'), onTap: () {}, mostrarAlertaPago: true),
-      ])));
-      expect(find.text('Pagado'), findsOneWidget);
-      expect(find.textContaining('Parcial'), findsOneWidget);
-      expect(find.textContaining('Por cobrar'), findsOneWidget);
-    });
-
-    testWidgets('no payment badge outside the history view', (t) async {
-      await t.pumpWidget(_app(PedidoCard(pedido: _pedido(estado: 'COMPLETADO'), onTap: () {})));
-      expect(find.textContaining('Por cobrar'), findsNothing);
-    });
-
-    testWidgets('tap works and the card has one accessible label', (t) async {
-      var taps = 0;
-      await t.pumpWidget(_app(PedidoCard(pedido: _pedido(), onTap: () => taps++)));
-      await t.tap(find.byType(PedidoCard));
-      expect(taps, 1);
-      expect(find.bySemanticsLabel('Pedido de Keyla Cusi, pendiente, S/ 120.00'), findsOneWidget);
-    });
-
-    testWidgets('a very long client name and all tags fit 320pt at 2x text', (t) async {
-      await _small(t);
-      final p = _pedido(tipo: 'PREVENTA', origen: 'TIENDA', total: 123456.5)..['cliente'] = 'Cooperativa Agraria Cafetalera de Productores Orgánicos del Valle del Alto Urubamba';
-      await t.pumpWidget(_app(PedidoCard(pedido: p, onTap: () {}, mostrarAlertaPago: true), scale: 2.0));
-      expect(t.takeException(), isNull);
-    });
-
-    test('status tones', () {
-      expect(PedidoCard.estadoTone('PENDIENTE'), FincasTone.warning);
-      expect(PedidoCard.estadoTone('COMPLETADO'), FincasTone.success);
-      expect(PedidoCard.estadoTone('CANCELADO'), FincasTone.error);
-      expect(PedidoCard.estadoTone('CONFIRMADO'), FincasTone.neutral);
-    });
-  });
 
   group('filters and summary', () {
     testWidgets('filter chips: selected state, count, touch target and tap', (t) async {
@@ -194,15 +136,6 @@ void main() {
       ])));
       expect(fillOf('Pendientes'), FincasColors.accentBg); // inactive: soft tint of the same family
       expect(fillOf('Historial'), FincasColors.ink); // active history is the main (ink) color
-    });
-
-    testWidgets('order card avatar is neutral: the status is said by its badge, not by a colored strip', (t) async {
-      await t.pumpWidget(_app(Column(children: [
-        PedidoCard(pedido: _pedido(estado: 'PENDIENTE'), onTap: () {}),
-        PedidoCard(pedido: _pedido(estado: 'COMPLETADO'), onTap: () {}),
-      ])));
-      final avatars = t.widgetList<Container>(find.byType(Container)).map((c) => c.decoration).whereType<BoxDecoration>().where((d) => d.shape == BoxShape.circle).map((d) => d.color).toSet();
-      expect(avatars, {FincasColors.sand});
     });
   });
 

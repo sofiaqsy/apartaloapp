@@ -5,9 +5,7 @@ import '../crear_pedido_screen.dart';
 import 'pedidos/helpers/estado_pago_helper.dart';
 import 'pedidos/widgets/pedido_card.dart';
 import 'pedidos/widgets/detalle_pedido/detalle_pedido_sheet.dart';
-import 'pedidos/widgets/pedidos_filtros.dart';
-import '../../theme/fincas_tokens.dart';
-import '../../widgets/fincas_widgets.dart';
+import 'pedidos/widgets/reportes_sheet.dart';
 import '../crear_preventa_screen.dart';
 
 class PedidosTab extends StatefulWidget {
@@ -203,164 +201,381 @@ class _PedidosTabState extends State<PedidosTab> with SingleTickerProviderStateM
     _cargarPedidos(); // Recargar con búsqueda server-side
   }
 
+  void _mostrarReportes() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => ReportesSheet(pedidos: _pedidos),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final stats = _statsCache;
-
+    
     return Scaffold(
-      backgroundColor: FincasColors.background,
+      backgroundColor: Colors.grey.shade100,
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         behavior: HitTestBehavior.translucent,
         child: Column(
-          children: [
-            // Búsqueda y filtros: un solo bloque compacto
-            Container(
-              padding: const EdgeInsets.fromLTRB(FincasSpacing.l, FincasSpacing.s, FincasSpacing.l, FincasSpacing.m),
-              decoration: const BoxDecoration(
-                color: FincasColors.surface,
-                border: Border(bottom: BorderSide(color: FincasColors.divider)),
-              ),
-              child: Column(
-                children: [
-                  TextField(
-                    focusNode: _searchFocus,
-                    textInputAction: TextInputAction.search,
-                    onChanged: (value) {
-                      _searchTimer?.cancel();
-                      _searchTimer = Timer(const Duration(milliseconds: 400), () {
-                        if (value != _busqueda) _buscar(value);
-                      });
-                    },
-                    decoration: InputDecoration(
-                      hintText: 'Buscar pedido...',
-                      prefixIcon: const Icon(Icons.search, color: FincasColors.textSecondary),
-                      suffixIcon: _busqueda.isNotEmpty
-                          ? IconButton(
-                              tooltip: 'Borrar búsqueda',
-                              icon: const Icon(Icons.clear),
-                              onPressed: () {
-                                _busqueda = '';
-                                _cargarPedidos();
-                              },
-                            )
-                          : null,
-                      filled: true,
-                      fillColor: FincasColors.background,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(FincasRadii.medium), borderSide: BorderSide.none),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(FincasRadii.medium), borderSide: BorderSide.none),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: FincasSpacing.l, vertical: FincasSpacing.m),
+        children: [
+          // Header con búsqueda y botón de reportes
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            color: Colors.white,
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        focusNode: _searchFocus,
+                        onChanged: (value) {
+                          _searchTimer?.cancel();
+                          _searchTimer = Timer(const Duration(milliseconds: 400), () {
+                            if (value != _busqueda) _buscar(value);
+                          });
+                        },
+                        decoration: InputDecoration(
+                          hintText: 'Buscar pedido...',
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: _busqueda.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear),
+                                  onPressed: () {
+                                    _busqueda = '';
+                                    _cargarPedidos();
+                                  },
+                                )
+                              : null,
+                          filled: true,
+                          fillColor: Colors.grey.shade100,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: FincasSpacing.s),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: PedidosFiltroChip(
-                          label: 'Pendientes',
-                          mutedAccent: true,
-                          count: _countPendientes,
-                          selected: _filtroEstado == 'PENDIENTES',
-                          onTap: () => _cambiarFiltro('PENDIENTES'),
-                        ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // Filtros principales
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildFiltroChip(
+                        'PENDIENTES',
+                        'Pendientes',
+                        Icons.schedule,
+                        Colors.orange,
+                        _countPendientes,
                       ),
-                      const SizedBox(width: FincasSpacing.s),
-                      Expanded(
-                        child: PedidosFiltroChip(
-                          label: 'Historial',
-                          count: _countHistorial,
-                          selected: _filtroEstado == 'HISTORIAL',
-                          onTap: () => _cambiarFiltro('HISTORIAL'),
-                        ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildFiltroChip(
+                        'HISTORIAL',
+                        'Historial',
+                        Icons.history,
+                        Colors.green,
+                        _countHistorial,
                       ),
-                    ],
-                  ),
-                  // Subfiltros del historial
-                  if (_filtroEstado == 'HISTORIAL') ...[
-                    const SizedBox(height: FincasSpacing.s),
-                    Row(
+                    ),
+                  ],
+                ),
+                // Subfiltros para Historial
+                if (_filtroEstado == 'HISTORIAL') ...[
+                  const SizedBox(height: 8),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
                       children: [
-                        Expanded(
-                          child: PedidosSubFiltroChip(
-                            label: 'Todos',
-                            count: _countHistorial,
-                            selected: _subFiltroHistorial == 'TODOS',
-                            onTap: () => _cambiarSubFiltro('TODOS'),
-                          ),
+                        _buildSubFiltroChip('TODOS', 'Todos', Icons.list, null, _countHistorial),
+                        const SizedBox(width: 8),
+                        _buildSubFiltroChip(
+                          'PAGADOS',
+                          'Pagados',
+                          Icons.check_circle,
+                          Colors.green,
+                          _countPagados,
                         ),
-                        const SizedBox(width: FincasSpacing.s),
-                        Expanded(
-                          child: PedidosSubFiltroChip(
-                            label: 'Pagados',
-                            count: _countPagados,
-                            tone: FincasTone.success,
-                            selected: _subFiltroHistorial == 'PAGADOS',
-                            onTap: () => _cambiarSubFiltro('PAGADOS'),
-                          ),
-                        ),
-                        const SizedBox(width: FincasSpacing.s),
-                        Expanded(
-                          child: PedidosSubFiltroChip(
-                            label: 'Por cobrar',
-                            count: _countPorCobrar,
-                            tone: FincasTone.error,
-                            selected: _subFiltroHistorial == 'PENDIENTE_PAGO',
-                            onTap: () => _cambiarSubFiltro('PENDIENTE_PAGO'),
-                          ),
+                        const SizedBox(width: 8),
+                        _buildSubFiltroChip(
+                          'PENDIENTE_PAGO',
+                          'Por cobrar',
+                          Icons.warning_amber_rounded,
+                          Colors.red,
+                          _countPorCobrar,
                         ),
                       ],
                     ),
-                  ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          
+          // Mini resumen solo en historial
+          if (_filtroEstado == 'HISTORIAL' && !_isLoading && _error == null)
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.indigo.shade50, Colors.blue.shade50],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.indigo.shade100),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildMiniStat(
+                      'Vendido',
+                      stats['totalVendido'],
+                      Colors.indigo,
+                    ),
+                  ),
+                  Container(
+                    width: 1,
+                    height: 30,
+                    color: Colors.indigo.shade200,
+                  ),
+                  Expanded(
+                    child: _buildMiniStat(
+                      'Cobrado',
+                      stats['totalCobrado'],
+                      Colors.green,
+                    ),
+                  ),
+                  Container(
+                    width: 1,
+                    height: 30,
+                    color: Colors.indigo.shade200,
+                  ),
+                  Expanded(
+                    child: _buildMiniStat(
+                      'Por cobrar',
+                      stats['totalPendiente'],
+                      Colors.red,
+                      showAlert: stats['pendientesPago'] > 0,
+                    ),
+                  ),
                 ],
               ),
             ),
+          
+          Expanded(child: _buildBody()),
+        ],
+      ),
+      ),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          // Botón Pre-venta
+          FloatingActionButton.extended(
+            heroTag: 'fab_preventa',
+            onPressed: _abrirNuevaPreventa,
+            backgroundColor: const Color(0xFFFF6B00),
+            icon: const Icon(Icons.local_fire_department, size: 18),
+            label: const Text('Pre-venta', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          ),
+          const SizedBox(height: 10),
+          // Botón Nuevo Pedido
+          FloatingActionButton.extended(
+            heroTag: 'fab_pedidos',
+            onPressed: () async {
+              final nuevoPedido = await Navigator.push<Map<String, dynamic>>(
+                context,
+                MaterialPageRoute(builder: (_) => const CrearPedidoScreen()),
+              );
+              if (!mounted) return;
+              if (nuevoPedido != null) {
+                _cargarPedidos();
+                _mostrarDetallePedido(nuevoPedido);
+              }
+            },
+            backgroundColor: Colors.blue.shade600,
+            icon: const Icon(Icons.add_shopping_cart),
+            label: const Text('Nuevo Pedido', style: TextStyle(fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+  }
 
-            // Resumen solo en historial
-            if (_filtroEstado == 'HISTORIAL' && !_isLoading && _error == null)
-              PedidosResumen(
-                vendido: stats['totalVendido'],
-                cobrado: stats['totalCobrado'],
-                porCobrar: stats['totalPendiente'],
-                hayAlerta: stats['pendientesPago'] > 0,
+  Widget _buildMiniStat(
+    String label,
+    double valor,
+    Color color, {
+    bool showAlert = false,
+  }) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 2),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'S/${valor.toStringAsFixed(0)}',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: color,
               ),
+            ),
+            if (showAlert) ...[
+              const SizedBox(width: 4),
+              Icon(
+                Icons.warning_amber_rounded,
+                size: 14,
+                color: Colors.red.shade400,
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
 
-            Expanded(child: _buildBody()),
+  Widget _buildFiltroChip(
+    String filtro,
+    String label,
+    IconData icon,
+    Color color,
+    int count,
+  ) {
+    final selected = _filtroEstado == filtro;
+    
+    return GestureDetector(
+      onTap: () {
+        if (_filtroEstado == filtro) return; // Ya seleccionado
+        setState(() {
+          _filtroEstado = filtro;
+          if (filtro != 'HISTORIAL') _subFiltroHistorial = 'TODOS';
+        });
+        _cargarPedidos();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? color : Colors.grey.shade200,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: selected ? Colors.white : Colors.grey.shade600,
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: selected ? Colors.white : Colors.grey.shade700,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (count > 0) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? Colors.white.withOpacity(0.3)
+                      : Colors.grey.shade400,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$count',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
-      // "Nuevo pedido" es la acción principal; "Pre-venta" sigue visible como acción secundaria.
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(left: FincasSpacing.l),
-        child: PedidosCrearBotones(onNuevo: _nuevo, onPreventa: _abrirNuevaPreventa),
+    );
+  }
+
+  Widget _buildSubFiltroChip(
+    String filtro,
+    String label,
+    IconData icon, [
+    Color? activeColor,
+    int count = 0,
+  ]) {
+    final selected = _subFiltroHistorial == filtro;
+    final color = activeColor ?? Colors.grey.shade600;
+    
+    return GestureDetector(
+      onTap: () {
+        if (_subFiltroHistorial == filtro) return;
+        setState(() => _subFiltroHistorial = filtro);
+        _cargarPedidos(); // Recargar con nuevo filtro server-side
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? color.withOpacity(0.15) : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? color : Colors.grey.shade300,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: selected ? color : Colors.grey.shade500,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: selected ? color : Colors.grey.shade600,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+            if (count > 0) ...[
+              const SizedBox(width: 4),
+              Text(
+                '($count)',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: selected ? color : Colors.grey.shade500,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
-  }
-
-  Future<void> _nuevo() async {
-    final nuevoPedido = await Navigator.push<Map<String, dynamic>>(
-      context,
-      MaterialPageRoute(builder: (_) => const CrearPedidoScreen()),
-    );
-    if (!mounted) return;
-    if (nuevoPedido != null) {
-      _cargarPedidos();
-      _mostrarDetallePedido(nuevoPedido);
-    }
-  }
-
-  void _cambiarFiltro(String filtro) {
-    if (_filtroEstado == filtro) return;
-    setState(() {
-      _filtroEstado = filtro;
-      if (filtro != 'HISTORIAL') _subFiltroHistorial = 'TODOS';
-    });
-    _cargarPedidos();
-  }
-
-  void _cambiarSubFiltro(String filtro) {
-    if (_subFiltroHistorial == filtro) return;
-    setState(() => _subFiltroHistorial = filtro);
-    _cargarPedidos(); // Recargar con nuevo filtro server-side
   }
 
   Future<void> _onRefresh() async {
@@ -369,27 +584,28 @@ class _PedidosTabState extends State<PedidosTab> with SingleTickerProviderStateM
   }
 
   Widget _buildSkeletonCard(double opacity) {
-    final c = FincasColors.sand.withValues(alpha: 0.5 + opacity);
-    final cl = FincasColors.sand.withValues(alpha: 0.3 + opacity);
+    final c = Colors.grey.withOpacity(opacity);
+    final cl = Colors.grey.withOpacity(opacity * 0.6);
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: FincasSpacing.l, vertical: FincasSpacing.xs + 1),
-      padding: const EdgeInsets.all(FincasSpacing.m + 2),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: FincasColors.surface,
-        borderRadius: BorderRadius.circular(FincasRadii.large),
-        border: Border.all(color: FincasColors.border),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
       ),
-      child: Row(children: [
-        Container(width: 40, height: 40, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
-        const SizedBox(width: FincasSpacing.m),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Container(height: 14, width: 150, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(4))),
-            const SizedBox(height: 8),
-            Container(height: 11, width: 110, decoration: BoxDecoration(color: cl, borderRadius: BorderRadius.circular(4))),
-          ]),
-        ),
-        Container(height: 16, width: 64, decoration: BoxDecoration(color: cl, borderRadius: BorderRadius.circular(4))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(width: 36, height: 36, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+          const SizedBox(width: 10),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(height: 13, width: 150, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(4))),
+            const SizedBox(height: 6),
+            Container(height: 11, width: 100, decoration: BoxDecoration(color: cl, borderRadius: BorderRadius.circular(4))),
+          ])),
+          Container(height: 18, width: 64, decoration: BoxDecoration(color: cl, borderRadius: BorderRadius.circular(4))),
+        ]),
+        const SizedBox(height: 10),
+        Container(height: 10, decoration: BoxDecoration(color: cl, borderRadius: BorderRadius.circular(4))),
       ]),
     );
   }
@@ -399,10 +615,9 @@ class _PedidosTabState extends State<PedidosTab> with SingleTickerProviderStateM
       return AnimatedBuilder(
         animation: _shimmerCtrl,
         builder: (_, __) {
-          final opacity = _shimmerCtrl.value * 0.3;
+          final opacity = 0.25 + _shimmerCtrl.value * 0.25;
           return ListView.builder(
-            physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.only(top: FincasSpacing.s, bottom: 124),
+            padding: const EdgeInsets.only(top: 8, bottom: 100),
             itemCount: 8,
             itemBuilder: (_, __) => _buildSkeletonCard(opacity),
           );
@@ -412,23 +627,23 @@ class _PedidosTabState extends State<PedidosTab> with SingleTickerProviderStateM
 
     if (_error != null) {
       return RefreshIndicator(
-        color: FincasColors.ink,
         onRefresh: _onRefresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: FincasSpacing.xl, vertical: FincasSpacing.xxxl),
           children: [
-            const FincasMessageState(
-              title: 'No se pudieron cargar los pedidos',
-              message: 'Revisa tu conexión e intenta de nuevo.',
-              tone: FincasTone.error,
-            ),
-            const SizedBox(height: FincasSpacing.xl),
-            Center(
-              child: SizedBox(
-                width: 220,
-                child: FincasSecondaryButton(label: 'Reintentar', onPressed: _cargarPedidos),
-              ),
+            SizedBox(height: MediaQuery.of(context).size.height * 0.3),
+            Column(
+              children: [
+                Icon(Icons.error_outline, size: 64, color: Colors.red.shade300),
+                const SizedBox(height: 16),
+                Text('Error: $_error'),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: _cargarPedidos,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Reintentar'),
+                ),
+              ],
             ),
           ],
         ),
@@ -436,54 +651,75 @@ class _PedidosTabState extends State<PedidosTab> with SingleTickerProviderStateM
     }
 
     if (_pedidos.isEmpty) {
-      String mensaje;
-      String submensaje;
-      if (_busqueda.isNotEmpty) {
-        mensaje = 'Sin resultados';
-        submensaje = 'No encontramos pedidos para "$_busqueda".';
-      } else if (_filtroEstado == 'PENDIENTES') {
+      String mensaje = '';
+      String submensaje = '';
+      IconData icono = Icons.inbox_outlined;
+
+      if (_filtroEstado == 'PENDIENTES') {
         mensaje = 'No hay pedidos pendientes';
-        submensaje = 'Jala hacia abajo para actualizar.';
+        submensaje = 'Jala hacia abajo para actualizar';
+        icono = Icons.inbox_outlined;
       } else if (_subFiltroHistorial == 'PAGADOS') {
         mensaje = 'No hay pedidos pagados';
-        submensaje = 'Los pedidos cobrados aparecerán aquí.';
+        submensaje = 'Los pedidos cobrados aparecerán aquí';
+        icono = Icons.check_circle_outline;
       } else if (_subFiltroHistorial == 'PENDIENTE_PAGO') {
-        mensaje = 'Todo cobrado';
-        submensaje = 'No tienes pagos pendientes.';
+        mensaje = '¡Excelente! Todo cobrado';
+        submensaje = 'No tienes pagos pendientes';
+        icono = Icons.celebration;
       } else {
         mensaje = 'No hay historial';
-        submensaje = 'Los pedidos completados aparecerán aquí.';
+        submensaje = 'Los pedidos completados aparecerán aquí';
+        icono = Icons.history;
       }
 
       return RefreshIndicator(
-        color: FincasColors.ink,
         onRefresh: _onRefresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: FincasSpacing.xl, vertical: FincasSpacing.xxxl),
-          children: [FincasMessageState(title: mensaje, message: submensaje)],
+          children: [
+            SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+            Column(
+              children: [
+                Icon(icono, size: 80, color: Colors.grey.shade400),
+                const SizedBox(height: 16),
+                Text(
+                  mensaje,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(submensaje, style: TextStyle(color: Colors.grey.shade500)),
+              ],
+            ),
+          ],
         ),
       );
     }
 
     return RefreshIndicator(
-      color: FincasColors.ink,
       onRefresh: _onRefresh,
       child: ListView.builder(
         controller: _scrollController,
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(top: FincasSpacing.s, bottom: 124), // espacio para los botones flotantes
+        padding: const EdgeInsets.only(top: 8, bottom: 100),
         itemCount: _pedidos.length + (_hayMas ? 1 : 0),
         itemBuilder: (context, index) {
           if (index == _pedidos.length) {
             return Padding(
-              padding: const EdgeInsets.all(FincasSpacing.l),
+              padding: const EdgeInsets.all(16),
               child: Center(
                 child: _isLoadingMore
-                    ? const FincasLoader(message: 'Cargando más...')
-                    : FincasTextButton(
-                        label: 'Cargar más (${_pedidos.length} de $_totalPedidos)',
+                    ? const CircularProgressIndicator()
+                    : TextButton(
                         onPressed: _cargarMasPedidos,
+                        child: Text(
+                          'Cargar más (${_pedidos.length} de $_totalPedidos)',
+                          style: TextStyle(color: Colors.blue.shade600),
+                        ),
                       ),
               ),
             );

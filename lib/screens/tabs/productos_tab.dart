@@ -626,65 +626,74 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
-    final pendingCount = _productos.where((p) => p['pendingTueste'] == true).length;
     return Scaffold(
-      backgroundColor: FincasColors.background,
+      backgroundColor: Colors.grey.shade100,
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         behavior: HitTestBehavior.translucent,
         child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(FincasSpacing.l, FincasSpacing.s, FincasSpacing.l, FincasSpacing.m),
-              decoration: const BoxDecoration(
-                color: FincasColors.surface,
-                border: Border(bottom: BorderSide(color: FincasColors.divider)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TextField(
-                    focusNode: _searchFocusNode,
-                    textInputAction: TextInputAction.search,
-                    onChanged: (value) {
-                      Future.delayed(const Duration(milliseconds: 500), () {
-                        if (value == _busqueda || (value.isEmpty && _busqueda.isEmpty)) return;
-                        _buscar(value);
-                      });
-                    },
-                    decoration: InputDecoration(
-                      hintText: 'Buscar producto por nombre...',
-                      prefixIcon: const Icon(Icons.search, color: FincasColors.textSecondary),
-                      fillColor: FincasColors.background,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(FincasRadii.medium), borderSide: BorderSide.none),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(FincasRadii.medium), borderSide: BorderSide.none),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: FincasSpacing.l, vertical: FincasSpacing.m),
-                    ),
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            color: Colors.white,
+            child: Column(
+              children: [
+                TextField(
+                  focusNode: _searchFocusNode,
+                  onChanged: (value) {
+                    Future.delayed(const Duration(milliseconds: 500), () {
+                      if (value == _busqueda || (value.isEmpty && _busqueda.isEmpty)) return;
+                      _buscar(value);
+                    });
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'Buscar producto por nombre...',
+                    prefixIcon: const Icon(Icons.search),
+                    filled: true,
+                    fillColor: Colors.grey.shade100,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   ),
-                  // Conteo y aviso en una sola línea: el aviso solo aparece si hay algo pendiente.
-                  if ((_total > 0 && !_isLoading) || pendingCount > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(top: FincasSpacing.s),
-                      child: Wrap(
-                        spacing: FincasSpacing.s,
-                        runSpacing: FincasSpacing.xs,
-                        crossAxisAlignment: WrapCrossAlignment.center,
+                ),
+                if (_total > 0 && !_isLoading)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text('$_total producto${_total != 1 ? 's' : ''}', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                  ),
+                Builder(builder: (_) {
+                  final pendingCount = _productos.where((p) => p['pendingTueste'] == true).length;
+                  if (pendingCount == 0) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.red.shade300),
+                      ),
+                      child: Row(
                         children: [
-                          if (_total > 0 && !_isLoading)
-                            Text('$_total producto${_total != 1 ? 's' : ''}', style: FincasText.metadata),
-                          if (pendingCount > 0)
-                            FincasStatusBadge('$pendingCount con tueste pendiente', tone: FincasTone.warning),
+                          Icon(Icons.local_fire_department_rounded, color: Colors.red.shade600, size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            '$pendingCount producto${pendingCount != 1 ? 's' : ''} con tueste pendiente',
+                            style: TextStyle(color: Colors.red.shade700, fontSize: 13, fontWeight: FontWeight.w600),
+                          ),
                         ],
                       ),
                     ),
-                ],
-              ),
+                  );
+                }),
+              ],
             ),
-            Expanded(child: _buildBody()),
-          ],
-        ),
+          ),
+          Expanded(child: _buildBody()),
+        ],
       ),
-      // Una sola acción principal.
+      ),
+      // Una sola acción: muestra un indicador mientras se abre el formulario.
       floatingActionButton: NuevoProductoFab(abriendo: _abriendoNuevo, onPressed: _nuevoProducto),
     );
   }
@@ -752,27 +761,27 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
   }
 
   Widget _buildSkeletonProducto(double opacity) {
-    final c = FincasColors.sand.withValues(alpha: 0.5 + opacity);
-    final cl = FincasColors.sand.withValues(alpha: 0.3 + opacity);
+    final c = Colors.grey.withOpacity(opacity);
+    final cl = Colors.grey.withOpacity(opacity * 0.6);
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: FincasSpacing.l, vertical: FincasSpacing.xs + 1),
-      padding: const EdgeInsets.all(FincasSpacing.l),
-      decoration: BoxDecoration(
-        color: FincasColors.surface,
-        borderRadius: BorderRadius.circular(FincasRadii.large),
-        border: Border.all(color: FincasColors.border),
-      ),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
       child: Row(children: [
-        Container(width: 48, height: 48, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(FincasRadii.medium - 2))),
-        const SizedBox(width: FincasSpacing.m),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Container(height: 14, width: 140, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(4))),
-            const SizedBox(height: 8),
-            Container(height: 11, width: 90, decoration: BoxDecoration(color: cl, borderRadius: BorderRadius.circular(4))),
-          ]),
-        ),
-        Container(height: 16, width: 56, decoration: BoxDecoration(color: cl, borderRadius: BorderRadius.circular(4))),
+        Container(width: 52, height: 52, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(10))),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(height: 13, width: 120, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(4))),
+          const SizedBox(height: 6),
+          Container(height: 11, width: 80, decoration: BoxDecoration(color: cl, borderRadius: BorderRadius.circular(4))),
+          const SizedBox(height: 6),
+          Container(height: 11, width: 60, decoration: BoxDecoration(color: cl, borderRadius: BorderRadius.circular(4))),
+        ])),
+        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Container(height: 16, width: 55, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(4))),
+          const SizedBox(height: 6),
+          Container(height: 20, width: 40, decoration: BoxDecoration(color: cl, borderRadius: BorderRadius.circular(8))),
+        ]),
       ]),
     );
   }
@@ -782,11 +791,10 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
       return AnimatedBuilder(
         animation: _shimmerCtrl,
         builder: (_, __) {
-          final opacity = _shimmerCtrl.value * 0.3;
+          final opacity = 0.25 + _shimmerCtrl.value * 0.25;
           return ListView.builder(
-            physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.only(top: FincasSpacing.s, bottom: 100),
-            itemCount: 8,
+            padding: const EdgeInsets.only(top: 8, bottom: 100),
+            itemCount: 10,
             itemBuilder: (_, __) => _buildSkeletonProducto(opacity),
           );
         },
@@ -794,54 +802,54 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
     }
 
     if (_error != null) {
-      return ListView(
-        padding: const EdgeInsets.symmetric(horizontal: FincasSpacing.xl, vertical: FincasSpacing.xxxl),
-        children: [
-          const FincasMessageState(
-            title: 'No se pudieron cargar los productos',
-            message: 'Revisa tu conexión e intenta de nuevo.',
-            tone: FincasTone.error,
-          ),
-          const SizedBox(height: FincasSpacing.xl),
-          Center(
-            child: SizedBox(
-              width: 220,
-              child: FincasSecondaryButton(label: 'Reintentar', onPressed: () => _cargarProductos(refresh: true)),
-            ),
-          ),
-        ],
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: Colors.red.shade300),
+            const SizedBox(height: 16),
+            Text('Error: $_error'),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(onPressed: () => _cargarProductos(refresh: true), icon: const Icon(Icons.refresh), label: const Text('Reintentar')),
+          ],
+        ),
       );
     }
 
     if (_productos.isEmpty) {
-      final sinBusqueda = _busqueda.isEmpty;
-      return ListView(
-        padding: const EdgeInsets.symmetric(horizontal: FincasSpacing.xl, vertical: FincasSpacing.xxxl),
-        children: [
-          FincasMessageState(
-            title: sinBusqueda ? 'Aún no hay productos' : 'Sin resultados',
-            message: sinBusqueda ? 'Agrega el primero para empezar a vender.' : 'No se encontraron productos con "$_busqueda".',
-          ),
-          if (sinBusqueda) ...[
-            const SizedBox(height: FincasSpacing.xl),
-            Center(
-              child: SizedBox(
-                width: 260,
-                child: FincasPrimaryButton(label: 'Agregar producto', loading: _abriendoNuevo, onPressed: _nuevoProducto),
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.inventory_2_outlined, size: 80, color: Colors.grey.shade400),
+            const SizedBox(height: 16),
+            Text(_busqueda.isEmpty ? 'No hay productos' : 'Sin resultados',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
+            const SizedBox(height: 8),
+            Text(_busqueda.isEmpty ? 'Toca el botón "Nuevo" para agregar uno' : 'No se encontraron productos con "$_busqueda"',
+              style: TextStyle(color: Colors.grey.shade500), textAlign: TextAlign.center),
+            if (_busqueda.isEmpty) ...[
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: _abriendoNuevo ? null : _nuevoProducto,
+                icon: const Icon(Icons.add),
+                label: const Text('Agregar producto'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange.shade600,
+                  foregroundColor: Colors.white,
+                ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       );
     }
 
     return RefreshIndicator(
-      color: FincasColors.ink,
       onRefresh: () => _cargarProductos(refresh: true),
       child: ListView.builder(
         controller: _scrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(top: FincasSpacing.s, bottom: 100), // espacio para el botón flotante
+        padding: const EdgeInsets.only(top: 8, bottom: 100),
         itemCount: _productos.length + (_hayMas ? 1 : 0),
         itemBuilder: (context, index) {
           if (index == _productos.length) return _buildLoadingMore();
@@ -853,13 +861,16 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
   }
 
   Widget _buildLoadingMore() {
-    return Padding(
-      padding: const EdgeInsets.all(FincasSpacing.l),
-      child: Center(
-        child: _isLoadingMore
-            ? const FincasLoader(message: 'Cargando más...')
-            : FincasTextButton(label: 'Cargar más', onPressed: _cargarMasProductos),
-      ),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      alignment: Alignment.center,
+      child: _isLoadingMore
+          ? const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+              SizedBox(width: 12),
+              Text('Cargando más...'),
+            ])
+          : TextButton(onPressed: _cargarMasProductos, child: const Text('Cargar más')),
     );
   }
 }
