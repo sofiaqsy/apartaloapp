@@ -59,11 +59,17 @@ void main() {
     }
     if (p.endsWith('/sugerir-area')) return http.Response(jsonEncode(sugerencia), 200);
     if (p.endsWith('/mi-area')) {
+      final pedido = req.url.queryParameters['area'] ?? 'fulfillment';
+      final elegidas = pedido == 'todas' ? ['fulfillment', 'sourcing'] : pedido.split(',');
       return http.Response(jsonEncode({
+        'elegidas': elegidas,
         'areas': [{'area': 'fulfillment', 'name': 'Logística', 'role': 'lead', 'principal': true}, {'area': 'sourcing', 'name': 'Compras', 'role': 'member', 'principal': false}],
         'area': 'fulfillment',
         'meses': [{'month': '2026-11-01', 'cost_centre': 'coffee', 'total': 120, 'paid': 0, 'to_pay': 120}],
-        'gastos': [{'id': 'EX-0001', 'category': 'Flete', 'amount': 120, 'description': 'Envío a Lima', 'expense_date': '2026-11-01', 'created_by': 'staff@x', 'status': 'Por pagar'}],
+        'gastos': [
+          if (elegidas.contains('fulfillment')) {'id': 'EX-0001', 'area': 'fulfillment', 'category': 'Flete', 'amount': 120, 'description': 'Envío a Lima', 'expense_date': '2026-11-01', 'created_by': 'staff@x', 'status': 'Por pagar'},
+          if (elegidas.contains('sourcing')) {'id': 'EX-0002', 'area': 'sourcing', 'category': 'Transporte', 'amount': 30, 'description': 'Lobato', 'expense_date': '2026-11-01', 'created_by': 'staff@x', 'status': 'Por pagar'},
+        ],
       }), 200);
     }
     if (p.endsWith('/equipo')) {
@@ -365,6 +371,30 @@ void main() {
     expect(find.text('2026-11 · S/ 120.00'), findsOneWidget);
     expect(find.textContaining('por pagar S/ 120.00'), findsOneWidget);
     expect(find.text('Flete · S/ 120.00'), findsOneWidget);
+  });
+
+  testWidgets('Mi área: several areas at once, and Todas', (tester) async {
+    await abrirPantalla(tester, const MiAreaScreen());
+    expect(find.text('Lobato'), findsNothing);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(pedidos.last.url.queryParameters['area'], 'fulfillment,sourcing');
+    expect(find.textContaining('Compras · Lobato'), findsOneWidget); // the area shows on each expense
+    expect(find.textContaining('Logística · Envío a Lima'), findsOneWidget);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Logística · principal'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle(); // the last one stays chosen
+    }, () => MockClient((req) async => responder(req)));
+    expect(pedidos.last.url.queryParameters['area'], 'sourcing');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Todas'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(pedidos.last.url.queryParameters['area'], 'todas');
   });
 
   testWidgets('Perfil: staff see their areas and Mi área, not Equipo', (tester) async {

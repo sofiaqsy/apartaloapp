@@ -970,10 +970,19 @@ class _MiAreaState extends State<_MiArea> {
     _cargar(widget.inicial);
   }
 
+  /// [area]: un área, varias separadas por coma, o "todas". La base sólo cuenta las áreas de la persona.
   Future<void> _cargar([String? area]) async {
     final r = await AdministracionService.miArea(area);
     if (!mounted) return;
     setState(() { _datos = r.data; _error = r.isSuccess ? null : r.error; });
+  }
+
+  /// Marcar o desmarcar un área; siempre queda al menos una elegida.
+  void _alternar(String area, Set<String> elegidas) {
+    final nuevas = {...elegidas};
+    if (!nuevas.remove(area)) nuevas.add(area);
+    if (nuevas.isEmpty) return;
+    _cargar(nuevas.join(','));
   }
 
   String _soles(dynamic v) => 'S/ ${(num.tryParse('${v ?? 0}') ?? 0).toStringAsFixed(2)}';
@@ -989,7 +998,9 @@ class _MiAreaState extends State<_MiArea> {
         child: Text('Todavía no estás en ningún área. Administración te asigna una.', textAlign: TextAlign.center),
       ));
     }
-    final actual = _datos!['area'];
+    final elegidas = {...((_datos!['elegidas'] as List?) ?? [if (_datos!['area'] != null) _datos!['area']]).map((e) => '$e')};
+    final todas = elegidas.length == areas.length;
+    final nombres = {for (final a in areas) '${a['area']}': '${a['name']}'};
     final meses = (_datos!['meses'] as List? ?? []).cast<Map>();
     final gastos = (_datos!['gastos'] as List? ?? []).cast<Map>();
     // Un mes puede tener varias filas (una por centro de costo): se suman.
@@ -1001,15 +1012,24 @@ class _MiAreaState extends State<_MiArea> {
       t[2] += num.tryParse('${m['to_pay'] ?? 0}') ?? 0;
     }
     return RefreshIndicator(
-      onRefresh: () => _cargar(actual),
+      onRefresh: () => _cargar(elegidas.join(',')),
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          if (areas.length > 1)
+          // Se puede ver una, varias o todas las áreas juntas (cada gasto tiene una sola área: no se cuenta dos veces).
+          if (areas.length > 1) ...[
+            Text('Toca para sumar o quitar áreas', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            const SizedBox(height: 6),
             Wrap(spacing: 8, runSpacing: 8, children: [
+              FilterChip(label: const Text('Todas'), selected: todas, onSelected: (_) => _cargar(todas ? '${areas.first['area']}' : 'todas')),
               for (final a in areas)
-                ChoiceChip(label: Text('${a['name']}${a['principal'] == true ? ' · principal' : ''}'), selected: a['area'] == actual, onSelected: (_) => _cargar('${a['area']}')),
+                FilterChip(
+                  label: Text('${a['name']}${a['principal'] == true ? ' · principal' : ''}'),
+                  selected: elegidas.contains('${a['area']}'),
+                  onSelected: (_) => _alternar('${a['area']}', elegidas),
+                ),
             ]),
+          ],
           const SizedBox(height: 12),
           _Seccion(titulo: 'Gastos por mes', vacio: 'Sin gastos todavía', items: [
             for (final e in porMes.entries)
@@ -1022,7 +1042,8 @@ class _MiAreaState extends State<_MiArea> {
             for (final g in gastos)
               ListTile(
                 title: Text('${g['category']} · ${_soles(g['amount'])}'),
-                subtitle: Text('${g['description'] ?? ''}${g['description'] != null ? ' · ' : ''}${g['expense_date']} · ${g['created_by']}'),
+                subtitle: Text('${elegidas.length > 1 ? '${nombres['${g['area']}'] ?? g['area']} · ' : ''}'
+                    '${g['description'] ?? ''}${g['description'] != null ? ' · ' : ''}${g['expense_date']} · ${g['created_by']}'),
                 trailing: Text('${g['status']}', style: TextStyle(fontSize: 12, color: g['status'] == 'Pagado' ? Colors.green.shade700 : Colors.orange.shade800)),
               ),
           ]),
