@@ -32,6 +32,23 @@ void main() {
       ]}), 200);
     }
     if (p.endsWith('/personas')) return http.Response(jsonEncode([{'id': 'P-0001', 'nombre': 'Misael Cusi', 'agricultor': false, 'comprador': true, 'recogidoPor': null}]), 200);
+    if (p.endsWith('/categorias')) {
+      return http.Response(jsonEncode({
+        'categorias': [
+          {'category': 'Flete', 'default_area': 'fulfillment', 'default_cost_centre': 'coffee'},
+          {'category': 'Mano de obra', 'default_area': 'farm', 'default_cost_centre': 'farm'},
+        ],
+        'areas': [{'id': 'farm', 'name': 'Finca'}, {'id': 'fulfillment', 'name': 'Logística'}, {'id': 'shared', 'name': 'Compartido'}],
+      }), 200);
+    }
+    if (p.endsWith('/mi-area')) {
+      return http.Response(jsonEncode({
+        'areas': [{'area': 'fulfillment', 'name': 'Logística'}],
+        'area': 'fulfillment',
+        'meses': [{'month': '2026-11-01', 'cost_centre': 'coffee', 'total': 120, 'paid': 0, 'to_pay': 120}],
+        'gastos': [{'id': 'EX-0001', 'category': 'Flete', 'amount': 120, 'description': 'Envío a Lima', 'expense_date': '2026-11-01', 'created_by': 'staff@x', 'status': 'Por pagar'}],
+      }), 200);
+    }
     if (p.endsWith('/resumen')) return http.Response(jsonEncode({'rol': 'owner', 'meses': []}), 200);
     if (p.contains('/registrar/')) return http.Response(jsonEncode({'ok': true, 'result': {'expense_id': 'EX-0001'}}), 200);
     return http.Response(jsonEncode({'pedidos': [], 'total': 0}), 200);
@@ -57,7 +74,7 @@ void main() {
   testWidgets('four parts; staff ask, only the owner sees money buttons', (tester) async {
     await abrir(tester, rol: 'staff');
     expect(find.text('Administración'), findsOneWidget);
-    for (final t in ['Registrar', 'Pendientes', 'Solicitudes', 'Resumen']) {
+    for (final t in ['Registrar', 'Pendientes', 'Solicitudes', 'Mi área', 'Resumen']) {
       expect(find.text(t), findsOneWidget);
     }
     for (final t in ['Registrar gasto', 'Registrar entrega', 'Solicitar adelanto', 'Registrar proveedor']) {
@@ -146,6 +163,9 @@ void main() {
     await abrir(tester, rol: 'staff');
     await tester.tap(find.text('Registrar gasto'));
     await tester.pumpAndSettle();
+    // 16 categories as chips: the description may sit below the first screen.
+    await tester.drag(find.text('Monto (S/)'), const Offset(0, -300));
+    await tester.pumpAndSettle();
     final yCategoria = tester.getTopLeft(find.text('Categoría')).dy;
     final yMonto = tester.getTopLeft(find.text('Monto (S/)')).dy;
     final yDescripcion = tester.getTopLeft(find.text('Descripción (opcional)')).dy;
@@ -158,6 +178,28 @@ void main() {
     expect(find.text('Registrar gasto'), findsOneWidget); // the form title repeats the button name
   });
 
+  testWidgets('choosing a category fills the area from the database', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Registrar gasto'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Flete'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.textContaining('Área: Logística'), findsOneWidget);
+  });
+
+  testWidgets('Mi área shows the area costs by month and the latest expenses', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Mi área'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('2026-11 · S/ 120.00'), findsOneWidget);
+    expect(find.textContaining('por pagar S/ 120.00'), findsOneWidget);
+    expect(find.text('Flete · S/ 120.00'), findsOneWidget);
+  });
+
   testWidgets('tapping outside a field hides the keyboard', (tester) async {
     await abrir(tester, rol: 'owner');
     await tester.tap(find.text('Registrar gasto'));
@@ -166,7 +208,7 @@ void main() {
     await tester.pumpAndSettle();
     bool tecladoAbierto() => tester.widget<EditableText>(find.byType(EditableText).first).focusNode.hasFocus;
     expect(tecladoAbierto(), isTrue);
-    await tester.tapAt(const Offset(195, 700)); // empty part of the screen
+    await tester.tapAt(const Offset(4, 600)); // the empty margin beside the fields
     await tester.pumpAndSettle();
     expect(tecladoAbierto(), isFalse);
   });

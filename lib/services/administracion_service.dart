@@ -45,6 +45,13 @@ class AdministracionService {
   /// Mis solicitudes: lo que la persona pidió y en qué quedó (Administración ve todas).
   static Future<ApiResponse<Map<String, dynamic>>> solicitudes() => _get('solicitudes');
 
+  /// Categorías de gasto con el área y el centro de costo que sugieren, y la lista de áreas.
+  static Future<ApiResponse<Map<String, dynamic>>> categorias() => _get('categorias');
+
+  /// Mi área: las áreas de la persona y, de la elegida, sus gastos por mes y los últimos.
+  static Future<ApiResponse<Map<String, dynamic>>> miArea([String? area]) =>
+      _get(area == null ? 'mi-area' : 'mi-area?area=${Uri.encodeQueryComponent(area)}');
+
   static Future<ApiResponse<List<Map<String, dynamic>>>> personas() async {
     try {
       final res = await http.get(Uri.parse('$_base/personas')).timeout(const Duration(seconds: 20));

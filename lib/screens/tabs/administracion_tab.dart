@@ -28,7 +28,7 @@ class _AdministracionTabState extends State<AdministracionTab> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Column(
         children: [
           const Padding(
@@ -42,9 +42,12 @@ class _AdministracionTabState extends State<AdministracionTab> {
             labelColor: Colors.blue.shade700,
             unselectedLabelColor: Colors.grey.shade600,
             indicatorColor: Colors.blue.shade600,
+            // Las cinco pestañas caben en la pantalla del teléfono, sin deslizar.
             isScrollable: false,
-            labelPadding: EdgeInsets.zero,
-            tabs: const [Tab(text: 'Registrar'), Tab(text: 'Pendientes'), Tab(text: 'Solicitudes'), Tab(text: 'Resumen')],
+            labelPadding: const EdgeInsets.symmetric(horizontal: 2),
+            labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            unselectedLabelStyle: const TextStyle(fontSize: 13),
+            tabs: const [Tab(text: 'Registrar'), Tab(text: 'Pendientes'), Tab(text: 'Solicitudes'), Tab(text: 'Mi área'), Tab(text: 'Resumen')],
           ),
           Expanded(
             child: TabBarView(
@@ -52,6 +55,7 @@ class _AdministracionTabState extends State<AdministracionTab> {
                 _Registrar(esDueno: _esDueno),
                 _Pendientes(esDueno: _esDueno),
                 _Solicitudes(esDueno: _esDueno),
+                const _MiArea(),
                 _Resumen(esDueno: _esDueno),
               ],
             ),
@@ -82,6 +86,12 @@ class _Campo {
   final String? ayuda;
 }
 
+const _areas = {
+  'farm': 'Finca', 'sourcing': 'Compras', 'production': 'Producción', 'quality': 'Calidad', 'commercial': 'Comercial',
+  'marketing': 'Marketing', 'fulfillment': 'Logística', 'people': 'Personas', 'finance': 'Finanzas', 'compliance': 'Cumplimiento',
+  'risk': 'Riesgos', 'technology': 'Tecnología', 'strategy': 'Estrategia', 'shared': 'Compartido',
+};
+
 const _metodosPago = {'transfer': 'Transferencia', 'yape': 'Yape', 'plin': 'Plin', 'cash': 'Efectivo'};
 bool _necesitaOperacion(Map<String, dynamic> v, [String clave = 'metodo']) => v[clave] != null && v[clave] != 'cash';
 final _campoOperacion = _Campo('operacion', 'Número de operación', _Tipo.texto,
@@ -90,13 +100,18 @@ final _campoOperacion = _Campo('operacion', 'Número de operación', _Tipo.texto
 final Map<String, List<_Campo>> _formularios = {
   // Un gasto es una solicitud de pago: Administración decide cómo pagarlo (Pagar gasto, en Pendientes).
   'gasto': [
+    // Las categorías y el área sugerida vienen de la base (expense_categories); esta lista es el respaldo.
     const _Campo('categoria', 'Categoría', _Tipo.opcion, opciones: {
-      'Transporte': 'Transporte', 'Operativo': 'Operativo', 'Gas': 'Gas', 'Finca': 'Finca', 'Mantenimiento': 'Mantenimiento',
-      'Servicios': 'Servicios', 'Insumos': 'Insumos', 'Personal': 'Personal', 'Otro': 'Otro',
+      'Transporte': 'Transporte', 'Flete': 'Flete', 'Empaque': 'Empaque', 'Insumos': 'Insumos', 'Mano de obra': 'Mano de obra',
+      'Finca': 'Finca', 'Personal': 'Personal', 'Gas': 'Gas', 'Mantenimiento': 'Mantenimiento', 'Operativo': 'Operativo',
+      'Servicios': 'Servicios', 'Impuestos y comisiones': 'Impuestos y comisiones', 'Seguros': 'Seguros',
+      'Permisos y licencias': 'Permisos y licencias', 'Servicios profesionales': 'Servicios profesionales', 'Otro': 'Otro',
     }),
     const _Campo('monto', 'Monto (S/)', _Tipo.monto),
     const _Campo('descripcion', 'Descripción', _Tipo.texto, requerido: false),
-    const _Campo('centro', 'Área', _Tipo.opcion, opciones: {'coffee': 'Café', 'farm': 'Finca'}, porDefecto: 'coffee', avanzado: true),
+    // Quien registra elige el área que responde por el gasto; se llena sola según la categoría.
+    const _Campo('area', 'Área', _Tipo.opcion, opciones: _areas, porDefecto: 'shared', avanzado: true),
+    const _Campo('centro', 'Centro de costo', _Tipo.opcion, opciones: {'coffee': 'Café', 'farm': 'Finca', 'venue': 'Local', 'property': 'Casa'}, porDefecto: 'coffee', avanzado: true),
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
   'pagoGasto': [
@@ -212,6 +227,8 @@ class _FormularioSheetState extends State<_FormularioSheet> {
   late final String _clave = AdministracionService.nuevaClave(widget.formulario); // la misma en cada reintento
   final Map<String, dynamic> _valores = {};
   List<Map<String, dynamic>> _personas = [];
+  final Map<String, Map<String, String>> _opciones = {}; // opciones que vienen de la base
+  final Map<String, Map<String, dynamic>> _porCategoria = {}; // categoría -> área y centro sugeridos
   bool _guardando = false;
   String? _error;
 
@@ -221,6 +238,20 @@ class _FormularioSheetState extends State<_FormularioSheet> {
     for (final c in _campos) {
       if (c.porDefecto != null) _valores[c.clave] = c.porDefecto;
       if (c.tipo == _Tipo.fecha) _valores[c.clave] = DateTime.now();
+    }
+    if (widget.formulario == 'gasto') {
+      AdministracionService.categorias().then((r) {
+        if (!mounted || !r.isSuccess) return;
+        final cats = (r.data!['categorias'] as List? ?? []).cast<Map>();
+        final areas = (r.data!['areas'] as List? ?? []).cast<Map>();
+        setState(() {
+          if (cats.isNotEmpty) _opciones['categoria'] = {for (final c in cats) '${c['category']}': '${c['category']}'};
+          if (areas.isNotEmpty) _opciones['area'] = {for (final a in areas) '${a['id']}': '${a['name']}'};
+          for (final c in cats) {
+            _porCategoria['${c['category']}'] = {'area': c['default_area'], 'centro': c['default_cost_centre']};
+          }
+        });
+      });
     }
     if (_campos.any((c) => c.tipo == _Tipo.persona)) {
       AdministracionService.personas().then((r) {
@@ -318,8 +349,22 @@ class _FormularioSheetState extends State<_FormularioSheet> {
           final hoy = DateTime.now();
           return '${c.etiqueta}: ${v.year == hoy.year && v.month == hoy.month && v.day == hoy.day ? 'hoy' : '${v.day}/${v.month}/${v.year}'}';
         }
-        return '${c.etiqueta}: ${v == null ? '—' : (c.opciones[v] ?? v)}';
+        return '${c.etiqueta}: ${v == null ? '—' : (_opcionesDe(c)[v] ?? v)}';
       }).join(' · ');
+
+  Map<String, String> _opcionesDe(_Campo c) => _opciones[c.clave] ?? c.opciones;
+
+  /// Al elegir la categoría, se sugieren el área y el centro de costo (se pueden cambiar en Más opciones).
+  void _sugerirPorCategoria(String? categoria) {
+    final s = _porCategoria[categoria];
+    final areaRespaldo = const {'Flete': 'fulfillment', 'Empaque': 'fulfillment', 'Insumos': 'farm', 'Mano de obra': 'farm', 'Finca': 'farm',
+      'Personal': 'people', 'Gas': 'production', 'Mantenimiento': 'production', 'Servicios': 'finance', 'Impuestos y comisiones': 'finance',
+      'Seguros': 'risk', 'Permisos y licencias': 'compliance', 'Servicios profesionales': 'strategy', 'Transporte': 'sourcing'}[categoria];
+    setState(() {
+      _valores['area'] = s?['area'] ?? areaRespaldo ?? 'shared';
+      _valores['centro'] = s?['centro'] ?? ((categoria == 'Finca' || categoria == 'Personal' || categoria == 'Insumos' || categoria == 'Mano de obra') ? 'farm' : 'coffee');
+    });
+  }
 
   Widget _campo(_Campo c) {
     final deco = InputDecoration(labelText: c.requerido ? c.etiqueta : '${c.etiqueta} (opcional)', helperText: c.ayuda, border: const OutlineInputBorder());
@@ -336,7 +381,7 @@ class _FormularioSheetState extends State<_FormularioSheet> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final e in c.opciones.entries)
+                for (final e in _opcionesDe(c).entries)
                   ChoiceChip(
                     label: Text(e.value),
                     selected: _valores[c.clave] == e.key,
@@ -344,9 +389,7 @@ class _FormularioSheetState extends State<_FormularioSheet> {
                       FocusScope.of(context).unfocus();
                       final v = sel ? e.key : (c.requerido ? e.key : null);
                       poner(v);
-                      if (widget.formulario == 'gasto' && c.clave == 'categoria') {
-                        setState(() => _valores['centro'] = (v == 'Finca' || v == 'Personal') ? 'farm' : 'coffee');
-                      }
+                      if (widget.formulario == 'gasto' && c.clave == 'categoria') _sugerirPorCategoria(v);
                     },
                   ),
               ],
@@ -711,6 +754,88 @@ class _SolicitudesState extends State<_Solicitudes> {
                 );
               },
             ),
+    );
+  }
+}
+
+// ─── Mi área ─────────────────────────────────────────────────────────────────
+
+/// Los gastos del área de la persona (Administración ve todas): por mes y los últimos.
+class _MiArea extends StatefulWidget {
+  const _MiArea();
+
+  @override
+  State<_MiArea> createState() => _MiAreaState();
+}
+
+class _MiAreaState extends State<_MiArea> {
+  Map<String, dynamic>? _datos;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar([String? area]) async {
+    final r = await AdministracionService.miArea(area);
+    if (!mounted) return;
+    setState(() { _datos = r.data; _error = r.isSuccess ? null : r.error; });
+  }
+
+  String _soles(dynamic v) => 'S/ ${(num.tryParse('${v ?? 0}') ?? 0).toStringAsFixed(2)}';
+
+  @override
+  Widget build(BuildContext context) {
+    if (_error != null) return _Mensaje(texto: _error!, onReintentar: _cargar);
+    if (_datos == null) return const Center(child: CircularProgressIndicator());
+    final areas = (_datos!['areas'] as List? ?? []).cast<Map>();
+    if (areas.isEmpty) {
+      return const Center(child: Padding(
+        padding: EdgeInsets.all(24),
+        child: Text('Todavía no estás en ningún área. Administración te asigna una.', textAlign: TextAlign.center),
+      ));
+    }
+    final actual = _datos!['area'];
+    final meses = (_datos!['meses'] as List? ?? []).cast<Map>();
+    final gastos = (_datos!['gastos'] as List? ?? []).cast<Map>();
+    // Un mes puede tener varias filas (una por centro de costo): se suman.
+    final porMes = <String, List<num>>{};
+    for (final m in meses) {
+      final t = porMes.putIfAbsent('${m['month']}', () => [0, 0, 0]);
+      t[0] += num.tryParse('${m['total'] ?? 0}') ?? 0;
+      t[1] += num.tryParse('${m['paid'] ?? 0}') ?? 0;
+      t[2] += num.tryParse('${m['to_pay'] ?? 0}') ?? 0;
+    }
+    return RefreshIndicator(
+      onRefresh: () => _cargar(actual),
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          if (areas.length > 1)
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final a in areas)
+                ChoiceChip(label: Text('${a['name']}'), selected: a['area'] == actual, onSelected: (_) => _cargar('${a['area']}')),
+            ]),
+          const SizedBox(height: 12),
+          _Seccion(titulo: 'Gastos por mes', vacio: 'Sin gastos todavía', items: [
+            for (final e in porMes.entries)
+              ListTile(
+                title: Text('${e.key.substring(0, 7)} · ${_soles(e.value[0])}'),
+                subtitle: Text('Pagado ${_soles(e.value[1])} · por pagar ${_soles(e.value[2])}'),
+              ),
+          ]),
+          _Seccion(titulo: 'Últimos gastos', vacio: 'Sin gastos todavía', items: [
+            for (final g in gastos)
+              ListTile(
+                title: Text('${g['category']} · ${_soles(g['amount'])}'),
+                subtitle: Text('${g['description'] ?? ''}${g['description'] != null ? ' · ' : ''}${g['expense_date']} · ${g['created_by']}'),
+                trailing: Text('${g['status']}', style: TextStyle(fontSize: 12, color: g['status'] == 'Pagado' ? Colors.green.shade700 : Colors.orange.shade800)),
+              ),
+          ]),
+        ],
+      ),
     );
   }
 }
