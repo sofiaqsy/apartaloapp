@@ -28,7 +28,7 @@ class _AdministracionTabState extends State<AdministracionTab> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Column(
         children: [
           const Padding(
@@ -42,13 +42,16 @@ class _AdministracionTabState extends State<AdministracionTab> {
             labelColor: Colors.blue.shade700,
             unselectedLabelColor: Colors.grey.shade600,
             indicatorColor: Colors.blue.shade600,
-            tabs: const [Tab(text: 'Registrar'), Tab(text: 'Pendientes'), Tab(text: 'Resumen')],
+            isScrollable: false,
+            labelPadding: EdgeInsets.zero,
+            tabs: const [Tab(text: 'Registrar'), Tab(text: 'Pendientes'), Tab(text: 'Solicitudes'), Tab(text: 'Resumen')],
           ),
           Expanded(
             child: TabBarView(
               children: [
                 _Registrar(esDueno: _esDueno),
                 _Pendientes(esDueno: _esDueno),
+                _Solicitudes(esDueno: _esDueno),
                 _Resumen(esDueno: _esDueno),
               ],
             ),
@@ -101,34 +104,48 @@ final Map<String, List<_Campo>> _formularios = {
     _campoOperacion,
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
+  // Un adelanto es una solicitud: Administración lo aprueba (eligiendo cómo pagarlo) o lo rechaza.
   'adelanto': [
     _Campo('personaId', 'Para', _Tipo.persona, filtroPersona: (p) => p['agricultor'] == true || p['comprador'] == true),
     const _Campo('monto', 'Monto (S/)', _Tipo.monto, ayuda: 'Máximo S/ 2,000 y uno abierto por persona'),
-    const _Campo('devuelveEn', 'Se devuelve en', _Tipo.opcion, opciones: {'coffee': 'Café', 'money': 'Dinero', 'coffee_or_money': 'Café o dinero'}, porDefecto: 'coffee'),
-    const _Campo('metodo', 'Cómo se entregó', _Tipo.opcion, opciones: _metodosPago, porDefecto: 'transfer'),
-    _campoOperacion,
-    const _Campo('notas', 'Notas', _Tipo.texto, requerido: false),
+    const _Campo('motivo', 'Para qué', _Tipo.texto, requerido: false),
+    const _Campo('devuelveEn', 'Se devuelve en', _Tipo.opcion, opciones: {'coffee': 'Café', 'money': 'Dinero', 'coffee_or_money': 'Café o dinero'}, porDefecto: 'coffee', avanzado: true),
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
+  ],
+  'aprobarAdelanto': [
+    const _Campo('metodo', 'Cómo se entrega', _Tipo.opcion, opciones: _metodosPago, porDefecto: 'transfer'),
+    _campoOperacion,
+    const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
+  ],
+  'rechazarAdelanto': [
+    const _Campo('motivo', 'Por qué se rechaza', _Tipo.texto),
+  ],
+  'proveedor': [
+    const _Campo('nombre', 'Nombre', _Tipo.texto),
+    const _Campo('rol', 'Es', _Tipo.opcion, opciones: {'farmer': 'Agricultor', 'buyer': 'Comprador', 'supplier': 'Proveedor de insumos'}),
+    _Campo('vende', 'Vende', _Tipo.opcion, opciones: const {'parchment': 'Pergamino', 'cherry': 'Cereza', 'both': 'Ambos'}, porDefecto: 'parchment',
+        visibleSi: (v) => v['rol'] == 'farmer'),
+    _Campo('recogidoPor', 'Lo recoge (comprador)', _Tipo.persona, requerido: false, filtroPersona: (p) => p['comprador'] == true,
+        visibleSi: (v) => v['rol'] == 'farmer'),
+    const _Campo('documento', 'DNI o RUC', _Tipo.texto, requerido: false),
+    const _Campo('telefono', 'Teléfono', _Tipo.texto, requerido: false),
+    const _Campo('comunidad', 'Comunidad o sector', _Tipo.texto, requerido: false, avanzado: true),
+    const _Campo('tipo', 'Persona o empresa', _Tipo.opcion, opciones: {'person': 'Persona', 'business': 'Empresa'}, porDefecto: 'person', avanzado: true),
   ],
   'entrega': [
     _Campo('agricultorId', 'Agricultor', _Tipo.persona, filtroPersona: (p) => p['agricultor'] == true),
     _Campo('compradorId', 'Recogido por (comprador)', _Tipo.persona, requerido: false, filtroPersona: (p) => p['comprador'] == true),
     const _Campo('estado', 'Café', _Tipo.opcion, opciones: {'parchment': 'Pergamino', 'cherry': 'Cereza', 'green': 'Verde'}, porDefecto: 'parchment'),
     const _Campo('kg', 'Kilos', _Tipo.numero),
-    const _Campo('precioKg', 'Precio por kilo (si ya se sabe)', _Tipo.monto, requerido: false),
+    const _Campo('precioKg', 'Precio por kilo (si ya se sabe)', _Tipo.monto, requerido: false, ayuda: 'Con precio queda en "Por pagar" para Administración'),
     const _Campo('humedad', 'Humedad %', _Tipo.numero, requerido: false, avanzado: true),
     const _Campo('rendimiento', 'Factor de rendimiento', _Tipo.numero, requerido: false, avanzado: true),
-    _Campo('metodoPago', 'Pago del saldo ahora', _Tipo.opcion, requerido: false, opciones: _metodosPago,
-        visibleSi: (v) => v['precioKg'] != null),
-    _Campo('operacion', 'Número de operación', _Tipo.texto,
-        visibleSi: (v) => v['precioKg'] != null && _necesitaOperacion(v, 'metodoPago'), ayuda: 'Para cruzarlo solo con el banco'),
     const _Campo('notas', 'Notas', _Tipo.texto, requerido: false),
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
+  // Con el precio, la compra usa los adelantos abiertos y lo demás queda en "Por pagar" para Administración.
   'precio': [
     const _Campo('precioKg', 'Precio por kilo', _Tipo.monto),
-    const _Campo('metodoPago', 'Pago del saldo ahora', _Tipo.opcion, requerido: false, opciones: _metodosPago),
-    _Campo('operacion', 'Número de operación', _Tipo.texto, visibleSi: (v) => _necesitaOperacion(v, 'metodoPago'), ayuda: 'Para cruzarlo solo con el banco'),
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
   'pago': [
@@ -157,7 +174,8 @@ final Map<String, List<_Campo>> _formularios = {
 bool _esDevolucion(Map<String, dynamic> v) => v['tipo'] == 'advance_return';
 
 const _titulos = {
-  'gasto': 'Gasto', 'pagoGasto': 'Pagar gasto', 'adelanto': 'Adelanto', 'entrega': 'Entrega de café', 'precio': 'Poner precio',
+  'gasto': 'Gasto', 'pagoGasto': 'Pagar gasto', 'adelanto': 'Adelanto', 'aprobarAdelanto': 'Aprobar adelanto',
+  'rechazarAdelanto': 'Rechazar adelanto', 'proveedor': 'Proveedor', 'entrega': 'Entrega de café', 'precio': 'Poner precio',
   'pago': 'Pagar compra', 'ingreso': 'Ingreso de dinero', 'retiro': 'Retiro a caja',
 };
 
@@ -220,7 +238,12 @@ class _FormularioSheetState extends State<_FormularioSheet> {
     final r = await AdministracionService.registrar(widget.formulario, datos, clave: _clave);
     if (!mounted) return;
     if (r.isSuccess) {
-      final texto = widget.formulario == 'gasto' ? 'Gasto registrado ✓ Administración lo pagará' : '${_titulos[widget.formulario]} guardado ✓';
+      final texto = switch (widget.formulario) {
+        'gasto' => 'Gasto registrado ✓ Administración lo pagará',
+        'adelanto' => 'Adelanto solicitado ✓ Administración lo revisará',
+        'rechazarAdelanto' => 'Adelanto rechazado',
+        _ => '${_titulos[widget.formulario]} guardado ✓',
+      };
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(texto)));
       Navigator.of(context).pop(true);
     } else {
@@ -388,13 +411,14 @@ class _Registrar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Todos registran y piden; sólo Administración mueve dinero (Pagar compra, Retiro a caja).
     final botones = <(String, IconData, String)>[
       ('gasto', Icons.receipt_long, 'Gasto'),
       ('entrega', Icons.local_shipping, 'Entrega de café'),
-      ('adelanto', Icons.handshake, esDueno ? 'Adelanto' : 'Adelanto (sólo dueño)'),
-      ('pago', Icons.payments, 'Pagar compra'),
-      ('ingreso', Icons.savings, 'Ingreso de dinero'),
-      ('retiro', Icons.account_balance_wallet, 'Retiro a caja'),
+      ('adelanto', Icons.handshake, 'Adelanto'),
+      ('proveedor', Icons.person_add_alt_1, 'Proveedor'),
+      if (esDueno) ('pago', Icons.payments, 'Pagar compra'),
+      if (esDueno) ('retiro', Icons.account_balance_wallet, 'Retiro a caja'),
     ];
     return GridView.count(
       crossAxisCount: 2,
@@ -407,7 +431,6 @@ class _Registrar extends StatelessWidget {
           _BotonGrande(
             icono: icono,
             texto: texto,
-            habilitado: form != 'adelanto' || esDueno,
             onTap: () async {
               if (form == 'pago') {
                 DefaultTabController.of(context).animateTo(1); // se paga desde "Por pagar"
@@ -499,15 +522,41 @@ class _PendientesState extends State<_Pendientes> {
                 },
               ),
           ]),
-          _Seccion(titulo: 'Por pagar', vacio: 'No se debe ninguna compra', items: [
+          if (widget.esDueno)
+            _Seccion(titulo: 'Adelantos por aprobar', vacio: 'Ningún adelanto espera aprobación', items: [
+              for (final q in lista('adelantosPorAprobar'))
+                ListTile(
+                  title: Text('${q['party']} · ${_soles(q['amount'])}'),
+                  subtitle: Text('${q['reason'] ?? ''}${q['reason'] != null ? ' · ' : ''}${q['request_date']} · ${q['created_by']}'),
+                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                    IconButton(
+                      icon: Icon(Icons.close, color: Colors.red.shade600),
+                      tooltip: 'Rechazar',
+                      onPressed: () async {
+                        if (await _abrirFormulario(context, 'rechazarAdelanto', fijos: {'solicitudId': q['id']}, subtitulo: '${q['party']} · ${_soles(q['amount'])}')) _cargar();
+                      },
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.check_circle, color: Colors.green.shade700),
+                      tooltip: 'Aprobar',
+                      onPressed: () async {
+                        if (await _abrirFormulario(context, 'aprobarAdelanto', fijos: {'solicitudId': q['id']}, subtitulo: '${q['party']} · ${_soles(q['amount'])}')) _cargar();
+                      },
+                    ),
+                  ]),
+                ),
+            ]),
+          _Seccion(titulo: 'Compras por pagar', vacio: 'No se debe ninguna compra', items: [
             for (final p in lista('porPagar'))
               ListTile(
                 title: Text('${p['id']} · debe ${_soles(p['still_owed'])}'),
                 subtitle: Text('${p['farmer_id']} · ${p['purchase_date']}'),
-                trailing: const Icon(Icons.payments),
-                onTap: () async {
-                  if (await _abrirFormulario(context, 'pago', fijos: {'compraId': p['id']}, subtitulo: '${p['id']} · debe ${_soles(p['still_owed'])}')) _cargar();
-                },
+                trailing: widget.esDueno ? const Icon(Icons.payments) : null,
+                onTap: !widget.esDueno
+                    ? null
+                    : () async {
+                        if (await _abrirFormulario(context, 'pago', fijos: {'compraId': p['id']}, subtitulo: '${p['id']} · debe ${_soles(p['still_owed'])}')) _cargar();
+                      },
               ),
           ]),
           if (widget.esDueno)
@@ -585,6 +634,79 @@ class _Mensaje extends StatelessWidget {
           ElevatedButton(onPressed: onReintentar, child: const Text('Reintentar')),
         ]),
       ),
+    );
+  }
+}
+
+// ─── Mis solicitudes ─────────────────────────────────────────────────────────
+
+/// Lo que cada persona registró o pidió y en qué quedó. Administración ve las de todos.
+class _Solicitudes extends StatefulWidget {
+  const _Solicitudes({required this.esDueno});
+  final bool esDueno;
+
+  @override
+  State<_Solicitudes> createState() => _SolicitudesState();
+}
+
+class _SolicitudesState extends State<_Solicitudes> {
+  List<dynamic>? _lista;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    final r = await AdministracionService.solicitudes();
+    if (!mounted) return;
+    setState(() { _lista = (r.data?['solicitudes'] as List?) ?? []; _error = r.isSuccess ? null : r.error; });
+  }
+
+  static const _iconos = {'gasto': Icons.receipt_long, 'adelanto': Icons.handshake, 'entrega': Icons.local_shipping};
+  static const _nombres = {'gasto': 'Gasto', 'adelanto': 'Adelanto', 'entrega': 'Entrega'};
+
+  Color _color(String estado) {
+    if (estado == 'Pagado' || estado == 'Pagada' || estado == 'Entregado') return Colors.green.shade700;
+    if (estado == 'Rechazado') return Colors.red.shade700;
+    return Colors.orange.shade800;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_error != null) return _Mensaje(texto: _error!, onReintentar: _cargar);
+    if (_lista == null) return const Center(child: CircularProgressIndicator());
+    return RefreshIndicator(
+      onRefresh: _cargar,
+      child: _lista!.isEmpty
+          ? ListView(children: const [Padding(padding: EdgeInsets.all(24), child: Text('Todavía no hay solicitudes', textAlign: TextAlign.center))])
+          : ListView.separated(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: _lista!.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (_, i) {
+                final s = _lista![i] as Map;
+                final estado = '${s['status']}';
+                final monto = s['amount'] == null ? '' : ' · S/ ${(num.tryParse('${s['amount']}') ?? 0).toStringAsFixed(2)}';
+                return ListTile(
+                  leading: Icon(_iconos[s['kind']] ?? Icons.description),
+                  title: Text('${_nombres[s['kind']] ?? s['kind']}$monto'),
+                  subtitle: Text([
+                    '${s['description'] ?? ''}',
+                    '${s['request_date']}${widget.esDueno ? ' · ${s['created_by']}' : ''}',
+                    if (s['detail'] != null) '${s['detail']}',
+                  ].where((t) => t.isNotEmpty).join('\n')),
+                  isThreeLine: s['detail'] != null,
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: _color(estado).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                    child: Text(estado, style: TextStyle(color: _color(estado), fontWeight: FontWeight.w600, fontSize: 12)),
+                  ),
+                );
+              },
+            ),
     );
   }
 }

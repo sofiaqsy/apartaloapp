@@ -20,10 +20,18 @@ void main() {
         'porPagar': [{'id': 'PU-0001', 'still_owed': 300, 'farmer_id': 'P-J', 'purchase_date': '2026-11-04'}],
         'adelantos': [{'id': 'ADV-002', 'party_id': 'P-MIS', 'open_balance': 1500, 'advance_date': '2026-11-02'}],
         'banco': [],
+        'adelantosPorAprobar': [{'id': 'SOL-0001', 'party': 'Misael Cusi', 'amount': 1500, 'reason': 'Compras', 'request_date': '2026-11-02', 'created_by': 'misael@x'}],
         'gastosPorPagar': [{'id': 'EX-0001', 'category': 'Gas', 'amount': 120, 'description': 'Gasolina', 'expense_date': '2026-11-01', 'created_by': 'staff@x'}],
       }), 200);
     }
-    if (p.endsWith('/personas')) return http.Response('[]', 200);
+    if (p.endsWith('/solicitudes')) {
+      return http.Response(jsonEncode({'rol': 'staff', 'solicitudes': [
+        {'kind': 'adelanto', 'id': 'SOL-0001', 'request_date': '2026-11-02', 'created_by': 'misael@x', 'description': 'Misael Cusi · Compras', 'amount': 1500, 'status': 'Entregado', 'detail': 'ADV-001 · 2026-11-04'},
+        {'kind': 'entrega', 'id': 'DL-0001', 'request_date': '2026-11-03', 'created_by': 'misael@x', 'description': 'Tito · 100 kg parchment', 'amount': 1800, 'status': 'Por pagar', 'detail': 'Falta S/ 300.00'},
+        {'kind': 'gasto', 'id': 'EX-0001', 'request_date': '2026-11-01', 'created_by': 'misael@x', 'description': 'Gas · Gasolina', 'amount': 120, 'status': 'Pendiente de pago', 'detail': null},
+      ]}), 200);
+    }
+    if (p.endsWith('/personas')) return http.Response(jsonEncode([{'id': 'P-0001', 'nombre': 'Misael Cusi', 'agricultor': false, 'comprador': true, 'recogidoPor': null}]), 200);
     if (p.endsWith('/resumen')) return http.Response(jsonEncode({'rol': 'owner', 'meses': []}), 200);
     if (p.contains('/registrar/')) return http.Response(jsonEncode({'ok': true, 'result': {'expense_id': 'EX-0001'}}), 200);
     return http.Response(jsonEncode({'pedidos': [], 'total': 0}), 200);
@@ -46,17 +54,79 @@ void main() {
     }, () => MockClient((req) async => responder(req)));
   }
 
-  testWidgets('three parts and the registrar buttons; staff cannot open Adelanto', (tester) async {
+  testWidgets('four parts; staff ask, only the owner sees money buttons', (tester) async {
     await abrir(tester, rol: 'staff');
     expect(find.text('Administración'), findsOneWidget);
-    for (final t in ['Registrar', 'Pendientes', 'Resumen']) {
+    for (final t in ['Registrar', 'Pendientes', 'Solicitudes', 'Resumen']) {
       expect(find.text(t), findsOneWidget);
     }
-    expect(find.text('Gasto'), findsOneWidget);
-    expect(find.text('Adelanto (sólo dueño)'), findsOneWidget);
-    await tester.tap(find.text('Adelanto (sólo dueño)'));
-    await tester.pumpAndSettle();
-    expect(find.text('Guardar'), findsNothing); // the form did not open
+    for (final t in ['Gasto', 'Entrega de café', 'Adelanto', 'Proveedor']) {
+      expect(find.text(t), findsOneWidget);
+    }
+    expect(find.text('Retiro a caja'), findsNothing);
+    expect(find.text('Pagar compra'), findsNothing);
+    expect(find.text('Ingreso de dinero'), findsNothing);
+  });
+
+  testWidgets('the owner also sees Pagar compra and Retiro a caja', (tester) async {
+    await abrir(tester, rol: 'owner');
+    expect(find.text('Retiro a caja'), findsOneWidget);
+    expect(find.text('Pagar compra'), findsOneWidget);
+  });
+
+  testWidgets('an advance is a request: no payment fields', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Adelanto'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Para'), findsOneWidget);
+    expect(find.textContaining('Cómo se'), findsNothing);
+    expect(find.textContaining('Número de operación'), findsNothing);
+  });
+
+  testWidgets('the owner approves an advance from Pendientes, choosing how it is paid', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Pendientes'));
+      await tester.pumpAndSettle();
+      expect(find.text('Adelantos por aprobar (1)'), findsOneWidget);
+      await tester.tap(find.byTooltip('Aprobar'));
+      await tester.pumpAndSettle();
+      expect(find.text('Aprobar adelanto'), findsOneWidget);
+      await tester.tap(find.text('Efectivo'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final r = pedidos.lastWhere((r) => r.url.path.contains('/registrar/'));
+    expect(r.url.path, endsWith('/registrar/aprobarAdelanto'));
+    expect(jsonDecode(r.body)['solicitudId'], 'SOL-0001');
+  });
+
+  testWidgets('Solicitudes shows where each request stands', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Solicitudes'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Entregado'), findsOneWidget);
+    expect(find.text('Por pagar'), findsOneWidget);
+    expect(find.text('Pendiente de pago'), findsOneWidget);
+    expect(find.textContaining('Falta S/ 300.00'), findsOneWidget);
+  });
+
+  testWidgets('Proveedor asks what a farmer sells only for a farmer', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Proveedor'));
+      await tester.pumpAndSettle();
+      expect(find.text('Vende'), findsNothing);
+      await tester.tap(find.text('Agricultor'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Vende'), findsOneWidget);
+    expect(find.text('Lo recoge (comprador) (opcional)'), findsOneWidget);
   });
 
   testWidgets('the expense form asks for what is missing before sending anything', (tester) async {
@@ -118,10 +188,11 @@ void main() {
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     expect(find.text('Sin precio (1)'), findsOneWidget);
-    expect(find.text('Por pagar (1)'), findsOneWidget);
+    expect(find.text('Compras por pagar (1)'), findsOneWidget);
     expect(find.textContaining('ADV-002'), findsOneWidget);
-    expect(find.text('Banco por cruzar (0)'), findsOneWidget);
     expect(find.text('Gastos por pagar (1)'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Banco por cruzar (0)'), 300, scrollable: find.byType(Scrollable).last);
+    expect(find.text('Banco por cruzar (0)'), findsOneWidget);
   });
 
   testWidgets('the owner pays a requested expense from Pendientes, choosing how', (tester) async {

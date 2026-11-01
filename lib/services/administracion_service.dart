@@ -18,7 +18,7 @@ class AdministracionService {
     return '$formulario-${DateTime.now().millisecondsSinceEpoch}-$suffix';
   }
 
-  /// formulario: gasto, adelanto, entrega, precio, pago, ingreso, retiro.
+  /// formulario: gasto, pagoGasto, adelanto, aprobarAdelanto, rechazarAdelanto, entrega, precio, pago, proveedor, retiro.
   static Future<ApiResponse<Map<String, dynamic>>> registrar(
     String formulario,
     Map<String, dynamic> datos, {
@@ -41,6 +41,9 @@ class AdministracionService {
   static Future<ApiResponse<Map<String, dynamic>>> pendientes() => _get('pendientes');
 
   static Future<ApiResponse<Map<String, dynamic>>> resumen() => _get('resumen');
+
+  /// Mis solicitudes: lo que la persona pidió y en qué quedó (Administración ve todas).
+  static Future<ApiResponse<Map<String, dynamic>>> solicitudes() => _get('solicitudes');
 
   static Future<ApiResponse<List<Map<String, dynamic>>>> personas() async {
     try {
