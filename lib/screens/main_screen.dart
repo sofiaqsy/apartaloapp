@@ -7,7 +7,7 @@ import '../services/api_service.dart';
 import '../services/notification_service.dart';
 import '../providers/printer_provider.dart';
 import 'login_screen.dart';
-import 'tabs/reportes_tab.dart';
+import 'tabs/administracion_tab.dart';
 import 'tabs/productos_tab.dart';
 import 'tabs/clientes_tab.dart';
 import 'tabs/pedidos_tab.dart';
@@ -290,7 +290,7 @@ class _MainScreenState extends State<MainScreen> {
           PedidosTab(businessName: widget.businessName),
           ProductosTab(isActive: _currentIndex == 1),
           const ClientesTab(),
-          const ReportesTab(),
+          const AdministracionTab(),
         ],
       ),
       bottomNavigationBar: Container(
@@ -313,7 +313,7 @@ class _MainScreenState extends State<MainScreen> {
                 _buildNavItem(0, Icons.shopping_cart_rounded, 'Pedidos'),
                 _buildNavItem(1, Icons.inventory_2_rounded, 'Productos'),
                 _buildNavItem(2, Icons.people_rounded, 'Clientes'),
-                _buildNavItem(3, Icons.bar_chart_rounded, 'Reportes'),
+                _buildNavItem(3, Icons.admin_panel_settings_rounded, 'Admin'),
               ],
             ),
           ),
