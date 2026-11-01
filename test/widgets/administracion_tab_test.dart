@@ -60,24 +60,24 @@ void main() {
     for (final t in ['Registrar', 'Pendientes', 'Solicitudes', 'Resumen']) {
       expect(find.text(t), findsOneWidget);
     }
-    for (final t in ['Gasto', 'Entrega de café', 'Adelanto', 'Proveedor']) {
+    for (final t in ['Registrar gasto', 'Registrar entrega', 'Solicitar adelanto', 'Registrar proveedor']) {
       expect(find.text(t), findsOneWidget);
     }
-    expect(find.text('Retiro a caja'), findsNothing);
-    expect(find.text('Pagar compra'), findsNothing);
+    expect(find.text('Pasar dinero a caja'), findsNothing);
+    expect(find.text('Pagar compras'), findsNothing);
     expect(find.text('Ingreso de dinero'), findsNothing);
   });
 
   testWidgets('the owner also sees Pagar compra and Retiro a caja', (tester) async {
     await abrir(tester, rol: 'owner');
-    expect(find.text('Retiro a caja'), findsOneWidget);
-    expect(find.text('Pagar compra'), findsOneWidget);
+    expect(find.text('Pasar dinero a caja'), findsOneWidget);
+    expect(find.text('Pagar compras'), findsOneWidget);
   });
 
   testWidgets('an advance is a request: no payment fields', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
-      await tester.tap(find.text('Adelanto'));
+      await tester.tap(find.text('Solicitar adelanto'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     expect(find.text('Para'), findsOneWidget);
@@ -119,7 +119,7 @@ void main() {
   testWidgets('Proveedor asks what a farmer sells only for a farmer', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
-      await tester.tap(find.text('Proveedor'));
+      await tester.tap(find.text('Registrar proveedor'));
       await tester.pumpAndSettle();
       expect(find.text('Vende'), findsNothing);
       await tester.tap(find.text('Agricultor'));
@@ -132,7 +132,7 @@ void main() {
   testWidgets('the expense form asks for what is missing before sending anything', (tester) async {
     await abrir(tester, rol: 'owner');
     await http.runWithClient(() async {
-      await tester.tap(find.text('Gasto'));
+      await tester.tap(find.text('Registrar gasto'));
       await tester.pumpAndSettle();
       expect(find.text('Guardar'), findsOneWidget);
       await tester.tap(find.text('Guardar'));
@@ -144,7 +144,7 @@ void main() {
 
   testWidgets('the expense form is a request: category, amount, description; no payment fields', (tester) async {
     await abrir(tester, rol: 'staff');
-    await tester.tap(find.text('Gasto'));
+    await tester.tap(find.text('Registrar gasto'));
     await tester.pumpAndSettle();
     final yCategoria = tester.getTopLeft(find.text('Categoría')).dy;
     final yMonto = tester.getTopLeft(find.text('Monto (S/)')).dy;
@@ -155,11 +155,12 @@ void main() {
     expect(find.text('Más opciones'), findsOneWidget);
     expect(find.textContaining('Fecha: hoy'), findsOneWidget);
     expect(find.byType(ChoiceChip), findsWidgets);
+    expect(find.text('Registrar gasto'), findsOneWidget); // the form title repeats the button name
   });
 
   testWidgets('tapping outside a field hides the keyboard', (tester) async {
     await abrir(tester, rol: 'owner');
-    await tester.tap(find.text('Gasto'));
+    await tester.tap(find.text('Registrar gasto'));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(EditableText).first); // the amount field
     await tester.pumpAndSettle();
@@ -172,7 +173,7 @@ void main() {
 
   testWidgets('the X closes the form without saving', (tester) async {
     await abrir(tester, rol: 'owner');
-    await tester.tap(find.text('Gasto'));
+    await tester.tap(find.text('Registrar gasto'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Cancelar'));
     await tester.pumpAndSettle();

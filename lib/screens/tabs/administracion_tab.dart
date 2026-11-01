@@ -173,10 +173,19 @@ final Map<String, List<_Campo>> _formularios = {
 
 bool _esDevolucion(Map<String, dynamic> v) => v['tipo'] == 'advance_return';
 
+// Nombres de acción (verbo + cosa), iguales en el botón y en el título del formulario.
 const _titulos = {
-  'gasto': 'Gasto', 'pagoGasto': 'Pagar gasto', 'adelanto': 'Adelanto', 'aprobarAdelanto': 'Aprobar adelanto',
-  'rechazarAdelanto': 'Rechazar adelanto', 'proveedor': 'Proveedor', 'entrega': 'Entrega de café', 'precio': 'Poner precio',
-  'pago': 'Pagar compra', 'ingreso': 'Ingreso de dinero', 'retiro': 'Retiro a caja',
+  'gasto': 'Registrar gasto', 'pagoGasto': 'Pagar gasto', 'adelanto': 'Solicitar adelanto', 'aprobarAdelanto': 'Aprobar adelanto',
+  'rechazarAdelanto': 'Rechazar adelanto', 'proveedor': 'Registrar proveedor', 'entrega': 'Registrar entrega',
+  'precio': 'Poner precio a la entrega', 'pago': 'Pagar compra', 'ingreso': 'Registrar ingreso', 'retiro': 'Pasar dinero a caja',
+};
+
+// Lo que pasó y lo que sigue, después de guardar.
+const _hecho = {
+  'gasto': 'Gasto registrado ✓ Administración lo pagará', 'pagoGasto': 'Gasto pagado ✓',
+  'adelanto': 'Adelanto solicitado ✓ Administración lo revisará', 'aprobarAdelanto': 'Adelanto aprobado y entregado ✓',
+  'rechazarAdelanto': 'Adelanto rechazado', 'proveedor': 'Proveedor registrado ✓', 'entrega': 'Entrega registrada ✓',
+  'precio': 'Precio puesto ✓ Lo que falta queda por pagar', 'pago': 'Compra pagada ✓', 'retiro': 'Dinero pasado a caja ✓',
 };
 
 /// Abre un formulario a pantalla completa. Se cierra con la X o deslizando hacia la derecha (como
@@ -238,12 +247,7 @@ class _FormularioSheetState extends State<_FormularioSheet> {
     final r = await AdministracionService.registrar(widget.formulario, datos, clave: _clave);
     if (!mounted) return;
     if (r.isSuccess) {
-      final texto = switch (widget.formulario) {
-        'gasto' => 'Gasto registrado ✓ Administración lo pagará',
-        'adelanto' => 'Adelanto solicitado ✓ Administración lo revisará',
-        'rechazarAdelanto' => 'Adelanto rechazado',
-        _ => '${_titulos[widget.formulario]} guardado ✓',
-      };
+      final texto = _hecho[widget.formulario] ?? '${_titulos[widget.formulario]} ✓';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(texto)));
       Navigator.of(context).pop(true);
     } else {
@@ -413,12 +417,12 @@ class _Registrar extends StatelessWidget {
   Widget build(BuildContext context) {
     // Todos registran y piden; sólo Administración mueve dinero (Pagar compra, Retiro a caja).
     final botones = <(String, IconData, String)>[
-      ('gasto', Icons.receipt_long, 'Gasto'),
-      ('entrega', Icons.local_shipping, 'Entrega de café'),
-      ('adelanto', Icons.handshake, 'Adelanto'),
-      ('proveedor', Icons.person_add_alt_1, 'Proveedor'),
-      if (esDueno) ('pago', Icons.payments, 'Pagar compra'),
-      if (esDueno) ('retiro', Icons.account_balance_wallet, 'Retiro a caja'),
+      ('gasto', Icons.receipt_long, _titulos['gasto']!),
+      ('entrega', Icons.local_shipping, _titulos['entrega']!),
+      ('adelanto', Icons.handshake, _titulos['adelanto']!),
+      ('proveedor', Icons.person_add_alt_1, _titulos['proveedor']!),
+      if (esDueno) ('pago', Icons.payments, 'Pagar compras'),
+      if (esDueno) ('retiro', Icons.account_balance_wallet, _titulos['retiro']!),
     ];
     return GridView.count(
       crossAxisCount: 2,
@@ -434,7 +438,7 @@ class _Registrar extends StatelessWidget {
             onTap: () async {
               if (form == 'pago') {
                 DefaultTabController.of(context).animateTo(1); // se paga desde "Por pagar"
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Elige la compra en "Por pagar"')));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Elige la compra en "Compras por pagar"')));
                 return;
               }
               await _abrirFormulario(context, form);
