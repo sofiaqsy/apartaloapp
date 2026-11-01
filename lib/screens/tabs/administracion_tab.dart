@@ -132,6 +132,15 @@ const _guiaRespaldo = [
   _Categoria('Otro', 'Solo si nada encaja. Escribe siempre qué fue.', null, 'shared', 'coffee', pideDescripcion: true),
 ];
 
+/// "Para qué" del combustible, sólo cuando la base no puede saberlo: área y centro de costo de cada uno.
+const _paraQueCombustible = {
+  'compra': ('Compra de café', 'sourcing', 'coffee'),
+  'finca': ('Finca', 'farm', 'farm'),
+  'reparto': ('Reparto', 'fulfillment', 'coffee'),
+  'obra': ('Obra', 'strategy', 'venue'),
+  'otro': ('Otro', 'fulfillment', 'coffee'),
+};
+
 const _metodosPago = {'transfer': 'Transferencia', 'yape': 'Yape', 'plin': 'Plin', 'cash': 'Efectivo'};
 bool _necesitaOperacion(Map<String, dynamic> v, [String clave = 'metodo']) => v[clave] != null && v[clave] != 'cash';
 final _campoOperacion = _Campo('operacion', 'Número de operación', _Tipo.texto,
@@ -265,6 +274,11 @@ class _FormularioSheetState extends State<_FormularioSheet> {
   final Map<String, Map<String, String>> _opciones = {}; // opciones que vienen de la base
   Map<String, _Categoria> _guia = {for (final g in _guiaRespaldo) g.categoria: g}; // qué entra en cada categoría
   bool _todasCategorias = false; // "Ver más categorías"
+  // Combustible: la base sugiere el área (compra o entrega del mismo día, o la de la persona); si la persona
+  // no la cambia, la elige la base al guardar.
+  Map<String, dynamic>? _sugerencia;
+  bool _areaTocada = false;
+  String? _paraQue;
   bool _guardando = false;
   String? _error;
 
@@ -314,11 +328,21 @@ class _FormularioSheetState extends State<_FormularioSheet> {
       if (v == null || v == '') continue;
       datos[c.clave] = v is DateTime ? v.toIso8601String().substring(0, 10) : v;
     }
+    if (_areaAutomatica) {
+      // La base pone el área (compra o entrega del mismo día, o la de la persona); sólo va el "Para qué" si se tocó.
+      datos.remove('area');
+      datos.remove('centro');
+      if (_paraQue != null) datos['paraQue'] = _paraQue;
+    }
     setState(() { _guardando = true; _error = null; });
     final r = await AdministracionService.registrar(widget.formulario, datos, clave: _clave);
     if (!mounted) return;
     if (r.isSuccess) {
-      final texto = _hecho[widget.formulario] ?? '${_titulos[widget.formulario]} ✓';
+      var texto = _hecho[widget.formulario] ?? '${_titulos[widget.formulario]} ✓';
+      final areaNombre = r.data?['area_name'];
+      if (widget.formulario == 'gasto' && areaNombre != null) {
+        texto = '$texto · Área: $areaNombre${r.data?['area_source'] == 'to_review' ? ' (por revisar)' : ''}';
+      }
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(texto)));
       Navigator.of(context).pop(true);
     } else {
@@ -389,7 +413,8 @@ class _FormularioSheetState extends State<_FormularioSheet> {
           final hoy = DateTime.now();
           return '${c.etiqueta}: ${v.year == hoy.year && v.month == hoy.month && v.day == hoy.day ? 'hoy' : '${v.day}/${v.month}/${v.year}'}';
         }
-        return '${c.etiqueta}: ${v == null ? '—' : (_opcionesDe(c)[v] ?? v)}';
+        final auto = c.clave == 'area' && _areaAutomatica ? ' (automático)' : '';
+        return '${c.etiqueta}: ${v == null ? '—' : (_opcionesDe(c)[v] ?? (c.clave == 'area' ? _areas[v] : null) ?? v)}$auto';
       }).join(' · ');
 
   Map<String, String> _opcionesDe(_Campo c) => _opciones[c.clave] ?? c.opciones;
@@ -402,6 +427,21 @@ class _FormularioSheetState extends State<_FormularioSheet> {
       _valores['centro'] = g?.centro ?? 'coffee';
     });
   }
+
+  Future<void> _pedirSugerencia() async {
+    final f = _valores['fecha'];
+    final r = await AdministracionService.sugerirArea('Combustible', f is DateTime ? f.toIso8601String().substring(0, 10) : null);
+    if (!mounted || !r.isSuccess || _valores['categoria'] != 'Combustible') return;
+    setState(() {
+      _sugerencia = r.data;
+      if (!_areaTocada) {
+        if (r.data!['area'] != null) _valores['area'] = r.data!['area'];
+        if (r.data!['cost_centre'] != null) _valores['centro'] = r.data!['cost_centre'];
+      }
+    });
+  }
+
+  bool get _areaAutomatica => widget.formulario == 'gasto' && _valores['categoria'] == 'Combustible' && !_areaTocada;
 
   /// Las categorías principales primero; el resto con "Ver más categorías". La elegida siempre se ve.
   Widget _categorias(_Campo c) {
@@ -425,8 +465,9 @@ class _FormularioSheetState extends State<_FormularioSheet> {
                 selected: elegida == k,
                 onSelected: (_) {
                   FocusScope.of(context).unfocus();
-                  setState(() => _valores[c.clave] = k);
+                  setState(() { _valores[c.clave] = k; _areaTocada = false; _paraQue = null; _sugerencia = null; });
                   _sugerirPorCategoria(k);
+                  if (k == 'Combustible') _pedirSugerencia();
                 },
               ),
             if (visibles.length < todas.length)
@@ -445,6 +486,23 @@ class _FormularioSheetState extends State<_FormularioSheet> {
               if (g.noVa != null) TextSpan(text: '\nNo va aquí: ${g.noVa}', style: TextStyle(color: Colors.grey.shade600)),
             ]), style: const TextStyle(fontSize: 13)),
           ),
+        if (elegida == 'Combustible' && _sugerencia?['source'] == 'to_review' && !_areaTocada) ...[
+          const SizedBox(height: 10),
+          Text('¿Para qué fue? (opcional)', style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final e in _paraQueCombustible.entries)
+              ChoiceChip(
+                label: Text(e.value.$1),
+                selected: _paraQue == e.key,
+                onSelected: (sel) => setState(() {
+                  _paraQue = sel ? e.key : null;
+                  _valores['area'] = sel ? e.value.$2 : _sugerencia?['area'];
+                  _valores['centro'] = sel ? e.value.$3 : _sugerencia?['cost_centre'];
+                }),
+              ),
+          ]),
+        ],
       ],
     );
   }
@@ -472,6 +530,7 @@ class _FormularioSheetState extends State<_FormularioSheet> {
                     onSelected: (sel) {
                       FocusScope.of(context).unfocus();
                       final v = sel ? e.key : (c.requerido ? e.key : null);
+                      if (c.clave == 'area' || c.clave == 'centro') _areaTocada = true;
                       poner(v);
                     },
                   ),
@@ -631,6 +690,27 @@ class _PendientesState extends State<_Pendientes> {
 
   String _soles(dynamic v) => 'S/ ${(num.tryParse('${v ?? 0}') ?? 0).toStringAsFixed(2)}';
 
+  /// Administración dice para qué fue: queda como corrección; el gasto no se cambia.
+  Future<void> _revisarArea(Map<String, dynamic> g) async {
+    final eleccion = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(title: Text('${g['category']} · ${_soles(g['amount'])}', style: const TextStyle(fontWeight: FontWeight.w600)), subtitle: const Text('¿Para qué fue?')),
+          for (final e in _paraQueCombustible.entries.where((e) => e.key != 'otro'))
+            ListTile(title: Text(e.value.$1), subtitle: Text(_areas[e.value.$2] ?? e.value.$2), onTap: () => Navigator.pop(ctx, e.key)),
+        ]),
+      ),
+    );
+    if (eleccion == null || !mounted) return;
+    final p = _paraQueCombustible[eleccion]!;
+    final r = await AdministracionService.registrar('corregirArea', {'gastoId': g['id'], 'area': p.$2, 'centro': p.$3, 'motivo': p.$1},
+        clave: AdministracionService.nuevaClave('corregirArea'));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.isSuccess ? 'Área corregida ✓ ${_areas[p.$2]}' : (r.error ?? 'No se guardó'))));
+    if (r.isSuccess) _cargar();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_error != null) return _Mensaje(texto: _error!, onReintentar: _cargar);
@@ -699,6 +779,17 @@ class _PendientesState extends State<_Pendientes> {
                   onTap: () async {
                     if (await _abrirFormulario(context, 'pagoGasto', fijos: {'gastoId': g['id']}, subtitulo: '${g['category']} · ${_soles(g['amount'])}')) _cargar();
                   },
+                ),
+            ]),
+          if (widget.esDueno)
+            _Seccion(titulo: 'Áreas por revisar', vacio: 'Ningún gasto espera revisión', items: [
+              for (final g in lista('porRevisar'))
+                ListTile(
+                  title: Text('${g['category']} · ${_soles(g['amount'])}'),
+                  subtitle: Text('${g['description'] ?? ''}${g['description'] != null ? ' · ' : ''}${g['expense_date']} · ${g['created_by']}'
+                      '${(g['suggestion'] is Map && g['suggestion']['source'] != 'to_review') ? '\nSugerido: ${_areas[g['suggestion']['area']] ?? g['suggestion']['area']}' : ''}'),
+                  trailing: const Icon(Icons.rule),
+                  onTap: () => _revisarArea(Map<String, dynamic>.from(g as Map)),
                 ),
             ]),
           _Seccion(titulo: 'Adelantos abiertos', vacio: 'Ningún adelanto abierto', items: [

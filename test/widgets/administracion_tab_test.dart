@@ -10,6 +10,7 @@ import 'package:apartalo_app/services/administracion_service.dart';
 
 void main() {
   final pedidos = <http.Request>[];
+  var sugerencia = <String, dynamic>{'area': 'fulfillment', 'cost_centre': 'coffee', 'source': 'to_review'};
 
   http.Response responder(http.Request req) {
     pedidos.add(req);
@@ -21,6 +22,7 @@ void main() {
         'adelantos': [{'id': 'ADV-002', 'party_id': 'P-MIS', 'open_balance': 1500, 'advance_date': '2026-11-02'}],
         'banco': [],
         'adelantosPorAprobar': [{'id': 'SOL-0001', 'party': 'Misael Cusi', 'amount': 1500, 'reason': 'Compras', 'request_date': '2026-11-02', 'created_by': 'misael@x'}],
+        'porRevisar': [{'id': 'EX-0007', 'category': 'Combustible', 'amount': 50, 'description': 'Gasolina', 'expense_date': '2026-11-20', 'created_by': 'misael@x', 'suggestion': {'area': 'sourcing', 'source': 'same_day'}}],
         'gastosPorPagar': [{'id': 'EX-0001', 'category': 'Gas', 'amount': 120, 'description': 'Gasolina', 'expense_date': '2026-11-01', 'created_by': 'staff@x'}],
       }), 200);
     }
@@ -44,6 +46,7 @@ void main() {
         'areas': [{'id': 'farm', 'name': 'Finca'}, {'id': 'fulfillment', 'name': 'Logística'}, {'id': 'shared', 'name': 'Compartido'}],
       }), 200);
     }
+    if (p.endsWith('/sugerir-area')) return http.Response(jsonEncode(sugerencia), 200);
     if (p.endsWith('/mi-area')) {
       return http.Response(jsonEncode({
         'areas': [{'area': 'fulfillment', 'name': 'Logística'}],
@@ -59,6 +62,7 @@ void main() {
 
   setUp(() {
     pedidos.clear();
+    sugerencia = {'area': 'fulfillment', 'cost_centre': 'coffee', 'source': 'to_review'};
     dotenv.testLoad(fileInput: 'API_BASE_URL=https://api.test\nBUSINESS_ID=BIZ-002');
   });
 
@@ -211,6 +215,51 @@ void main() {
     expect(find.text('Ver más categorías'), findsNothing);
   });
 
+  testWidgets('fuel: when the database cannot tell, one optional tap; the area is left to the database', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Registrar gasto'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Combustible'));
+      await tester.pumpAndSettle();
+      expect(find.text('¿Para qué fue? (opcional)'), findsOneWidget);
+      await tester.tap(find.text('Compra de café'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Área: Compras (automático)'), findsOneWidget);
+      await tester.enterText(find.byType(TextField).first, '50');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final r = pedidos.lastWhere((r) => r.url.path.contains('/registrar/'));
+    final body = jsonDecode(r.body) as Map;
+    expect(body['paraQue'], 'compra');
+    expect(body.containsKey('area'), isFalse);
+    expect(body.containsKey('centro'), isFalse);
+  });
+
+  testWidgets('fuel: a purchase that day sets the area with no question', (tester) async {
+    sugerencia = {'area': 'sourcing', 'cost_centre': 'coffee', 'source': 'same_day', 'delivery_id': 'DL-0009'};
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Registrar gasto'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Combustible'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('¿Para qué fue? (opcional)'), findsNothing);
+    expect(find.textContaining('Área: Compras (automático)'), findsOneWidget);
+  });
+
+  testWidgets('the owner reviews fuel nobody could place, with the suggestion', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Pendientes'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    await tester.scrollUntilVisible(find.text('Áreas por revisar (1)'), 300, scrollable: find.byType(Scrollable).last);
+    expect(find.textContaining('Sugerido: Compras'), findsOneWidget);
+  });
+
   testWidgets('Otro asks what it was before sending', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
@@ -271,6 +320,7 @@ void main() {
     }, () => MockClient((req) async => responder(req)));
     expect(find.text('Sin precio (1)'), findsOneWidget);
     expect(find.text('Compras por pagar (1)'), findsOneWidget);
+    await tester.scrollUntilVisible(find.textContaining('ADV-002'), 300, scrollable: find.byType(Scrollable).last);
     expect(find.textContaining('ADV-002'), findsOneWidget);
     expect(find.text('Gastos por pagar (1)'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Banco por cruzar (0)'), 300, scrollable: find.byType(Scrollable).last);

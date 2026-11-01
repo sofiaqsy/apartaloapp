@@ -48,6 +48,10 @@ class AdministracionService {
   /// Categorías de gasto con el área y el centro de costo que sugieren, y la lista de áreas.
   static Future<ApiResponse<Map<String, dynamic>>> categorias() => _get('categorias');
 
+  /// Qué área pondría la base a un gasto (para Combustible: compra o entrega del mismo día, o la de la persona).
+  static Future<ApiResponse<Map<String, dynamic>>> sugerirArea(String categoria, [String? fecha]) => _get(
+      'sugerir-area?categoria=${Uri.encodeQueryComponent(categoria)}${fecha == null ? '' : '&fecha=$fecha'}');
+
   /// Mi área: las áreas de la persona y, de la elegida, sus gastos por mes y los últimos.
   static Future<ApiResponse<Map<String, dynamic>>> miArea([String? area]) =>
       _get(area == null ? 'mi-area' : 'mi-area?area=${Uri.encodeQueryComponent(area)}');
