@@ -56,6 +56,13 @@ class AdministracionService {
   static Future<ApiResponse<Map<String, dynamic>>> miArea([String? area]) =>
       _get(area == null ? 'mi-area' : 'mi-area?area=${Uri.encodeQueryComponent(area)}');
 
+  /// El equipo del negocio (sólo dueños): nombre, rol y áreas activas de cada persona.
+  static Future<ApiResponse<Map<String, dynamic>>> equipo() => _get('equipo');
+
+  /// Áreas sugeridas para una persona según lo que registró en 60 días (sólo dueños).
+  static Future<ApiResponse<Map<String, dynamic>>> sugerenciaAreas(String perfilId) =>
+      _get('equipo/${Uri.encodeComponent(perfilId)}/sugerencia');
+
   /// Busca personas por nombre o apodo, de a una página: {personas, total, hayMas}.
   static Future<ApiResponse<Map<String, dynamic>>> buscarPersonas({String q = '', String? rol, int offset = 0, int limit = 20}) {
     final qs = Uri(queryParameters: {

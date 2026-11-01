@@ -29,7 +29,7 @@ class _AdministracionTabState extends State<AdministracionTab> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 5,
+      length: 4,
       child: Column(
         children: [
           const Padding(
@@ -43,12 +43,12 @@ class _AdministracionTabState extends State<AdministracionTab> {
             labelColor: Colors.blue.shade700,
             unselectedLabelColor: Colors.grey.shade600,
             indicatorColor: Colors.blue.shade600,
-            // Las cinco pestañas caben en la pantalla del teléfono, sin deslizar.
+            // Las pestañas caben en la pantalla del teléfono, sin deslizar. Mi área está en Perfil.
             isScrollable: false,
             labelPadding: const EdgeInsets.symmetric(horizontal: 2),
             labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             unselectedLabelStyle: const TextStyle(fontSize: 13),
-            tabs: const [Tab(text: 'Registrar'), Tab(text: 'Pendientes'), Tab(text: 'Solicitudes'), Tab(text: 'Mi área'), Tab(text: 'Resumen')],
+            tabs: const [Tab(text: 'Registrar'), Tab(text: 'Pendientes'), Tab(text: 'Solicitudes'), Tab(text: 'Resumen')],
           ),
           Expanded(
             child: TabBarView(
@@ -56,7 +56,6 @@ class _AdministracionTabState extends State<AdministracionTab> {
                 _Registrar(esDueno: _esDueno),
                 _Pendientes(esDueno: _esDueno),
                 _Solicitudes(esDueno: _esDueno),
-                const _MiArea(),
                 _Resumen(esDueno: _esDueno),
               ],
             ),
@@ -943,8 +942,19 @@ class _SolicitudesState extends State<_Solicitudes> {
 // ─── Mi área ─────────────────────────────────────────────────────────────────
 
 /// Los gastos del área de la persona (Administración ve todas): por mes y los últimos.
+/// Mi área como pantalla propia (se abre desde Perfil), con flecha para volver.
+class MiAreaScreen extends StatelessWidget {
+  const MiAreaScreen({super.key, this.area});
+  final String? area;
+
+  @override
+  Widget build(BuildContext context) =>
+      Scaffold(appBar: AppBar(title: const Text('Mi área')), body: _MiArea(inicial: area));
+}
+
 class _MiArea extends StatefulWidget {
-  const _MiArea();
+  const _MiArea({this.inicial});
+  final String? inicial;
 
   @override
   State<_MiArea> createState() => _MiAreaState();
@@ -957,7 +967,7 @@ class _MiAreaState extends State<_MiArea> {
   @override
   void initState() {
     super.initState();
-    _cargar();
+    _cargar(widget.inicial);
   }
 
   Future<void> _cargar([String? area]) async {
@@ -998,7 +1008,7 @@ class _MiAreaState extends State<_MiArea> {
           if (areas.length > 1)
             Wrap(spacing: 8, runSpacing: 8, children: [
               for (final a in areas)
-                ChoiceChip(label: Text('${a['name']}'), selected: a['area'] == actual, onSelected: (_) => _cargar('${a['area']}')),
+                ChoiceChip(label: Text('${a['name']}${a['principal'] == true ? ' · principal' : ''}'), selected: a['area'] == actual, onSelected: (_) => _cargar('${a['area']}')),
             ]),
           const SizedBox(height: 12),
           _Seccion(titulo: 'Gastos por mes', vacio: 'Sin gastos todavía', items: [

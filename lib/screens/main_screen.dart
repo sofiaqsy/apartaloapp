@@ -12,7 +12,7 @@ import 'tabs/productos_tab.dart';
 import 'tabs/clientes_tab.dart';
 import 'tabs/pedidos_tab.dart';
 import 'settings/settings_screen.dart';
-import 'team_screen.dart';
+import 'perfil_screen.dart';
 import 'businesses_screen.dart';
 import '../services/session_store.dart';
 import '../widgets/fincas_widgets.dart';
@@ -234,11 +234,11 @@ class _MainScreenState extends State<MainScreen> {
                 case 'businesses':
                   _openBusinesses();
                   break;
-                case 'team':
+                case 'perfil':
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => TeamScreen(businessId: widget.businessId, businessName: widget.businessName),
+                      builder: (_) => PerfilScreen(businessId: widget.businessId, businessName: widget.businessName, esDueno: _isOwner),
                     ),
                   );
                   break;
@@ -265,8 +265,8 @@ class _MainScreenState extends State<MainScreen> {
                 ),
               ),
               const PopupMenuItem(value: 'businesses', child: Text('Mis negocios')),
-              if (_isOwner)
-                const PopupMenuItem(value: 'team', child: Text('Equipo')),
+              // Perfil: mis áreas, Mi área y, para los dueños, Equipo.
+              const PopupMenuItem(value: 'perfil', child: Text('Perfil')),
               if (_isPlatformAdmin)
                 const PopupMenuItem(value: 'requests', child: Text('Solicitudes de negocios')),
               const PopupMenuDivider(),

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:apartalo_app/screens/tabs/administracion_tab.dart';
+import 'package:apartalo_app/screens/perfil_screen.dart';
 import 'package:apartalo_app/services/administracion_service.dart';
 
 void main() {
@@ -59,11 +60,21 @@ void main() {
     if (p.endsWith('/sugerir-area')) return http.Response(jsonEncode(sugerencia), 200);
     if (p.endsWith('/mi-area')) {
       return http.Response(jsonEncode({
-        'areas': [{'area': 'fulfillment', 'name': 'Logística'}],
+        'areas': [{'area': 'fulfillment', 'name': 'Logística', 'role': 'lead', 'principal': true}, {'area': 'sourcing', 'name': 'Compras', 'role': 'member', 'principal': false}],
         'area': 'fulfillment',
         'meses': [{'month': '2026-11-01', 'cost_centre': 'coffee', 'total': 120, 'paid': 0, 'to_pay': 120}],
         'gastos': [{'id': 'EX-0001', 'category': 'Flete', 'amount': 120, 'description': 'Envío a Lima', 'expense_date': '2026-11-01', 'created_by': 'staff@x', 'status': 'Por pagar'}],
       }), 200);
+    }
+    if (p.endsWith('/equipo')) {
+      return http.Response(jsonEncode({'equipo': [
+        {'profile_id': '11111111-2222-3333-4444-555555555555', 'name': 'Persona Uno', 'email': 'uno@x', 'role': 'staff', 'areas': []},
+        {'profile_id': '66666666-2222-3333-4444-555555555555', 'name': 'Persona Dos', 'email': 'dos@x', 'role': 'owner',
+          'areas': [{'area': 'finance', 'name': 'Finanzas', 'principal': true}]},
+      ]}), 200);
+    }
+    if (p.endsWith('/sugerencia')) {
+      return http.Response(jsonEncode({'sugeridas': [{'area': 'sourcing', 'name': 'Compras', 'records': 4}, {'area': 'farm', 'name': 'Finca', 'records': 2}]}), 200);
     }
     if (p.endsWith('/resumen')) return http.Response(jsonEncode({'rol': 'owner', 'meses': []}), 200);
     if (p.contains('/registrar/')) return http.Response(jsonEncode({'ok': true, 'result': {'expense_id': 'EX-0001'}}), 200);
@@ -91,7 +102,7 @@ void main() {
   testWidgets('four parts; staff ask, only the owner sees money buttons', (tester) async {
     await abrir(tester, rol: 'staff');
     expect(find.text('Administración'), findsOneWidget);
-    for (final t in ['Registrar', 'Pendientes', 'Solicitudes', 'Mi área', 'Resumen']) {
+    for (final t in ['Registrar', 'Pendientes', 'Solicitudes', 'Resumen']) {
       expect(find.text(t), findsOneWidget);
     }
     for (final t in ['Registrar gasto', 'Registrar entrega', 'Solicitar adelanto', 'Registrar proveedor']) {
@@ -338,15 +349,70 @@ void main() {
     expect(pedidos.where((r) => r.url.path.contains('/registrar/')), isEmpty);
   });
 
-  testWidgets('Mi área shows the area costs by month and the latest expenses', (tester) async {
-    await abrir(tester, rol: 'staff');
+  Future<void> abrirPantalla(WidgetTester tester, Widget pantalla) async {
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
     await http.runWithClient(() async {
-      await tester.tap(find.text('Mi área'));
+      await tester.pumpWidget(MaterialApp(home: pantalla));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
+  }
+
+  testWidgets('Mi área shows the area costs by month and the latest expenses, principal marked', (tester) async {
+    await abrirPantalla(tester, const MiAreaScreen());
+    expect(find.text('Logística · principal'), findsOneWidget);
     expect(find.text('2026-11 · S/ 120.00'), findsOneWidget);
     expect(find.textContaining('por pagar S/ 120.00'), findsOneWidget);
     expect(find.text('Flete · S/ 120.00'), findsOneWidget);
+  });
+
+  testWidgets('Perfil: staff see their areas and Mi área, not Equipo', (tester) async {
+    await abrirPantalla(tester, const PerfilScreen(businessId: 'BIZ-002', businessName: 'Finca Rosal', esDueno: false));
+    expect(find.text('Logística · principal'), findsOneWidget);
+    expect(find.text('Compras'), findsOneWidget);
+    expect(find.text('Mi área'), findsOneWidget);
+    expect(find.text('Equipo'), findsNothing);
+  });
+
+  testWidgets('Perfil: owners open Equipo and see each person with role and areas', (tester) async {
+    await abrirPantalla(tester, const PerfilScreen(businessId: 'BIZ-002', businessName: 'Finca Rosal', esDueno: true));
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Equipo'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Persona Uno'), findsOneWidget);
+    expect(find.text('Dueño · Finanzas (principal)'), findsOneWidget);
+    expect(find.text('Invitar y solicitudes'), findsOneWidget);
+  });
+
+  testWidgets('Áreas de una persona: suggested areas ticked, three areas with one principal, saved', (tester) async {
+    await abrirPantalla(tester, const AreasPersonaScreen(persona: {'profile_id': '11111111-2222-3333-4444-555555555555', 'name': 'Persona Uno', 'areas': []}));
+    expect(find.text('Sugerida · 4 registros'), findsOneWidget);
+    expect(find.text('Principal'), findsOneWidget); // Compras, the most used
+    await http.runWithClient(() async {
+      await tester.scrollUntilVisible(find.text('Estrategia'), 200, scrollable: find.byType(Scrollable).last);
+      await tester.tap(find.text('Estrategia'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Confirmar'), 200, scrollable: find.byType(Scrollable).last);
+      await tester.tap(find.text('Confirmar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final r = pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/areasPersona'));
+    final body = jsonDecode(r.body) as Map;
+    expect((body['areas'] as List).toSet(), {'sourcing', 'farm', 'strategy'});
+    expect(body['principal'], 'sourcing');
+  });
+
+  testWidgets('Áreas de una persona: the X closes without saving', (tester) async {
+    await abrirPantalla(tester, const AreasPersonaScreen(persona: {'profile_id': '11111111-2222-3333-4444-555555555555', 'name': 'Persona Uno', 'areas': []}));
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Producción'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Cerrar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(pedidos.where((r) => r.url.path.contains('/registrar/')), isEmpty);
   });
 
   testWidgets('tapping outside a field hides the keyboard', (tester) async {

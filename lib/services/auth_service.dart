@@ -68,6 +68,7 @@ class AuthService {
 
   /// Email and sign-in method of the current account, only to remind the person which one to use.
   static String? get currentEmail => _auth.currentUser?.email;
+  static String? get currentName => _auth.currentUser?.displayName;
   static String? get currentProvider {
     final providers = _auth.currentUser?.providerData ?? const [];
     return providers.isEmpty ? null : providers.first.providerId;
