@@ -942,6 +942,9 @@ class _SolicitudesState extends State<_Solicitudes> {
 // ─── Mi área ─────────────────────────────────────────────────────────────────
 
 /// Los gastos del área de la persona (Administración ve todas): por mes y los últimos.
+/// Dónde se recuerdan las áreas marcadas para Mi área (las mismas en Perfil y en Mi área).
+const claveAreasElegidas = 'mi_area_elegidas';
+
 /// Mi área como pantalla propia (se abre desde Perfil), con flecha para volver.
 class MiAreaScreen extends StatelessWidget {
   const MiAreaScreen({super.key, this.area});
@@ -975,6 +978,13 @@ class _MiAreaState extends State<_MiArea> {
     final r = await AdministracionService.miArea(area);
     if (!mounted) return;
     setState(() { _datos = r.data; _error = r.isSuccess ? null : r.error; });
+    // Las áreas marcadas aquí son las mismas que en Perfil.
+    final elegidas = r.data?['elegidas'];
+    if (r.isSuccess && elegidas is List && elegidas.isNotEmpty) {
+      try {
+        await (await SharedPreferences.getInstance()).setStringList(claveAreasElegidas, elegidas.map((e) => '$e').toList());
+      } catch (_) {}
+    }
   }
 
   /// Marcar o desmarcar un área; siempre queda al menos una elegida.

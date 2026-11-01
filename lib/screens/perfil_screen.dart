@@ -1,9 +1,10 @@
 import 'package:flutter/cupertino.dart' show CupertinoPageRoute;
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/administracion_service.dart';
 import '../services/auth_service.dart';
 import 'settings/settings_screen.dart';
-import 'tabs/administracion_tab.dart' show MiAreaScreen;
+import 'tabs/administracion_tab.dart' show MiAreaScreen, claveAreasElegidas;
 import 'team_screen.dart';
 
 const _nombresAreas = {
@@ -28,6 +29,7 @@ class PerfilScreen extends StatefulWidget {
 
 class _PerfilScreenState extends State<PerfilScreen> {
   List<Map<String, dynamic>> _areas = [];
+  final Set<String> _elegidas = {}; // las áreas marcadas, que Mi área muestra juntas
   bool _cargando = true;
 
   @override
@@ -38,11 +40,44 @@ class _PerfilScreenState extends State<PerfilScreen> {
 
   Future<void> _cargar() async {
     final r = await AdministracionService.miArea();
+    final guardadas = await _leerElegidas();
     if (!mounted) return;
     setState(() {
       _cargando = false;
       _areas = r.isSuccess ? ((r.data!['areas'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList() : [];
+      final validas = _mias.map((a) => '${a['area']}').toSet();
+      _elegidas
+        ..clear()
+        ..addAll(guardadas.where(validas.contains));
+      // Sin nada guardado: la principal (o la primera).
+      if (_elegidas.isEmpty && _mias.isNotEmpty) {
+        _elegidas.add('${(_mias.firstWhere((a) => a['principal'] == true, orElse: () => _mias.first))['area']}');
+      }
     });
+  }
+
+  /// Las áreas de la persona; los dueños sin áreas asignadas ven todas.
+  List<Map<String, dynamic>> get _mias => _areas.any((a) => a['role'] == 'lead' || a['role'] == 'member')
+      ? _areas.where((a) => a['role'] == 'lead' || a['role'] == 'member').toList()
+      : _areas;
+
+  static Future<List<String>> _leerElegidas() async {
+    try {
+      return (await SharedPreferences.getInstance()).getStringList(claveAreasElegidas) ?? [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Tocar un área la marca o la desmarca (no abre otra pantalla); siempre queda al menos una.
+  Future<void> _alternar(String area) async {
+    final nuevas = {..._elegidas};
+    if (!nuevas.remove(area)) nuevas.add(area);
+    if (nuevas.isEmpty) return;
+    setState(() => _elegidas..clear()..addAll(nuevas));
+    try {
+      await (await SharedPreferences.getInstance()).setStringList(claveAreasElegidas, nuevas.toList());
+    } catch (_) {}
   }
 
   String _iniciales(String texto) {
@@ -59,10 +94,8 @@ class _PerfilScreenState extends State<PerfilScreen> {
       cuenta = null; // sin sesión de Firebase (por ejemplo en pruebas)
     }
     final nombre = cuenta ?? 'Mi cuenta';
-    // Los dueños ven todas las áreas; los botones muestran sólo las que tienen asignadas, si tienen.
-    final mias = widget.esDueno && _areas.any((a) => a['role'] == 'lead' || a['role'] == 'member')
-        ? _areas.where((a) => a['role'] == 'lead' || a['role'] == 'member').toList()
-        : _areas;
+    final mias = _mias;
+    final nombresElegidas = [for (final a in mias) if (_elegidas.contains('${a['area']}')) '${a['name']}'];
     return Scaffold(
       appBar: AppBar(title: const Text('Perfil')),
       body: RefreshIndicator(
@@ -76,8 +109,7 @@ class _PerfilScreenState extends State<PerfilScreen> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-              child: Text(widget.esDueno && mias.length == _areas.length ? 'Áreas (ves todas)' : 'Mis áreas',
-                  style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600)),
+              child: Text('Mis áreas', style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600)),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -87,9 +119,10 @@ class _PerfilScreenState extends State<PerfilScreen> {
                       ? Text('Todavía no estás en ningún área. Administración te asigna una.', style: TextStyle(color: Colors.grey.shade600))
                       : Wrap(spacing: 8, runSpacing: 8, children: [
                           for (final a in mias)
-                            ActionChip(
+                            FilterChip(
                               label: Text('${a['name']}${a['principal'] == true ? ' · principal' : ''}'),
-                              onPressed: () => _abrir(context, MiAreaScreen(area: '${a['area']}')),
+                              selected: _elegidas.contains('${a['area']}'),
+                              onSelected: (_) => _alternar('${a['area']}'),
                             ),
                         ]),
             ),
@@ -98,9 +131,13 @@ class _PerfilScreenState extends State<PerfilScreen> {
             ListTile(
               leading: const Icon(Icons.bar_chart),
               title: const Text('Mi área'),
-              subtitle: const Text('Gastos por mes y los últimos'),
+              subtitle: Text(nombresElegidas.isEmpty ? 'Gastos por mes y los últimos' : nombresElegidas.join(' + '),
+                  maxLines: 2, overflow: TextOverflow.ellipsis),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => _abrir(context, const MiAreaScreen()),
+              onTap: () async {
+                await _abrir(context, MiAreaScreen(area: _elegidas.isEmpty ? null : _elegidas.join(',')));
+                _cargar(); // Mi área pudo cambiar las marcadas
+              },
             ),
             // Sólo dueños: para el equipo el botón no se muestra (no aparece deshabilitado).
             if (widget.esDueno)

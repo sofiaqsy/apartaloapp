@@ -405,6 +405,24 @@ void main() {
     expect(find.text('Equipo'), findsNothing);
   });
 
+  testWidgets('Perfil: tapping an area ticks it (no new screen); Mi área opens with the ticked ones', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await abrirPantalla(tester, const PerfilScreen(businessId: 'BIZ-002', businessName: 'Finca Rosal', esDueno: true));
+    expect(find.textContaining('ves todas'), findsNothing);
+    expect(find.text('Logística'), findsOneWidget); // the principal is ticked at the start, in the Mi área line
+    await tester.tap(find.text('Compras'));
+    await tester.pumpAndSettle();
+    expect(find.byType(MiAreaScreen), findsNothing); // stays in Perfil
+    expect(find.text('Logística + Compras'), findsOneWidget);
+    expect((await SharedPreferences.getInstance()).getStringList('mi_area_elegidas'), containsAll(['fulfillment', 'sourcing']));
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Mi área'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.byType(MiAreaScreen), findsOneWidget);
+    expect(pedidos.last.url.queryParameters['area']!.split(',').toSet(), {'fulfillment', 'sourcing'});
+  });
+
   testWidgets('Perfil: owners open Equipo and see each person with role and areas', (tester) async {
     await abrirPantalla(tester, const PerfilScreen(businessId: 'BIZ-002', businessName: 'Finca Rosal', esDueno: true));
     await http.runWithClient(() async {
