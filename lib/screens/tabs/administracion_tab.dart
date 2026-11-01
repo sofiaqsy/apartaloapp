@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/cupertino.dart' show CupertinoPageRoute;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -72,7 +73,7 @@ enum _Tipo { texto, monto, numero, opcion, persona, fecha }
 
 class _Campo {
   const _Campo(this.clave, this.etiqueta, this.tipo,
-      {this.opciones = const {}, this.requerido = true, this.filtroPersona, this.visibleSi, this.porDefecto, this.ayuda, this.avanzado = false});
+      {this.opciones = const {}, this.requerido = true, this.rol, this.visibleSi, this.porDefecto, this.ayuda, this.avanzado = false});
   /// Campo poco usado: va dentro de "Más opciones" para que el formulario sea corto.
   final bool avanzado;
   final String clave;
@@ -80,7 +81,8 @@ class _Campo {
   final _Tipo tipo;
   final Map<String, String> opciones; // valor -> texto
   final bool requerido;
-  final bool Function(Map<String, dynamic> persona)? filtroPersona;
+  /// Para un campo persona: a quién se puede elegir (agricultor, comprador o ambos); null = cualquiera.
+  final String? rol;
   final bool Function(Map<String, dynamic> valores)? visibleSi;
   final dynamic porDefecto;
   final String? ayuda;
@@ -165,7 +167,7 @@ final Map<String, List<_Campo>> _formularios = {
   ],
   // Un adelanto es una solicitud: Administración lo aprueba (eligiendo cómo pagarlo) o lo rechaza.
   'adelanto': [
-    _Campo('personaId', 'Para', _Tipo.persona, filtroPersona: (p) => p['agricultor'] == true || p['comprador'] == true),
+    const _Campo('personaId', 'Para', _Tipo.persona, rol: 'ambos'),
     const _Campo('monto', 'Monto (S/)', _Tipo.monto, ayuda: 'Máximo S/ 2,000 y uno abierto por persona'),
     const _Campo('motivo', 'Para qué', _Tipo.texto, requerido: false),
     const _Campo('devuelveEn', 'Se devuelve en', _Tipo.opcion, opciones: {'coffee': 'Café', 'money': 'Dinero', 'coffee_or_money': 'Café o dinero'}, porDefecto: 'coffee', avanzado: true),
@@ -184,7 +186,7 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('rol', 'Es', _Tipo.opcion, opciones: {'farmer': 'Agricultor', 'buyer': 'Comprador', 'supplier': 'Proveedor de insumos'}),
     _Campo('vende', 'Vende', _Tipo.opcion, opciones: const {'parchment': 'Pergamino', 'cherry': 'Cereza', 'both': 'Ambos'}, porDefecto: 'parchment',
         visibleSi: (v) => v['rol'] == 'farmer'),
-    _Campo('recogidoPor', 'Lo recoge (comprador)', _Tipo.persona, requerido: false, filtroPersona: (p) => p['comprador'] == true,
+    _Campo('recogidoPor', 'Lo recoge (comprador)', _Tipo.persona, requerido: false, rol: 'comprador',
         visibleSi: (v) => v['rol'] == 'farmer'),
     const _Campo('documento', 'DNI o RUC', _Tipo.texto, requerido: false),
     const _Campo('telefono', 'Teléfono', _Tipo.texto, requerido: false),
@@ -192,8 +194,8 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('tipo', 'Persona o empresa', _Tipo.opcion, opciones: {'person': 'Persona', 'business': 'Empresa'}, porDefecto: 'person', avanzado: true),
   ],
   'entrega': [
-    _Campo('agricultorId', 'Agricultor', _Tipo.persona, filtroPersona: (p) => p['agricultor'] == true),
-    _Campo('compradorId', 'Recogido por (comprador)', _Tipo.persona, requerido: false, filtroPersona: (p) => p['comprador'] == true),
+    const _Campo('agricultorId', 'Agricultor', _Tipo.persona, rol: 'agricultor'),
+    const _Campo('compradorId', 'Recogido por (comprador)', _Tipo.persona, requerido: false, rol: 'comprador'),
     const _Campo('estado', 'Café', _Tipo.opcion, opciones: {'parchment': 'Pergamino', 'cherry': 'Cereza', 'green': 'Verde'}, porDefecto: 'parchment'),
     const _Campo('kg', 'Kilos', _Tipo.numero),
     const _Campo('precioKg', 'Precio por kilo (si ya se sabe)', _Tipo.monto, requerido: false, ayuda: 'Con precio queda en "Por pagar" para Administración'),
@@ -270,7 +272,7 @@ class _FormularioSheetState extends State<_FormularioSheet> {
   late final List<_Campo> _campos = _formularios[widget.formulario]!;
   late final String _clave = AdministracionService.nuevaClave(widget.formulario); // la misma en cada reintento
   final Map<String, dynamic> _valores = {};
-  List<Map<String, dynamic>> _personas = [];
+  final Map<String, String> _nombresElegidos = {}; // campo persona -> nombre que se muestra
   final Map<String, Map<String, String>> _opciones = {}; // opciones que vienen de la base
   Map<String, _Categoria> _guia = {for (final g in _guiaRespaldo) g.categoria: g}; // qué entra en cada categoría
   bool _todasCategorias = false; // "Ver más categorías"
@@ -300,11 +302,6 @@ class _FormularioSheetState extends State<_FormularioSheet> {
           }
           if (areas.isNotEmpty) _opciones['area'] = {for (final a in areas) '${a['id']}': '${a['name']}'};
         });
-      });
-    }
-    if (_campos.any((c) => c.tipo == _Tipo.persona)) {
-      AdministracionService.personas().then((r) {
-        if (mounted && r.isSuccess) setState(() => _personas = r.data!);
       });
     }
   }
@@ -540,22 +537,33 @@ class _FormularioSheetState extends State<_FormularioSheet> {
           ],
         );
       case _Tipo.persona:
-        final lista = _personas.where((p) => c.filtroPersona == null || c.filtroPersona!(p)).toList();
-        return DropdownButtonFormField<String>(
-          value: _valores[c.clave] as String?,
-          decoration: deco,
-          isExpanded: true,
-          items: [
-            if (!c.requerido) const DropdownMenuItem<String>(value: null, child: Text('—')),
-            for (final p in lista) DropdownMenuItem(value: p['id'] as String, child: Text(p['nombre']?.toString() ?? p['id'].toString())),
-          ],
-          onChanged: (v) {
-            poner(v);
-            if (widget.formulario == 'entrega' && c.clave == 'agricultorId') {
-              final p = _personas.firstWhere((x) => x['id'] == v, orElse: () => {});
-              if (p['recogidoPor'] != null) setState(() => _valores['compradorId'] = p['recogidoPor']);
-            }
+        // Un campo que se toca y abre una pantalla de búsqueda (no una lista desplegable larga que no se cierra).
+        final nombre = _nombresElegidos[c.clave];
+        return InkWell(
+          onTap: () async {
+            FocusScope.of(context).unfocus();
+            final p = await _elegirPersona(context, titulo: c.etiqueta, rol: c.rol, opcional: !c.requerido, elegido: _valores[c.clave] as String?);
+            if (p == null || !mounted) return; // cerró sin elegir: no cambia nada
+            setState(() {
+              if (p.isEmpty) {
+                _valores.remove(c.clave);
+                _nombresElegidos.remove(c.clave);
+              } else {
+                _valores[c.clave] = p['id'];
+                _nombresElegidos[c.clave] = '${p['nombre']}';
+                // Entrega: se sugiere el comprador que suele recoger a ese agricultor.
+                if (widget.formulario == 'entrega' && c.clave == 'agricultorId' && p['recogidoPor'] != null && _valores['compradorId'] == null) {
+                  _valores['compradorId'] = p['recogidoPor'];
+                  _nombresElegidos['compradorId'] = '${p['recogidoPorNombre'] ?? p['recogidoPor']}';
+                }
+              }
+            });
           },
+          child: InputDecorator(
+            decoration: deco.copyWith(suffixIcon: const Icon(Icons.search)),
+            isEmpty: nombre == null,
+            child: Text(nombre ?? '', overflow: TextOverflow.ellipsis),
+          ),
         );
       case _Tipo.fecha:
         final f = _valores[c.clave] as DateTime;
@@ -1078,6 +1086,147 @@ class _ResumenState extends State<_Resumen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Elegir persona ──────────────────────────────────────────────────────────
+
+/// Abre la búsqueda de personas a pantalla completa. Devuelve la persona elegida, {} si eligió "Ninguno",
+/// o null si cerró sin elegir (X o deslizar a la derecha).
+Future<Map<String, dynamic>?> _elegirPersona(BuildContext context,
+    {required String titulo, String? rol, bool opcional = false, String? elegido}) {
+  return Navigator.of(context).push<Map<String, dynamic>>(CupertinoPageRoute(
+    fullscreenDialog: false,
+    builder: (_) => _ElegirPersona(titulo: titulo, rol: rol, opcional: opcional, elegido: elegido),
+  ));
+}
+
+class _ElegirPersona extends StatefulWidget {
+  const _ElegirPersona({required this.titulo, this.rol, this.opcional = false, this.elegido});
+  final String titulo;
+  final String? rol;
+  final bool opcional;
+  final String? elegido;
+
+  @override
+  State<_ElegirPersona> createState() => _ElegirPersonaState();
+}
+
+class _ElegirPersonaState extends State<_ElegirPersona> {
+  static const _porPagina = 20;
+  final _scroll = ScrollController();
+  final List<Map<String, dynamic>> _personas = [];
+  String _busqueda = '';
+  bool _cargando = false;
+  bool _hayMas = true;
+  String? _error;
+  int _pedido = 0; // descarta respuestas viejas si la búsqueda cambió
+  Timer? _espera;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(() {
+      if (_scroll.position.pixels > _scroll.position.maxScrollExtent - 200) _cargarMas();
+    });
+    _cargarMas();
+  }
+
+  @override
+  void dispose() {
+    _espera?.cancel();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _buscar(String texto) {
+    _espera?.cancel();
+    _espera = Timer(const Duration(milliseconds: 300), () {
+      setState(() { _busqueda = texto.trim(); _personas.clear(); _hayMas = true; _error = null; _cargando = false; _pedido++; });
+      _cargarMas();
+    });
+  }
+
+  Future<void> _cargarMas() async {
+    if (_cargando || !_hayMas) return;
+    final pedido = _pedido;
+    setState(() => _cargando = true);
+    final r = await AdministracionService.buscarPersonas(q: _busqueda, rol: widget.rol, offset: _personas.length, limit: _porPagina);
+    if (!mounted || pedido != _pedido) return;
+    setState(() {
+      _cargando = false;
+      if (r.isSuccess) {
+        _personas.addAll(((r.data!['personas'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)));
+        _hayMas = r.data!['hayMas'] == true;
+      } else {
+        _error = r.error;
+        _hayMas = false;
+      }
+    });
+  }
+
+  String? _detalle(Map<String, dynamic> p) {
+    const vende = {'cherry': 'Vende cereza', 'parchment': 'Vende pergamino', 'both': 'Vende cereza y pergamino'};
+    final partes = [if (p['vende'] != null) vende[p['vende']] ?? '${p['vende']}', if (p['detalle'] != null) '${p['detalle']}'];
+    return partes.isEmpty ? null : partes.join(' · ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.close), tooltip: 'Cerrar', onPressed: () => Navigator.of(context).pop()),
+        title: Text(widget.titulo),
+      ),
+      body: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: TextField(
+              decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Buscar por nombre o apodo', border: OutlineInputBorder()),
+              textInputAction: TextInputAction.search,
+              onChanged: _buscar,
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              controller: _scroll,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              itemCount: (widget.opcional ? 1 : 0) + _personas.length + 1,
+              itemBuilder: (context, i) {
+                if (widget.opcional && i == 0) {
+                  return ListTile(
+                    leading: const Icon(Icons.remove_circle_outline),
+                    title: const Text('Ninguno'),
+                    onTap: () => Navigator.of(context).pop(<String, dynamic>{}),
+                  );
+                }
+                final k = i - (widget.opcional ? 1 : 0);
+                if (k == _personas.length) {
+                  if (_error != null) return Padding(padding: const EdgeInsets.all(24), child: Text(_error!, textAlign: TextAlign.center));
+                  if (_cargando || _hayMas) return const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()));
+                  return Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(_personas.isEmpty ? 'Nadie con ese nombre' : '${_personas.length} en total',
+                        textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600)),
+                  );
+                }
+                final p = _personas[k];
+                final detalle = _detalle(p);
+                return ListTile(
+                  title: Text('${p['nombre']}'),
+                  subtitle: detalle == null ? null : Text(detalle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  trailing: p['id'] == widget.elegido ? Icon(Icons.check, color: Colors.blue.shade700) : null,
+                  onTap: () => Navigator.of(context).pop(p),
+                );
+              },
+            ),
+          ),
+        ]),
       ),
     );
   }

@@ -46,6 +46,16 @@ void main() {
         'areas': [{'id': 'farm', 'name': 'Finca'}, {'id': 'fulfillment', 'name': 'Logística'}, {'id': 'shared', 'name': 'Compartido'}],
       }), 200);
     }
+    if (p.endsWith('/personas/buscar')) {
+      final q = (req.url.queryParameters['q'] ?? '').toLowerCase();
+      final offset = int.parse(req.url.queryParameters['offset'] ?? '0');
+      final todos = [
+        {'id': 'P-0001', 'nombre': 'Pedro Ramírez Ñique', 'detalle': 'También: Chato', 'agricultor': true, 'vende': 'parchment', 'recogidoPor': null},
+        for (var i = 0; i < 30; i++) {'id': 'P-F$i', 'nombre': 'Agricultor ${i.toString().padLeft(2, '0')}', 'agricultor': true, 'vende': 'cherry'},
+      ].where((p) => q.isEmpty || '${p['nombre']} ${p['detalle'] ?? ''}'.toLowerCase().contains(q)).toList();
+      final pagina = todos.skip(offset).take(20).toList();
+      return http.Response(jsonEncode({'personas': pagina, 'total': todos.length, 'hayMas': offset + 20 < todos.length}), 200);
+    }
     if (p.endsWith('/sugerir-area')) return http.Response(jsonEncode(sugerencia), 200);
     if (p.endsWith('/mi-area')) {
       return http.Response(jsonEncode({
@@ -258,6 +268,57 @@ void main() {
     }, () => MockClient((req) async => responder(req)));
     await tester.scrollUntilVisible(find.text('Áreas por revisar (1)'), 300, scrollable: find.byType(Scrollable).last);
     expect(find.textContaining('Sugerido: Compras'), findsOneWidget);
+  });
+
+  testWidgets('choosing a farmer: a search screen in pages, closed with the X, nothing chosen', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Registrar entrega'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Agricultor'));
+      await tester.pumpAndSettle();
+      expect(find.text('Buscar por nombre o apodo'), findsOneWidget);
+      expect(find.text('Agricultor 00'), findsOneWidget);
+      expect(find.text('Agricultor 25'), findsNothing); // only the first page
+      await tester.tap(find.byTooltip('Cerrar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Guardar'), findsOneWidget); // back in the form
+    expect(find.text('Pedro Ramírez Ñique'), findsNothing);
+  });
+
+  testWidgets('scrolling down loads the next page of people', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Registrar entrega'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Agricultor'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Agricultor 25'), 300, scrollable: find.byType(Scrollable).last);
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Agricultor 25'), findsOneWidget);
+    expect(pedidos.where((r) => r.url.path.endsWith('/personas/buscar')).map((r) => r.url.queryParameters['offset']).toSet(), containsAll(['0', '20']));
+  });
+
+  testWidgets('choosing a farmer by nickname fills the field', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Registrar entrega'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Agricultor'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'chato');
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(find.text('Agricultor 00'), findsNothing);
+      await tester.tap(find.text('Pedro Ramírez Ñique'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Guardar'), findsOneWidget);
+    expect(find.text('Pedro Ramírez Ñique'), findsOneWidget);
+    final pedidosBuscar = pedidos.where((r) => r.url.path.endsWith('/personas/buscar'));
+    expect(pedidosBuscar.every((r) => r.url.queryParameters['rol'] == 'agricultor'), isTrue);
   });
 
   testWidgets('Otro asks what it was before sending', (tester) async {

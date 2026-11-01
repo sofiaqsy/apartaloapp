@@ -56,6 +56,17 @@ class AdministracionService {
   static Future<ApiResponse<Map<String, dynamic>>> miArea([String? area]) =>
       _get(area == null ? 'mi-area' : 'mi-area?area=${Uri.encodeQueryComponent(area)}');
 
+  /// Busca personas por nombre o apodo, de a una página: {personas, total, hayMas}.
+  static Future<ApiResponse<Map<String, dynamic>>> buscarPersonas({String q = '', String? rol, int offset = 0, int limit = 20}) {
+    final qs = Uri(queryParameters: {
+      if (q.isNotEmpty) 'q': q,
+      if (rol != null) 'rol': rol,
+      'offset': '$offset',
+      'limit': '$limit',
+    }).query;
+    return _get('personas/buscar?$qs');
+  }
+
   static Future<ApiResponse<List<Map<String, dynamic>>>> personas() async {
     try {
       final res = await http.get(Uri.parse('$_base/personas')).timeout(const Duration(seconds: 20));
