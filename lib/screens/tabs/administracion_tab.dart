@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoPageRoute;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/administracion_service.dart';
@@ -64,7 +65,9 @@ enum _Tipo { texto, monto, numero, opcion, persona, fecha }
 
 class _Campo {
   const _Campo(this.clave, this.etiqueta, this.tipo,
-      {this.opciones = const {}, this.requerido = true, this.filtroPersona, this.visibleSi, this.porDefecto, this.ayuda});
+      {this.opciones = const {}, this.requerido = true, this.filtroPersona, this.visibleSi, this.porDefecto, this.ayuda, this.avanzado = false});
+  /// Campo poco usado: va dentro de "Más opciones" para que el formulario sea corto.
+  final bool avanzado;
   final String clave;
   final String etiqueta;
   final _Tipo tipo;
@@ -83,16 +86,16 @@ final _campoOperacion = _Campo('operacion', 'Número de operación', _Tipo.texto
 
 final Map<String, List<_Campo>> _formularios = {
   'gasto': [
+    const _Campo('monto', 'Monto (S/)', _Tipo.monto),
     const _Campo('categoria', 'Categoría', _Tipo.opcion, opciones: {
       'Transporte': 'Transporte', 'Operativo': 'Operativo', 'Gas': 'Gas', 'Finca': 'Finca', 'Mantenimiento': 'Mantenimiento',
       'Servicios': 'Servicios', 'Insumos': 'Insumos', 'Personal': 'Personal', 'Otro': 'Otro',
     }),
-    const _Campo('centro', 'Área', _Tipo.opcion, opciones: {'coffee': 'Café', 'farm': 'Finca'}, porDefecto: 'coffee'),
-    const _Campo('monto', 'Monto (S/)', _Tipo.monto),
-    const _Campo('descripcion', 'Descripción', _Tipo.texto, requerido: false),
     const _Campo('metodo', 'Cómo se pagó', _Tipo.opcion, opciones: _metodosPago, porDefecto: 'transfer'),
     _campoOperacion,
-    const _Campo('fecha', 'Fecha', _Tipo.fecha),
+    const _Campo('descripcion', 'Descripción', _Tipo.texto, requerido: false),
+    const _Campo('centro', 'Área', _Tipo.opcion, opciones: {'coffee': 'Café', 'farm': 'Finca'}, porDefecto: 'coffee', avanzado: true),
+    const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
   'adelanto': [
     _Campo('personaId', 'Para', _Tipo.persona, filtroPersona: (p) => p['agricultor'] == true || p['comprador'] == true),
@@ -101,7 +104,7 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('metodo', 'Cómo se entregó', _Tipo.opcion, opciones: _metodosPago, porDefecto: 'transfer'),
     _campoOperacion,
     const _Campo('notas', 'Notas', _Tipo.texto, requerido: false),
-    const _Campo('fecha', 'Fecha', _Tipo.fecha),
+    const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
   'entrega': [
     _Campo('agricultorId', 'Agricultor', _Tipo.persona, filtroPersona: (p) => p['agricultor'] == true),
@@ -109,26 +112,26 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('estado', 'Café', _Tipo.opcion, opciones: {'parchment': 'Pergamino', 'cherry': 'Cereza', 'green': 'Verde'}, porDefecto: 'parchment'),
     const _Campo('kg', 'Kilos', _Tipo.numero),
     const _Campo('precioKg', 'Precio por kilo (si ya se sabe)', _Tipo.monto, requerido: false),
-    const _Campo('humedad', 'Humedad %', _Tipo.numero, requerido: false),
-    const _Campo('rendimiento', 'Factor de rendimiento', _Tipo.numero, requerido: false),
+    const _Campo('humedad', 'Humedad %', _Tipo.numero, requerido: false, avanzado: true),
+    const _Campo('rendimiento', 'Factor de rendimiento', _Tipo.numero, requerido: false, avanzado: true),
     _Campo('metodoPago', 'Pago del saldo ahora', _Tipo.opcion, requerido: false, opciones: _metodosPago,
         visibleSi: (v) => v['precioKg'] != null),
     _Campo('operacion', 'Número de operación', _Tipo.texto,
         visibleSi: (v) => v['precioKg'] != null && _necesitaOperacion(v, 'metodoPago'), ayuda: 'Para cruzarlo solo con el banco'),
     const _Campo('notas', 'Notas', _Tipo.texto, requerido: false),
-    const _Campo('fecha', 'Fecha', _Tipo.fecha),
+    const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
   'precio': [
     const _Campo('precioKg', 'Precio por kilo', _Tipo.monto),
     const _Campo('metodoPago', 'Pago del saldo ahora', _Tipo.opcion, requerido: false, opciones: _metodosPago),
     _Campo('operacion', 'Número de operación', _Tipo.texto, visibleSi: (v) => _necesitaOperacion(v, 'metodoPago'), ayuda: 'Para cruzarlo solo con el banco'),
-    const _Campo('fecha', 'Fecha', _Tipo.fecha),
+    const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
   'pago': [
     const _Campo('monto', 'Monto (vacío = todo lo que se debe)', _Tipo.monto, requerido: false),
     const _Campo('metodo', 'Cómo se pagó', _Tipo.opcion, opciones: _metodosPago, porDefecto: 'transfer'),
     _campoOperacion,
-    const _Campo('fecha', 'Fecha', _Tipo.fecha),
+    const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
   'ingreso': [
     const _Campo('tipo', 'Qué es', _Tipo.opcion, opciones: {'sale': 'Venta fuera de la tienda', 'advance_return': 'Devolución de adelanto', 'loan': 'Préstamo', 'other': 'Otro'}),
@@ -137,13 +140,13 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('metodo', 'Cómo entró', _Tipo.opcion, opciones: {'transfer': 'Transferencia', 'yape': 'Yape', 'plin': 'Plin', 'cash': 'Efectivo', 'deposit': 'Depósito'}, porDefecto: 'transfer'),
     _campoOperacion,
     const _Campo('descripcion', 'Descripción', _Tipo.texto, requerido: false),
-    const _Campo('fecha', 'Fecha', _Tipo.fecha),
+    const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
   'retiro': [
     const _Campo('monto', 'Monto (S/)', _Tipo.monto),
     const _Campo('operacion', 'Número de operación', _Tipo.texto, requerido: false),
     const _Campo('notas', 'Para qué', _Tipo.texto, requerido: false),
-    const _Campo('fecha', 'Fecha', _Tipo.fecha),
+    const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
 };
 
@@ -154,13 +157,11 @@ const _titulos = {
   'pago': 'Pagar compra', 'ingreso': 'Ingreso de dinero', 'retiro': 'Retiro a caja',
 };
 
-/// Abre un formulario. [fijos] van siempre (por ejemplo entregaId o compraId desde Pendientes).
+/// Abre un formulario a pantalla completa. Se cierra con la X o deslizando hacia la derecha (como
+/// cualquier pantalla de iPhone). [fijos] van siempre (por ejemplo entregaId o compraId desde Pendientes).
 Future<bool> _abrirFormulario(BuildContext context, String formulario, {Map<String, dynamic> fijos = const {}, String? subtitulo}) async {
-  final guardado = await showModalBottomSheet<bool>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    builder: (_) => _FormularioSheet(formulario: formulario, fijos: fijos, subtitulo: subtitulo),
+  final guardado = await Navigator.of(context).push<bool>(
+    CupertinoPageRoute(builder: (_) => _FormularioSheet(formulario: formulario, fijos: fijos, subtitulo: subtitulo)),
   );
   return guardado == true;
 }
@@ -224,51 +225,102 @@ class _FormularioSheetState extends State<_FormularioSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    final principales = _visibles.where((c) => !c.avanzado).toList();
+    final avanzados = _visibles.where((c) => c.avanzado).toList();
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.close), tooltip: 'Cancelar', onPressed: () => Navigator.of(context).pop(false)),
+        title: Text(_titulos[widget.formulario]!),
+      ),
+      // Tocar fuera de un campo esconde el teclado.
+      body: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: ListView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
           children: [
-            Text(_titulos[widget.formulario]!, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            if (widget.subtitulo != null) Text(widget.subtitulo!, style: TextStyle(color: Colors.grey.shade600)),
-            const SizedBox(height: 12),
-            for (final c in _visibles) Padding(padding: const EdgeInsets.only(bottom: 12), child: _campo(c)),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(_error!, style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.w600)),
+            if (widget.subtitulo != null)
+              Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(widget.subtitulo!, style: TextStyle(color: Colors.grey.shade600))),
+            for (final c in principales) Padding(padding: const EdgeInsets.only(bottom: 16), child: _campo(c)),
+            if (avanzados.isNotEmpty)
+              ExpansionTile(
+                title: const Text('Más opciones'),
+                subtitle: Text(_resumenAvanzado(avanzados), style: TextStyle(color: Colors.grey.shade600)),
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: const EdgeInsets.only(top: 8),
+                children: [for (final c in avanzados) Padding(padding: const EdgeInsets.only(bottom: 16), child: _campo(c))],
               ),
-            ElevatedButton(
-              onPressed: _guardando ? null : _guardar,
-              style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
-              child: Text(_guardando ? 'Guardando...' : 'Guardar'),
-            ),
           ],
+        ),
+      ),
+      // El botón Guardar siempre a la vista, encima del teclado, con el aviso justo encima.
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(20, 8, 20, 8 + MediaQuery.of(context).viewInsets.bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(_error!, style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.w600)),
+                ),
+              ElevatedButton(
+                onPressed: _guardando ? null : _guardar,
+                style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+                child: Text(_guardando ? 'Guardando...' : 'Guardar'),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+
+  /// "Fecha: hoy · Área: Café" para que se vea sin abrir "Más opciones".
+  String _resumenAvanzado(List<_Campo> campos) => campos.map((c) {
+        final v = _valores[c.clave];
+        if (v is DateTime) {
+          final hoy = DateTime.now();
+          return '${c.etiqueta}: ${v.year == hoy.year && v.month == hoy.month && v.day == hoy.day ? 'hoy' : '${v.day}/${v.month}/${v.year}'}';
+        }
+        return '${c.etiqueta}: ${v == null ? '—' : (c.opciones[v] ?? v)}';
+      }).join(' · ');
 
   Widget _campo(_Campo c) {
     final deco = InputDecoration(labelText: c.requerido ? c.etiqueta : '${c.etiqueta} (opcional)', helperText: c.ayuda, border: const OutlineInputBorder());
     void poner(dynamic v) => setState(() => _valores[c.clave] = v);
     switch (c.tipo) {
       case _Tipo.opcion:
-        return DropdownButtonFormField<String>(
-          value: _valores[c.clave] as String?,
-          decoration: deco,
-          items: [
-            if (!c.requerido) const DropdownMenuItem<String>(value: null, child: Text('—')),
-            for (final e in c.opciones.entries) DropdownMenuItem(value: e.key, child: Text(e.value)),
+        // Botones para tocar en lugar de una lista desplegable.
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(c.requerido ? c.etiqueta : '${c.etiqueta} (opcional)', style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final e in c.opciones.entries)
+                  ChoiceChip(
+                    label: Text(e.value),
+                    selected: _valores[c.clave] == e.key,
+                    onSelected: (sel) {
+                      FocusScope.of(context).unfocus();
+                      final v = sel ? e.key : (c.requerido ? e.key : null);
+                      poner(v);
+                      if (widget.formulario == 'gasto' && c.clave == 'categoria') {
+                        setState(() => _valores['centro'] = (v == 'Finca' || v == 'Personal') ? 'farm' : 'coffee');
+                      }
+                    },
+                  ),
+              ],
+            ),
+            if (c.ayuda != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(c.ayuda!, style: TextStyle(fontSize: 12, color: Colors.grey.shade600))),
           ],
-          onChanged: (v) {
-            poner(v);
-            if (widget.formulario == 'gasto' && c.clave == 'categoria') {
-              setState(() => _valores['centro'] = (v == 'Finca' || v == 'Personal') ? 'farm' : 'coffee');
-            }
-          },
         );
       case _Tipo.persona:
         final lista = _personas.where((p) => c.filtroPersona == null || c.filtroPersona!(p)).toList();
@@ -299,9 +351,13 @@ class _FormularioSheetState extends State<_FormularioSheet> {
         );
       case _Tipo.monto:
       case _Tipo.numero:
+        final primero = _visibles.isNotEmpty && identical(_visibles.first, c);
         return TextFormField(
           decoration: deco,
+          autofocus: primero && c.tipo == _Tipo.monto, // el monto primero, con el teclado de números abierto
+          style: primero ? const TextStyle(fontSize: 22, fontWeight: FontWeight.w600) : null,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          textInputAction: TextInputAction.done,
           onChanged: (t) => poner(_numero(t)),
         );
       case _Tipo.texto:

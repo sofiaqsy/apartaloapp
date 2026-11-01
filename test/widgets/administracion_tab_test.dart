@@ -34,6 +34,10 @@ void main() {
   });
 
   Future<void> abrir(WidgetTester tester, {required String rol}) async {
+    // An iPhone-sized screen (390 x 844 points).
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
     SharedPreferences.setMockInitialValues({'business_role': rol});
     await http.runWithClient(() async {
       await tester.pumpWidget(const MaterialApp(home: Scaffold(body: AdministracionTab())));
@@ -63,7 +67,41 @@ void main() {
       await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    expect(find.textContaining('Falta: Categoría, Monto (S/), Número de operación'), findsOneWidget);
+    expect(find.textContaining('Falta: Monto (S/), Categoría, Número de operación'), findsOneWidget);
+    expect(pedidos.where((r) => r.url.path.contains('/registrar/')), isEmpty);
+  });
+
+  testWidgets('the expense form is short: amount first with the keyboard open, rare fields under Más opciones', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await tester.tap(find.text('Gasto'));
+    await tester.pumpAndSettle();
+    final monto = tester.widget<EditableText>(find.byType(EditableText).first);
+    expect(monto.focusNode.hasFocus, isTrue); // amount field focused, number keyboard up
+    expect(find.text('Más opciones'), findsOneWidget);
+    expect(find.textContaining('Fecha: hoy'), findsOneWidget);
+    expect(find.byType(ChoiceChip), findsWidgets); // categories and payment method are buttons to tap
+    expect(find.text('Área'), findsNothing); // inside Más opciones until opened
+  });
+
+  testWidgets('tapping outside a field hides the keyboard', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await tester.tap(find.text('Gasto'));
+    await tester.pumpAndSettle();
+    bool tecladoAbierto() => tester.widget<EditableText>(find.byType(EditableText).first).focusNode.hasFocus;
+    expect(tecladoAbierto(), isTrue);
+    await tester.tapAt(const Offset(195, 700)); // empty part of the screen
+    await tester.pumpAndSettle();
+    expect(tecladoAbierto(), isFalse);
+  });
+
+  testWidgets('the X closes the form without saving', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await tester.tap(find.text('Gasto'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Cancelar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Guardar'), findsNothing);
+    expect(find.text('Registrar'), findsOneWidget);
     expect(pedidos.where((r) => r.url.path.contains('/registrar/')), isEmpty);
   });
 
