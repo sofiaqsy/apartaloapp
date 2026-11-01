@@ -20,6 +20,7 @@ void main() {
         'porPagar': [{'id': 'PU-0001', 'still_owed': 300, 'farmer_id': 'P-J', 'purchase_date': '2026-11-04'}],
         'adelantos': [{'id': 'ADV-002', 'party_id': 'P-MIS', 'open_balance': 1500, 'advance_date': '2026-11-02'}],
         'banco': [],
+        'gastosPorPagar': [{'id': 'EX-0001', 'category': 'Gas', 'amount': 120, 'description': 'Gasolina', 'expense_date': '2026-11-01', 'created_by': 'staff@x'}],
       }), 200);
     }
     if (p.endsWith('/personas')) return http.Response('[]', 200);
@@ -67,25 +68,30 @@ void main() {
       await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    expect(find.textContaining('Falta: Monto (S/), Categoría, Número de operación'), findsOneWidget);
+    expect(find.textContaining('Falta: Categoría, Monto (S/)'), findsOneWidget);
     expect(pedidos.where((r) => r.url.path.contains('/registrar/')), isEmpty);
   });
 
-  testWidgets('the expense form is short: amount first with the keyboard open, rare fields under Más opciones', (tester) async {
-    await abrir(tester, rol: 'owner');
+  testWidgets('the expense form is a request: category, amount, description; no payment fields', (tester) async {
+    await abrir(tester, rol: 'staff');
     await tester.tap(find.text('Gasto'));
     await tester.pumpAndSettle();
-    final monto = tester.widget<EditableText>(find.byType(EditableText).first);
-    expect(monto.focusNode.hasFocus, isTrue); // amount field focused, number keyboard up
+    final yCategoria = tester.getTopLeft(find.text('Categoría')).dy;
+    final yMonto = tester.getTopLeft(find.text('Monto (S/)')).dy;
+    final yDescripcion = tester.getTopLeft(find.text('Descripción (opcional)')).dy;
+    expect(yCategoria < yMonto && yMonto < yDescripcion, isTrue);
+    expect(find.text('Cómo se pagó'), findsNothing);
+    expect(find.textContaining('Número de operación'), findsNothing);
     expect(find.text('Más opciones'), findsOneWidget);
     expect(find.textContaining('Fecha: hoy'), findsOneWidget);
-    expect(find.byType(ChoiceChip), findsWidgets); // categories and payment method are buttons to tap
-    expect(find.text('Área'), findsNothing); // inside Más opciones until opened
+    expect(find.byType(ChoiceChip), findsWidgets);
   });
 
   testWidgets('tapping outside a field hides the keyboard', (tester) async {
     await abrir(tester, rol: 'owner');
     await tester.tap(find.text('Gasto'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(EditableText).first); // the amount field
     await tester.pumpAndSettle();
     bool tecladoAbierto() => tester.widget<EditableText>(find.byType(EditableText).first).focusNode.hasFocus;
     expect(tecladoAbierto(), isTrue);
@@ -115,6 +121,36 @@ void main() {
     expect(find.text('Por pagar (1)'), findsOneWidget);
     expect(find.textContaining('ADV-002'), findsOneWidget);
     expect(find.text('Banco por cruzar (0)'), findsOneWidget);
+    expect(find.text('Gastos por pagar (1)'), findsOneWidget);
+  });
+
+  testWidgets('the owner pays a requested expense from Pendientes, choosing how', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Pendientes'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Gas · S/ 120.00'));
+      await tester.pumpAndSettle();
+      expect(find.text('Pagar gasto'), findsOneWidget);
+      expect(find.text('Cómo se pagó'), findsOneWidget);
+      await tester.tap(find.text('Efectivo'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final pago = pedidos.lastWhere((r) => r.url.path.contains('/registrar/'));
+    expect(pago.url.path, endsWith('/registrar/pagoGasto'));
+    expect(jsonDecode(pago.body)['gastoId'], 'EX-0001');
+    expect(jsonDecode(pago.body)['metodo'], 'cash');
+  });
+
+  testWidgets('staff do not see expenses to pay', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Pendientes'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.textContaining('Gastos por pagar'), findsNothing);
   });
 
   test('each send has its own retry key, long enough for the database', () {

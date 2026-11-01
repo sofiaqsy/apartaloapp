@@ -85,16 +85,20 @@ final _campoOperacion = _Campo('operacion', 'Número de operación', _Tipo.texto
     visibleSi: _necesitaOperacion, ayuda: 'Para cruzarlo solo con el banco');
 
 final Map<String, List<_Campo>> _formularios = {
+  // Un gasto es una solicitud de pago: Administración decide cómo pagarlo (Pagar gasto, en Pendientes).
   'gasto': [
-    const _Campo('monto', 'Monto (S/)', _Tipo.monto),
     const _Campo('categoria', 'Categoría', _Tipo.opcion, opciones: {
       'Transporte': 'Transporte', 'Operativo': 'Operativo', 'Gas': 'Gas', 'Finca': 'Finca', 'Mantenimiento': 'Mantenimiento',
       'Servicios': 'Servicios', 'Insumos': 'Insumos', 'Personal': 'Personal', 'Otro': 'Otro',
     }),
-    const _Campo('metodo', 'Cómo se pagó', _Tipo.opcion, opciones: _metodosPago, porDefecto: 'transfer'),
-    _campoOperacion,
+    const _Campo('monto', 'Monto (S/)', _Tipo.monto),
     const _Campo('descripcion', 'Descripción', _Tipo.texto, requerido: false),
     const _Campo('centro', 'Área', _Tipo.opcion, opciones: {'coffee': 'Café', 'farm': 'Finca'}, porDefecto: 'coffee', avanzado: true),
+    const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
+  ],
+  'pagoGasto': [
+    const _Campo('metodo', 'Cómo se pagó', _Tipo.opcion, opciones: _metodosPago, porDefecto: 'transfer'),
+    _campoOperacion,
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
   'adelanto': [
@@ -153,7 +157,7 @@ final Map<String, List<_Campo>> _formularios = {
 bool _esDevolucion(Map<String, dynamic> v) => v['tipo'] == 'advance_return';
 
 const _titulos = {
-  'gasto': 'Gasto', 'adelanto': 'Adelanto', 'entrega': 'Entrega de café', 'precio': 'Poner precio',
+  'gasto': 'Gasto', 'pagoGasto': 'Pagar gasto', 'adelanto': 'Adelanto', 'entrega': 'Entrega de café', 'precio': 'Poner precio',
   'pago': 'Pagar compra', 'ingreso': 'Ingreso de dinero', 'retiro': 'Retiro a caja',
 };
 
@@ -216,7 +220,8 @@ class _FormularioSheetState extends State<_FormularioSheet> {
     final r = await AdministracionService.registrar(widget.formulario, datos, clave: _clave);
     if (!mounted) return;
     if (r.isSuccess) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${_titulos[widget.formulario]} guardado ✓')));
+      final texto = widget.formulario == 'gasto' ? 'Gasto registrado ✓ Administración lo pagará' : '${_titulos[widget.formulario]} guardado ✓';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(texto)));
       Navigator.of(context).pop(true);
     } else {
       setState(() { _guardando = false; _error = r.error; });
@@ -505,6 +510,18 @@ class _PendientesState extends State<_Pendientes> {
                 },
               ),
           ]),
+          if (widget.esDueno)
+            _Seccion(titulo: 'Gastos por pagar', vacio: 'Ningún gasto espera pago', items: [
+              for (final g in lista('gastosPorPagar'))
+                ListTile(
+                  title: Text('${g['category']} · ${_soles(g['amount'])}'),
+                  subtitle: Text('${g['description'] ?? ''}${g['description'] != null ? ' · ' : ''}${g['expense_date']} · ${g['created_by']}'),
+                  trailing: const Icon(Icons.payments),
+                  onTap: () async {
+                    if (await _abrirFormulario(context, 'pagoGasto', fijos: {'gastoId': g['id']}, subtitulo: '${g['category']} · ${_soles(g['amount'])}')) _cargar();
+                  },
+                ),
+            ]),
           _Seccion(titulo: 'Adelantos abiertos', vacio: 'Ningún adelanto abierto', items: [
             for (final a in lista('adelantos'))
               ListTile(
