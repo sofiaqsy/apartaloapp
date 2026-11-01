@@ -35,8 +35,11 @@ void main() {
     if (p.endsWith('/categorias')) {
       return http.Response(jsonEncode({
         'categorias': [
-          {'category': 'Flete', 'default_area': 'fulfillment', 'default_cost_centre': 'coffee'},
-          {'category': 'Mano de obra', 'default_area': 'farm', 'default_cost_centre': 'farm'},
+          {'category': 'Transporte', 'what_goes_here': 'Pasajes y movilidad de personas.', 'not_here': 'Gasolina (Combustible).', 'default_area': 'sourcing', 'default_cost_centre': 'coffee', 'main': true},
+          {'category': 'Combustible', 'what_goes_here': 'Gasolina y petróleo.', 'default_area': 'fulfillment', 'default_cost_centre': 'coffee', 'main': true},
+          {'category': 'Mano de obra', 'what_goes_here': 'Pago por día.', 'default_area': 'farm', 'default_cost_centre': 'farm', 'main': true},
+          {'category': 'Flete', 'what_goes_here': 'Envío al cliente.', 'default_area': 'fulfillment', 'default_cost_centre': 'coffee', 'main': false},
+          {'category': 'Otro', 'what_goes_here': 'Solo si nada encaja.', 'default_area': 'shared', 'default_cost_centre': 'coffee', 'main': false, 'needs_description': true},
         ],
         'areas': [{'id': 'farm', 'name': 'Finca'}, {'id': 'fulfillment', 'name': 'Logística'}, {'id': 'shared', 'name': 'Compartido'}],
       }), 200);
@@ -183,10 +186,46 @@ void main() {
     await http.runWithClient(() async {
       await tester.tap(find.text('Registrar gasto'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Flete'));
+      await tester.tap(find.text('Combustible'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     expect(find.textContaining('Área: Logística'), findsOneWidget);
+  });
+
+  testWidgets('main categories first, the rest behind "Ver más", and what goes in the chosen one', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Registrar gasto'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Transporte'), findsOneWidget);
+    expect(find.text('Flete'), findsNothing);
+    expect(find.text('Operativo'), findsNothing);
+    await tester.tap(find.text('Transporte'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Pasajes y movilidad'), findsOneWidget);
+    expect(find.textContaining('No va aquí: Gasolina'), findsOneWidget);
+    await tester.tap(find.text('Ver más categorías'));
+    await tester.pumpAndSettle();
+    expect(find.text('Flete'), findsOneWidget);
+    expect(find.text('Ver más categorías'), findsNothing);
+  });
+
+  testWidgets('Otro asks what it was before sending', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Registrar gasto'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ver más categorías'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Otro'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, '30');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.textContaining('Escribe en Descripción qué fue'), findsOneWidget);
+    expect(pedidos.where((r) => r.url.path.contains('/registrar/')), isEmpty);
   });
 
   testWidgets('Mi área shows the area costs by month and the latest expenses', (tester) async {

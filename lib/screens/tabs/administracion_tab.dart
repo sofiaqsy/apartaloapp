@@ -92,6 +92,46 @@ const _areas = {
   'risk': 'Riesgos', 'technology': 'Tecnología', 'strategy': 'Estrategia', 'shared': 'Compartido',
 };
 
+/// Una categoría de gasto: qué entra, qué no, y lo que sugiere. La lista viva viene de la base
+/// (expense_category_guide, acordada por las áreas el 1 de noviembre de 2026); esta es el respaldo sin señal.
+class _Categoria {
+  const _Categoria(this.categoria, this.queEntra, this.noVa, this.area, this.centro, {this.principal = false, this.pideDescripcion = false});
+  final String categoria;
+  final String queEntra;
+  final String? noVa;
+  final String area;
+  final String centro;
+  final bool principal;
+  final bool pideDescripcion;
+
+  factory _Categoria.desde(Map m) => _Categoria('${m['category']}', '${m['what_goes_here'] ?? ''}', m['not_here'] as String?,
+      '${m['default_area'] ?? 'shared'}', '${m['default_cost_centre'] ?? 'coffee'}',
+      principal: m['main'] == true, pideDescripcion: m['needs_description'] == true);
+}
+
+const _guiaRespaldo = [
+  _Categoria('Transporte', 'Pasajes y movilidad de personas, y traslado del café comprado antes de venderlo.', 'Gasolina (Combustible). Envío al cliente (Flete).', 'sourcing', 'coffee', principal: true),
+  _Categoria('Combustible', 'Gasolina y petróleo de la camioneta, el carro o una máquina.', 'Gas GLP de la tostadora (Gas).', 'fulfillment', 'coffee', principal: true),
+  _Categoria('Mano de obra', 'Pago por día, por kilo o por lata: jornaleros, cosechadores, maquinista.', 'Sueldos mensuales (Personal).', 'farm', 'farm', principal: true),
+  _Categoria('Personal', 'Sueldo fijo o mensual, ayuda médica a trabajadores, cursos.', 'Jornales (Mano de obra).', 'people', 'coffee', principal: true),
+  _Categoria('Insumos', 'Abono, plantas, almácigo, fungicidas, herramientas de campo.', 'Bolsas de café (Empaque).', 'farm', 'farm', principal: true),
+  _Categoria('Construcción', 'Obras: local, cafetería, cocina, techo, piso, carretera. Escribe qué obra.', 'Reparaciones (Mantenimiento).', 'strategy', 'venue', principal: true, pideDescripcion: true),
+  _Categoria('Mantenimiento', 'Reparar máquinas y vehículos. Repara, no compra.', 'Máquina nueva (inversión).', 'production', 'coffee', principal: true),
+  _Categoria('Empaque', 'Bolsas, válvulas, etiquetas impresas, serigrafiado, costales, film, cajas.', 'Diseño de etiqueta (Marketing).', 'fulfillment', 'coffee', principal: true),
+  _Categoria('Flete', 'Envío de café ya vendido al cliente.', 'Café comprado en camino (Transporte).', 'fulfillment', 'coffee'),
+  _Categoria('Gas', 'Gas GLP: tostadora, secadora, cocina del local.', 'Gasolina (Combustible).', 'production', 'coffee'),
+  _Categoria('Finca', 'Otros gastos de la chacra: despulpadora, sus piezas, materiales.', 'Obras (Construcción). Luz (Servicios).', 'farm', 'farm'),
+  _Categoria('Servicios', 'Luz, agua, alquiler, secado o pilado por terceros.', 'Internet y teléfono (Tecnología).', 'finance', 'coffee'),
+  _Categoria('Tecnología', 'Teléfono, internet, programas, celular, computadora.', null, 'technology', 'coffee'),
+  _Categoria('Calidad y laboratorio', 'Catación, laboratorio, medidor de humedad, bolsitas de muestra.', null, 'quality', 'coffee'),
+  _Categoria('Marketing', 'Diseño, fotos, publicidad, ferias y eventos, material de muestras.', 'Impresión de bolsas (Empaque).', 'marketing', 'coffee'),
+  _Categoria('Impuestos y comisiones', 'SUNAT, ITF, comisiones del banco, multas y papeletas.', null, 'finance', 'coffee'),
+  _Categoria('Permisos y licencias', 'DIGESA, registro sanitario, licencia municipal, trámites.', null, 'compliance', 'coffee'),
+  _Categoria('Seguros', 'Primas de pólizas.', null, 'risk', 'coffee'),
+  _Categoria('Servicios profesionales', 'Contadora, abogado, consultor externo.', 'Sueldos (Personal).', 'finance', 'coffee'),
+  _Categoria('Otro', 'Solo si nada encaja. Escribe siempre qué fue.', null, 'shared', 'coffee', pideDescripcion: true),
+];
+
 const _metodosPago = {'transfer': 'Transferencia', 'yape': 'Yape', 'plin': 'Plin', 'cash': 'Efectivo'};
 bool _necesitaOperacion(Map<String, dynamic> v, [String clave = 'metodo']) => v[clave] != null && v[clave] != 'cash';
 final _campoOperacion = _Campo('operacion', 'Número de operación', _Tipo.texto,
@@ -101,12 +141,7 @@ final Map<String, List<_Campo>> _formularios = {
   // Un gasto es una solicitud de pago: Administración decide cómo pagarlo (Pagar gasto, en Pendientes).
   'gasto': [
     // Las categorías y el área sugerida vienen de la base (expense_categories); esta lista es el respaldo.
-    const _Campo('categoria', 'Categoría', _Tipo.opcion, opciones: {
-      'Transporte': 'Transporte', 'Flete': 'Flete', 'Empaque': 'Empaque', 'Insumos': 'Insumos', 'Mano de obra': 'Mano de obra',
-      'Finca': 'Finca', 'Personal': 'Personal', 'Gas': 'Gas', 'Mantenimiento': 'Mantenimiento', 'Operativo': 'Operativo',
-      'Servicios': 'Servicios', 'Impuestos y comisiones': 'Impuestos y comisiones', 'Seguros': 'Seguros',
-      'Permisos y licencias': 'Permisos y licencias', 'Servicios profesionales': 'Servicios profesionales', 'Otro': 'Otro',
-    }),
+    const _Campo('categoria', 'Categoría', _Tipo.opcion), // las opciones son la guía de categorías (_guia)
     const _Campo('monto', 'Monto (S/)', _Tipo.monto),
     const _Campo('descripcion', 'Descripción', _Tipo.texto, requerido: false),
     // Quien registra elige el área que responde por el gasto; se llena sola según la categoría.
@@ -228,7 +263,8 @@ class _FormularioSheetState extends State<_FormularioSheet> {
   final Map<String, dynamic> _valores = {};
   List<Map<String, dynamic>> _personas = [];
   final Map<String, Map<String, String>> _opciones = {}; // opciones que vienen de la base
-  final Map<String, Map<String, dynamic>> _porCategoria = {}; // categoría -> área y centro sugeridos
+  Map<String, _Categoria> _guia = {for (final g in _guiaRespaldo) g.categoria: g}; // qué entra en cada categoría
+  bool _todasCategorias = false; // "Ver más categorías"
   bool _guardando = false;
   String? _error;
 
@@ -245,11 +281,10 @@ class _FormularioSheetState extends State<_FormularioSheet> {
         final cats = (r.data!['categorias'] as List? ?? []).cast<Map>();
         final areas = (r.data!['areas'] as List? ?? []).cast<Map>();
         setState(() {
-          if (cats.isNotEmpty) _opciones['categoria'] = {for (final c in cats) '${c['category']}': '${c['category']}'};
-          if (areas.isNotEmpty) _opciones['area'] = {for (final a in areas) '${a['id']}': '${a['name']}'};
-          for (final c in cats) {
-            _porCategoria['${c['category']}'] = {'area': c['default_area'], 'centro': c['default_cost_centre']};
+          if (cats.isNotEmpty) {
+            _guia = {for (final c in cats) '${c['category']}': _Categoria.desde(c)};
           }
+          if (areas.isNotEmpty) _opciones['area'] = {for (final a in areas) '${a['id']}': '${a['name']}'};
         });
       });
     }
@@ -266,6 +301,11 @@ class _FormularioSheetState extends State<_FormularioSheet> {
     final faltan = _visibles.where((c) => c.requerido && (_valores[c.clave] == null || _valores[c.clave] == '')).map((c) => c.etiqueta);
     if (faltan.isNotEmpty) {
       setState(() => _error = 'Falta: ${faltan.join(', ')}');
+      return;
+    }
+    final categoria = widget.formulario == 'gasto' ? _guia[_valores['categoria']] : null;
+    if (categoria != null && categoria.pideDescripcion && '${_valores['descripcion'] ?? ''}'.trim().isEmpty) {
+      setState(() => _error = 'Escribe en Descripción qué fue (lo pide ${categoria.categoria}).');
       return;
     }
     final datos = <String, dynamic>{...widget.fijos};
@@ -356,14 +396,57 @@ class _FormularioSheetState extends State<_FormularioSheet> {
 
   /// Al elegir la categoría, se sugieren el área y el centro de costo (se pueden cambiar en Más opciones).
   void _sugerirPorCategoria(String? categoria) {
-    final s = _porCategoria[categoria];
-    final areaRespaldo = const {'Flete': 'fulfillment', 'Empaque': 'fulfillment', 'Insumos': 'farm', 'Mano de obra': 'farm', 'Finca': 'farm',
-      'Personal': 'people', 'Gas': 'production', 'Mantenimiento': 'production', 'Servicios': 'finance', 'Impuestos y comisiones': 'finance',
-      'Seguros': 'risk', 'Permisos y licencias': 'compliance', 'Servicios profesionales': 'strategy', 'Transporte': 'sourcing'}[categoria];
+    final g = _guia[categoria];
     setState(() {
-      _valores['area'] = s?['area'] ?? areaRespaldo ?? 'shared';
-      _valores['centro'] = s?['centro'] ?? ((categoria == 'Finca' || categoria == 'Personal' || categoria == 'Insumos' || categoria == 'Mano de obra') ? 'farm' : 'coffee');
+      _valores['area'] = g?.area ?? 'shared';
+      _valores['centro'] = g?.centro ?? 'coffee';
     });
+  }
+
+  /// Las categorías principales primero; el resto con "Ver más categorías". La elegida siempre se ve.
+  Widget _categorias(_Campo c) {
+    final elegida = _valores[c.clave] as String?;
+    final todas = _guia.keys.toList();
+    final hayPrincipales = todas.any((k) => _guia[k]?.principal == true);
+    final visibles = _todasCategorias || !hayPrincipales ? todas : todas.where((k) => _guia[k]?.principal == true || k == elegida).toList();
+    final g = _guia[elegida];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(c.etiqueta, style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final k in visibles)
+              ChoiceChip(
+                label: Text(k),
+                selected: elegida == k,
+                onSelected: (_) {
+                  FocusScope.of(context).unfocus();
+                  setState(() => _valores[c.clave] = k);
+                  _sugerirPorCategoria(k);
+                },
+              ),
+            if (visibles.length < todas.length)
+              ActionChip(
+                avatar: const Icon(Icons.expand_more, size: 18),
+                label: const Text('Ver más categorías'),
+                onPressed: () => setState(() => _todasCategorias = true),
+              ),
+          ],
+        ),
+        if (g != null && g.queEntra.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text.rich(TextSpan(children: [
+              TextSpan(text: g.queEntra),
+              if (g.noVa != null) TextSpan(text: '\nNo va aquí: ${g.noVa}', style: TextStyle(color: Colors.grey.shade600)),
+            ]), style: const TextStyle(fontSize: 13)),
+          ),
+      ],
+    );
   }
 
   Widget _campo(_Campo c) {
@@ -371,6 +454,7 @@ class _FormularioSheetState extends State<_FormularioSheet> {
     void poner(dynamic v) => setState(() => _valores[c.clave] = v);
     switch (c.tipo) {
       case _Tipo.opcion:
+        if (widget.formulario == 'gasto' && c.clave == 'categoria') return _categorias(c);
         // Botones para tocar en lugar de una lista desplegable.
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -389,7 +473,6 @@ class _FormularioSheetState extends State<_FormularioSheet> {
                       FocusScope.of(context).unfocus();
                       final v = sel ? e.key : (c.requerido ? e.key : null);
                       poner(v);
-                      if (widget.formulario == 'gasto' && c.clave == 'categoria') _sugerirPorCategoria(v);
                     },
                   ),
               ],
