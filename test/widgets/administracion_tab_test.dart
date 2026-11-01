@@ -189,7 +189,7 @@ void main() {
       await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    expect(find.textContaining('Falta: Categoría, Monto (S/)'), findsOneWidget);
+    expect(find.textContaining('Falta: Monto (S/)'), findsOneWidget); // Combustible is already chosen
     expect(pedidos.where((r) => r.url.path.contains('/registrar/')), isEmpty);
   });
 
@@ -221,6 +221,18 @@ void main() {
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     expect(find.textContaining('Área: Logística'), findsOneWidget);
+  });
+
+  testWidgets('Registrar gasto opens with Combustible first and already chosen', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Registrar gasto'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final chips = tester.widgetList<ChoiceChip>(find.byType(ChoiceChip)).toList();
+    expect((chips.first.label as Text).data, 'Combustible');
+    expect(chips.first.selected, isTrue);
+    expect(find.textContaining('Gasolina y petróleo'), findsOneWidget);
   });
 
   testWidgets('main categories first, the rest behind "Ver más", and what goes in the chosen one', (tester) async {
@@ -345,7 +357,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Ver más categorías'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Otro'));
+      await tester.tap(find.text('Otro').first); // the category, not the "¿Para qué fue?" chip
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).first, '30');
       await tester.tap(find.text('Guardar'));

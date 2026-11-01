@@ -110,9 +110,12 @@ class _Categoria {
       principal: m['main'] == true, pideDescripcion: m['needs_description'] == true);
 }
 
+/// El gasto más frecuente: va primero y ya elegido al abrir Registrar gasto (General Manager, 1 nov 2026).
+const _categoriaInicial = 'Combustible';
+
 const _guiaRespaldo = [
-  _Categoria('Transporte', 'Pasajes y movilidad de personas, y traslado del café comprado antes de venderlo.', 'Gasolina (Combustible). Envío al cliente (Flete).', 'sourcing', 'coffee', principal: true),
   _Categoria('Combustible', 'Gasolina y petróleo de la camioneta, el carro o una máquina.', 'Gas GLP de la tostadora (Gas).', 'fulfillment', 'coffee', principal: true),
+  _Categoria('Transporte', 'Pasajes y movilidad de personas, y traslado del café comprado antes de venderlo.', 'Gasolina (Combustible). Envío al cliente (Flete).', 'sourcing', 'coffee', principal: true),
   _Categoria('Mano de obra', 'Pago por día, por kilo o por lata: jornaleros, cosechadores, maquinista.', 'Sueldos mensuales (Personal).', 'farm', 'farm', principal: true),
   _Categoria('Personal', 'Sueldo fijo o mensual, ayuda médica a trabajadores, cursos.', 'Jornales (Mano de obra).', 'people', 'coffee', principal: true),
   _Categoria('Insumos', 'Abono, plantas, almácigo, fungicidas, herramientas de campo.', 'Bolsas de café (Empaque).', 'farm', 'farm', principal: true),
@@ -291,13 +294,25 @@ class _FormularioSheetState extends State<_FormularioSheet> {
       if (c.tipo == _Tipo.fecha) _valores[c.clave] = DateTime.now();
     }
     if (widget.formulario == 'gasto') {
+      final inicial = _guia[_categoriaInicial];
+      if (inicial != null) {
+        _valores['categoria'] = _categoriaInicial;
+        _valores['area'] = inicial.area;
+        _valores['centro'] = inicial.centro;
+        _pedirSugerencia(); // la base dice el área (compra del día, el área de la persona)
+      }
       AdministracionService.categorias().then((r) {
         if (!mounted || !r.isSuccess) return;
         final cats = (r.data!['categorias'] as List? ?? []).cast<Map>();
         final areas = (r.data!['areas'] as List? ?? []).cast<Map>();
         setState(() {
           if (cats.isNotEmpty) {
-            _guia = {for (final c in cats) '${c['category']}': _Categoria.desde(c)};
+            final guia = {for (final c in cats) '${c['category']}': _Categoria.desde(c)};
+            // Combustible primero; las demás en el orden de la base.
+            _guia = {
+              if (guia.containsKey(_categoriaInicial)) _categoriaInicial: guia[_categoriaInicial]!,
+              for (final e in guia.entries) if (e.key != _categoriaInicial) e.key: e.value,
+            };
           }
           if (areas.isNotEmpty) _opciones['area'] = {for (final a in areas) '${a['id']}': '${a['name']}'};
         });
