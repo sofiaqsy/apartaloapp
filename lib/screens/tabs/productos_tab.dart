@@ -49,8 +49,9 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    _shimmerCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))
-      ..repeat(reverse: true);
+    // El brillo de carga sólo corre mientras se cargan productos: una animación que nunca para hace que el
+    // teléfono redibuje la pantalla sin descanso (gasta batería), aunque no se vea.
+    _shimmerCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
     _scrollController.addListener(_onScroll);
     _cargarProductos();
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
@@ -555,12 +556,22 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
     }
   }
 
+  /// Enciende el brillo de carga sólo mientras se carga; lo apaga al terminar.
+  void _brilloDeCarga() {
+    if (_isLoading) {
+      if (!_shimmerCtrl.isAnimating) _shimmerCtrl.repeat(reverse: true);
+    } else if (_shimmerCtrl.isAnimating) {
+      _shimmerCtrl.stop();
+    }
+  }
+
   Future<void> _cargarProductos({bool refresh = false}) async {
     if (refresh) {
       setState(() { _productos.clear(); _paginaActual = 1; _hayMas = true; });
     }
 
     setState(() { _isLoading = _productos.isEmpty; _error = null; });
+    _brilloDeCarga();
 
     final result = await ApiService.getProductos(
       buscar: _busqueda.isNotEmpty ? _busqueda : null,
@@ -568,6 +579,7 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
       limite: _limite,
     );
 
+    if (!mounted) return;
     setState(() {
       _isLoading = false;
       if (result.isSuccess && result.data != null) {
@@ -580,6 +592,7 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
         _error = result.error;
       }
     });
+    _brilloDeCarga();
   }
 
   Future<void> _cargarMasProductos() async {

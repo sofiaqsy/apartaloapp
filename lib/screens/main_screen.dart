@@ -284,13 +284,15 @@ class _MainScreenState extends State<MainScreen> {
           ),
         ],
       ),
+      // Las pestañas ocultas siguen vivas (no pierden lo cargado) pero sus animaciones se pausan: una animación
+      // oculta haría que el teléfono redibuje la pantalla sin parar y gaste batería.
       body: IndexedStack(
         index: _currentIndex,
         children: [
-          PedidosTab(businessName: widget.businessName),
-          ProductosTab(isActive: _currentIndex == 1),
-          const ClientesTab(),
-          const AdministracionTab(),
+          TickerMode(enabled: _currentIndex == 0, child: PedidosTab(businessName: widget.businessName)),
+          TickerMode(enabled: _currentIndex == 1, child: ProductosTab(isActive: _currentIndex == 1)),
+          TickerMode(enabled: _currentIndex == 2, child: const ClientesTab()),
+          TickerMode(enabled: _currentIndex == 3, child: const AdministracionTab()),
         ],
       ),
       bottomNavigationBar: Container(
