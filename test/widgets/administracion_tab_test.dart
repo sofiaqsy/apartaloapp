@@ -514,26 +514,20 @@ void main() {
     expect(find.text('Abierto'), findsOneWidget);
   });
 
-  testWidgets('the owner pays a requested expense from Pendientes, choosing how', (tester) async {
+  testWidgets('Pendientes shows expenses to pay with their status, without Pagar gasto', (tester) async {
     await abrir(tester, rol: 'owner');
     await http.runWithClient(() async {
       await tester.tap(find.text('Pendientes'));
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(find.text('Gasto · S/ 120.00'), 200, scrollable: find.byType(Scrollable).last);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Gasto · S/ 120.00'), warnIfMissed: true);
-      await tester.pumpAndSettle();
-      expect(find.text('Pagar gasto'), findsOneWidget);
-      expect(find.text('Cómo se pagó'), findsOneWidget);
-      await tester.tap(find.text('Efectivo'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Guardar'));
+      expect(find.text('Pendiente de pago'), findsOneWidget);
+      await tester.tap(find.text('Gasto · S/ 120.00'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    final pago = pedidos.lastWhere((r) => r.url.path.contains('/registrar/'));
-    expect(pago.url.path, endsWith('/registrar/pagoGasto'));
-    expect(jsonDecode(pago.body)['gastoId'], 'EX-0001');
-    expect(jsonDecode(pago.body)['metodo'], 'cash');
+    expect(find.text('Pagar gasto'), findsNothing);
+    expect(find.text('Cómo se pagó'), findsNothing);
+    expect(pedidos.where((r) => r.url.path.contains('/registrar/')), isEmpty);
   });
 
   testWidgets('staff do not see expenses to pay', (tester) async {

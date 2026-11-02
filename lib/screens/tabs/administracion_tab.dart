@@ -151,7 +151,7 @@ final _campoOperacion = _Campo('operacion', 'Número de operación', _Tipo.texto
     visibleSi: _necesitaOperacion, ayuda: 'Para cruzarlo solo con el banco');
 
 final Map<String, List<_Campo>> _formularios = {
-  // Un gasto es una solicitud de pago: Administración decide cómo pagarlo (Pagar gasto, en Pendientes).
+  // Un gasto es una solicitud de pago: Administración lo paga (Pendientes ya no ofrece Pagar gasto: 1 nov 2026).
   'gasto': [
     // Las categorías y el área sugerida vienen de la base (expense_categories); esta lista es el respaldo.
     const _Campo('categoria', 'Categoría', _Tipo.opcion), // las opciones son la guía de categorías (_guia)
@@ -779,11 +779,11 @@ class _PendientesState extends State<_Pendientes> {
           ..add(('Aprobar y entregar', () => _formulario('aprobarAdelanto', {'solicitudId': q['id']}, sub)))
           ..add(('Rechazar', () => _formulario('rechazarAdelanto', {'solicitudId': q['id']}, sub)));
       }
+      // Los gastos por pagar se ven con su estado, pero Pendientes no ofrece pagarlos (General Manager, 1 nov 2026).
       for (final g in lista('gastosPorPagar')) {
         final id = '${g['id']}';
         fila(id, () => _Fila(id: id, tipo: 'Gasto', icono: Icons.receipt_long, fecha: '${g['expense_date']}', estado: 'Pendiente de pago',
-                monto: num.tryParse('${g['amount']}'), lineas: ['${g['category']}${g['description'] != null ? ' · ${g['description']}' : ''}', '${g['expense_date']} · ${g['created_by']}']))
-            .acciones.add(('Pagar gasto', () => _formulario('pagoGasto', {'gastoId': g['id']}, '${g['category']} · ${_soles(g['amount'])}')));
+            monto: num.tryParse('${g['amount']}'), lineas: ['${g['category']}${g['description'] != null ? ' · ${g['description']}' : ''}', '${g['expense_date']} · ${g['created_by']}']));
       }
       for (final g in lista('porRevisar')) {
         final id = '${g['id']}';
