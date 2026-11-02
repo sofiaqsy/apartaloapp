@@ -150,9 +150,8 @@ const _paraQueCombustible = {
 };
 
 const _metodosPago = {'transfer': 'Transferencia', 'yape': 'Yape', 'plin': 'Plin', 'cash': 'Efectivo'};
-bool _necesitaOperacion(Map<String, dynamic> v, [String clave = 'metodo']) => v[clave] != null && v[clave] != 'cash';
-final _campoOperacion = _Campo('operacion', 'Número de operación', _Tipo.texto,
-    visibleSi: _necesitaOperacion, ayuda: 'Para cruzarlo solo con el banco');
+// El número de operación nunca se pide: llega con el archivo del BCP y la base lo copia al pago al cruzarlo
+// (General Manager, 1 nov 2026).
 
 final Map<String, List<_Campo>> _formularios = {
   // Un gasto es una solicitud de pago: Administración lo paga (Pendientes ya no ofrece Pagar gasto: 1 nov 2026).
@@ -168,7 +167,6 @@ final Map<String, List<_Campo>> _formularios = {
   ],
   'pagoGasto': [
     const _Campo('metodo', 'Cómo se pagó', _Tipo.opcion, opciones: _metodosPago, porDefecto: 'transfer'),
-    _campoOperacion,
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
   // Un adelanto es una solicitud: Administración lo aprueba (eligiendo cómo pagarlo) o lo rechaza.
@@ -181,7 +179,6 @@ final Map<String, List<_Campo>> _formularios = {
   ],
   'aprobarAdelanto': [
     const _Campo('metodo', 'Cómo se entrega', _Tipo.opcion, opciones: _metodosPago, porDefecto: 'transfer'),
-    _campoOperacion,
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
   'rechazarAdelanto': [
@@ -218,7 +215,6 @@ final Map<String, List<_Campo>> _formularios = {
   'pago': [
     const _Campo('monto', 'Monto (vacío = todo lo que se debe)', _Tipo.monto, requerido: false),
     const _Campo('metodo', 'Cómo se pagó', _Tipo.opcion, opciones: _metodosPago, porDefecto: 'transfer'),
-    _campoOperacion,
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
   'ingreso': [
@@ -226,13 +222,11 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('adelantoId', 'Adelanto que se devuelve (código ADV-)', _Tipo.texto, visibleSi: _esDevolucion),
     const _Campo('monto', 'Monto (S/)', _Tipo.monto),
     const _Campo('metodo', 'Cómo entró', _Tipo.opcion, opciones: {'transfer': 'Transferencia', 'yape': 'Yape', 'plin': 'Plin', 'cash': 'Efectivo', 'deposit': 'Depósito'}, porDefecto: 'transfer'),
-    _campoOperacion,
     const _Campo('descripcion', 'Descripción', _Tipo.texto, requerido: false),
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
   'retiro': [
     const _Campo('monto', 'Monto (S/)', _Tipo.monto),
-    const _Campo('operacion', 'Número de operación', _Tipo.texto, requerido: false),
     const _Campo('notas', 'Para qué', _Tipo.texto, requerido: false),
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],

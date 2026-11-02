@@ -173,6 +173,27 @@ void main() {
     expect(find.text('Sin precio (1)'), findsNothing); // no separate sections any more
   });
 
+  testWidgets('a transfer is saved without asking for the operation number (the bank fills it in)', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Pendientes'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Adelanto · S/ 1500.00'), 200, scrollable: find.byType(Scrollable).last);
+      await tester.tap(find.text('Adelanto · S/ 1500.00'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Aprobar y entregar'));
+      await tester.pumpAndSettle();
+      expect(find.text('Transferencia'), findsOneWidget);
+      expect(find.textContaining('Número de operación'), findsNothing);
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final r = pedidos.lastWhere((r) => r.url.path.contains('/registrar/'));
+    final body = jsonDecode(r.body) as Map;
+    expect(body['metodo'], 'transfer');
+    expect(body.containsKey('operacion'), isFalse);
+  });
+
   testWidgets('Proveedor asks what a farmer sells only for a farmer', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
