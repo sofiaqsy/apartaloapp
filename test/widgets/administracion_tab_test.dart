@@ -254,26 +254,22 @@ void main() {
     expect(find.text('Ver más categorías'), findsNothing);
   });
 
-  testWidgets('fuel: when the database cannot tell, one optional tap; the area is left to the database', (tester) async {
+  testWidgets('fuel: no "Para qué" question; the area is left to the database', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
       await tester.tap(find.text('Registrar gasto'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Combustible'));
-      await tester.pumpAndSettle();
-      expect(find.text('¿Para qué fue? (opcional)'), findsOneWidget);
-      await tester.tap(find.text('Compra de café'));
-      await tester.pumpAndSettle();
-      expect(find.textContaining('Área: Compras (automático)'), findsOneWidget);
+      expect(find.textContaining('Para qué fue'), findsNothing);
+      expect(find.textContaining('(automático)'), findsOneWidget);
       await tester.enterText(find.byType(TextField).first, '50');
       await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     final r = pedidos.lastWhere((r) => r.url.path.contains('/registrar/'));
     final body = jsonDecode(r.body) as Map;
-    expect(body['paraQue'], 'compra');
+    expect(body['categoria'], 'Combustible');
+    expect(body.containsKey('paraQue'), isFalse);
     expect(body.containsKey('area'), isFalse);
-    expect(body.containsKey('centro'), isFalse);
   });
 
   testWidgets('fuel: a purchase that day sets the area with no question', (tester) async {
@@ -285,7 +281,7 @@ void main() {
       await tester.tap(find.text('Combustible'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    expect(find.text('¿Para qué fue? (opcional)'), findsNothing);
+    expect(find.textContaining('Para qué fue'), findsNothing);
     expect(find.textContaining('Área: Compras (automático)'), findsOneWidget);
   });
 
@@ -357,7 +353,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Ver más categorías'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Otro').first); // the category, not the "¿Para qué fue?" chip
+      await tester.tap(find.text('Otro'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).first, '30');
       await tester.tap(find.text('Guardar'));

@@ -136,7 +136,8 @@ const _guiaRespaldo = [
   _Categoria('Otro', 'Solo si nada encaja. Escribe siempre qué fue.', null, 'shared', 'coffee', pideDescripcion: true),
 ];
 
-/// "Para qué" del combustible, sólo cuando la base no puede saberlo: área y centro de costo de cada uno.
+/// "Para qué" fue el combustible: Administración lo elige en "Áreas por revisar" cuando la base no pudo saberlo
+/// (el formulario no lo pregunta: General Manager, 1 nov 2026).
 const _paraQueCombustible = {
   'compra': ('Compra de café', 'sourcing', 'coffee'),
   'finca': ('Finca', 'farm', 'farm'),
@@ -280,9 +281,7 @@ class _FormularioSheetState extends State<_FormularioSheet> {
   bool _todasCategorias = false; // "Ver más categorías"
   // Combustible: la base sugiere el área (compra o entrega del mismo día, o la de la persona); si la persona
   // no la cambia, la elige la base al guardar.
-  Map<String, dynamic>? _sugerencia;
   bool _areaTocada = false;
-  String? _paraQue;
   bool _guardando = false;
   String? _error;
 
@@ -340,10 +339,9 @@ class _FormularioSheetState extends State<_FormularioSheet> {
       datos[c.clave] = v is DateTime ? v.toIso8601String().substring(0, 10) : v;
     }
     if (_areaAutomatica) {
-      // La base pone el área (compra o entrega del mismo día, o la de la persona); sólo va el "Para qué" si se tocó.
+      // La base pone el área (compra o entrega del mismo día, o la de la persona); el formulario no pregunta para qué fue.
       datos.remove('area');
       datos.remove('centro');
-      if (_paraQue != null) datos['paraQue'] = _paraQue;
     }
     setState(() { _guardando = true; _error = null; });
     final r = await AdministracionService.registrar(widget.formulario, datos, clave: _clave);
@@ -444,7 +442,6 @@ class _FormularioSheetState extends State<_FormularioSheet> {
     final r = await AdministracionService.sugerirArea('Combustible', f is DateTime ? f.toIso8601String().substring(0, 10) : null);
     if (!mounted || !r.isSuccess || _valores['categoria'] != 'Combustible') return;
     setState(() {
-      _sugerencia = r.data;
       if (!_areaTocada) {
         if (r.data!['area'] != null) _valores['area'] = r.data!['area'];
         if (r.data!['cost_centre'] != null) _valores['centro'] = r.data!['cost_centre'];
@@ -476,7 +473,7 @@ class _FormularioSheetState extends State<_FormularioSheet> {
                 selected: elegida == k,
                 onSelected: (_) {
                   FocusScope.of(context).unfocus();
-                  setState(() { _valores[c.clave] = k; _areaTocada = false; _paraQue = null; _sugerencia = null; });
+                  setState(() { _valores[c.clave] = k; _areaTocada = false; });
                   _sugerirPorCategoria(k);
                   if (k == 'Combustible') _pedirSugerencia();
                 },
@@ -497,23 +494,6 @@ class _FormularioSheetState extends State<_FormularioSheet> {
               if (g.noVa != null) TextSpan(text: '\nNo va aquí: ${g.noVa}', style: TextStyle(color: Colors.grey.shade600)),
             ]), style: const TextStyle(fontSize: 13)),
           ),
-        if (elegida == 'Combustible' && _sugerencia?['source'] == 'to_review' && !_areaTocada) ...[
-          const SizedBox(height: 10),
-          Text('¿Para qué fue? (opcional)', style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 6),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final e in _paraQueCombustible.entries)
-              ChoiceChip(
-                label: Text(e.value.$1),
-                selected: _paraQue == e.key,
-                onSelected: (sel) => setState(() {
-                  _paraQue = sel ? e.key : null;
-                  _valores['area'] = sel ? e.value.$2 : _sugerencia?['area'];
-                  _valores['centro'] = sel ? e.value.$3 : _sugerencia?['cost_centre'];
-                }),
-              ),
-          ]),
-        ],
       ],
     );
   }
