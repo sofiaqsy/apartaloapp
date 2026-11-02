@@ -197,7 +197,7 @@ final Map<String, List<_Campo>> _formularios = {
   ],
   'entrega': [
     const _Campo('agricultorId', 'Agricultor', _Tipo.persona, rol: 'agricultor'),
-    const _Campo('compradorId', 'Recogido por (comprador)', _Tipo.persona, requerido: false, rol: 'comprador'),
+    // "Recogido por (comprador)" se quitó: no hace falta (General Manager, 1 nov 2026; no hay acopiadores).
     const _Campo('estado', 'Café', _Tipo.opcion, opciones: {'parchment': 'Pergamino', 'cherry': 'Cereza', 'green': 'Verde'}, porDefecto: 'parchment'),
     const _Campo('kg', 'Kilos', _Tipo.numero),
     const _Campo('precioKg', 'Precio por kilo (si ya se sabe)', _Tipo.monto, requerido: false, ayuda: 'Con precio queda en "Por pagar" para Administración'),
@@ -544,11 +544,6 @@ class _FormularioSheetState extends State<_FormularioSheet> {
               } else {
                 _valores[c.clave] = p['id'];
                 _nombresElegidos[c.clave] = '${p['nombre']}';
-                // Entrega: se sugiere el comprador que suele recoger a ese agricultor.
-                if (widget.formulario == 'entrega' && c.clave == 'agricultorId' && p['recogidoPor'] != null && _valores['compradorId'] == null) {
-                  _valores['compradorId'] = p['recogidoPor'];
-                  _nombresElegidos['compradorId'] = '${p['recogidoPorNombre'] ?? p['recogidoPor']}';
-                }
               }
             });
           },

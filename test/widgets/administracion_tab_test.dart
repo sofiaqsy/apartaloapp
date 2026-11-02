@@ -331,6 +331,16 @@ void main() {
     expect(pedidos.where((r) => r.url.path.endsWith('/personas/buscar')).map((r) => r.url.queryParameters['offset']).toSet(), containsAll(['0', '20']));
   });
 
+  testWidgets('Registrar entrega does not ask who collected it', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Registrar entrega'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.textContaining('Recogido por'), findsNothing);
+    expect(find.text('Agricultor'), findsOneWidget);
+  });
+
   testWidgets('choosing a farmer by nickname fills the field', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
