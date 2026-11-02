@@ -29,7 +29,7 @@ class _AdministracionTabState extends State<AdministracionTab> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4,
+      length: 3,
       child: Column(
         children: [
           const Padding(
@@ -48,14 +48,13 @@ class _AdministracionTabState extends State<AdministracionTab> {
             labelPadding: const EdgeInsets.symmetric(horizontal: 2),
             labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             unselectedLabelStyle: const TextStyle(fontSize: 13),
-            tabs: const [Tab(text: 'Registrar'), Tab(text: 'Pendientes'), Tab(text: 'Solicitudes'), Tab(text: 'Resumen')],
+            tabs: const [Tab(text: 'Registrar'), Tab(text: 'Pendientes'), Tab(text: 'Resumen')],
           ),
           Expanded(
             child: TabBarView(
               children: [
                 _Registrar(esDueno: _esDueno),
                 _Pendientes(esDueno: _esDueno),
-                _Solicitudes(esDueno: _esDueno),
                 _Resumen(esDueno: _esDueno),
               ],
             ),
@@ -674,8 +673,23 @@ class _Pendientes extends StatefulWidget {
   State<_Pendientes> createState() => _PendientesState();
 }
 
+/// Una fila de Pendientes: qué es, cuánto, detalles, estado y lo que Administración puede hacer con ella.
+class _Fila {
+  _Fila({required this.id, required this.tipo, required this.icono, required this.lineas, required this.fecha,
+      required this.estado, this.monto});
+  final String id;
+  final String tipo;
+  final IconData icono;
+  final List<String> lineas;
+  final String fecha;
+  String estado;
+  final num? monto;
+  final List<(String, Future<void> Function())> acciones = [];
+}
+
 class _PendientesState extends State<_Pendientes> {
   Map<String, dynamic>? _datos;
+  List<dynamic>? _solicitudes;
   String? _error;
 
   @override
@@ -685,9 +699,13 @@ class _PendientesState extends State<_Pendientes> {
   }
 
   Future<void> _cargar() async {
-    final r = await AdministracionService.pendientes();
+    final rs = await Future.wait([AdministracionService.pendientes(), AdministracionService.solicitudes()]);
     if (!mounted) return;
-    setState(() { _datos = r.data; _error = r.isSuccess ? null : r.error; });
+    setState(() {
+      _datos = rs[0].data;
+      _solicitudes = (rs[1].data?['solicitudes'] as List?) ?? [];
+      _error = rs[0].isSuccess ? (rs[1].isSuccess ? null : rs[1].error) : rs[0].error;
+    });
   }
 
   String _soles(dynamic v) => 'S/ ${(num.tryParse('${v ?? 0}') ?? 0).toStringAsFixed(2)}';
@@ -713,105 +731,138 @@ class _PendientesState extends State<_Pendientes> {
     if (r.isSuccess) _cargar();
   }
 
+  Future<void> _formulario(String formulario, Map<String, dynamic> fijos, String subtitulo) async {
+    if (await _abrirFormulario(context, formulario, fijos: fijos, subtitulo: subtitulo)) _cargar();
+  }
+
+  static const _iconos = {'gasto': Icons.receipt_long, 'adelanto': Icons.handshake, 'entrega': Icons.local_shipping};
+  static const _nombres = {'gasto': 'Gasto', 'adelanto': 'Adelanto', 'entrega': 'Entrega'};
+
+  /// Una sola lista: lo que se pidió o registró (como en Solicitudes) y lo que espera a Administración, sin repetir.
+  List<_Fila> _filas() {
+    List<Map> lista(String k) => ((_datos?[k] as List?) ?? []).cast<Map>();
+    final dueno = widget.esDueno;
+    final filas = <String, _Fila>{};
+    for (final s in (_solicitudes ?? []).cast<Map>()) {
+      final id = '${s['id']}';
+      filas[id] = _Fila(
+        id: id, tipo: _nombres[s['kind']] ?? '${s['kind']}', icono: _iconos[s['kind']] ?? Icons.description,
+        monto: num.tryParse('${s['amount'] ?? ''}'), fecha: '${s['request_date'] ?? ''}', estado: '${s['status']}',
+        lineas: [
+          '${s['description'] ?? ''}',
+          '${s['request_date']}${dueno ? ' · ${s['created_by']}' : ''}',
+          if (s['detail'] != null) '${s['detail']}',
+        ].where((t) => t.isNotEmpty).toList(),
+      );
+    }
+    _Fila fila(String id, _Fila Function() nueva) => filas.putIfAbsent(id, nueva);
+
+    for (final d in lista('sinPrecio')) {
+      final id = '${d['id']}';
+      fila(id, () => _Fila(id: id, tipo: 'Entrega', icono: Icons.local_shipping, fecha: '${d['delivery_date']}', estado: 'Sin precio',
+              lineas: ['${d['kg']} kg · ${d['farmer_id']}', '${d['delivery_date']}']))
+          .acciones.add(('Poner precio', () => _formulario('precio', {'entregaId': d['id']}, '$id · ${d['kg']} kg')));
+    }
+    for (final p in lista('porPagar')) {
+      final id = '${p['delivery_id'] ?? p['id']}'; // la compra va en la fila de su entrega
+      final f = fila(id, () => _Fila(id: id, tipo: 'Compra', icono: Icons.shopping_bag, fecha: '${p['purchase_date']}', estado: 'Por pagar',
+          monto: num.tryParse('${p['still_owed']}'), lineas: ['${p['id']} · ${p['farmer_id']}', 'Falta ${_soles(p['still_owed'])}']));
+      if (dueno) f.acciones.add(('Pagar compra', () => _formulario('pago', {'compraId': p['id']}, '${p['id']} · debe ${_soles(p['still_owed'])}')));
+    }
+    if (dueno) {
+      for (final q in lista('adelantosPorAprobar')) {
+        final id = '${q['id']}';
+        final sub = '${q['party']} · ${_soles(q['amount'])}';
+        fila(id, () => _Fila(id: id, tipo: 'Adelanto', icono: Icons.handshake, fecha: '${q['request_date']}', estado: 'Por aprobar',
+                monto: num.tryParse('${q['amount']}'), lineas: ['${q['party']}${q['reason'] != null ? ' · ${q['reason']}' : ''}', '${q['request_date']} · ${q['created_by']}']))
+            .acciones
+          ..add(('Aprobar y entregar', () => _formulario('aprobarAdelanto', {'solicitudId': q['id']}, sub)))
+          ..add(('Rechazar', () => _formulario('rechazarAdelanto', {'solicitudId': q['id']}, sub)));
+      }
+      for (final g in lista('gastosPorPagar')) {
+        final id = '${g['id']}';
+        fila(id, () => _Fila(id: id, tipo: 'Gasto', icono: Icons.receipt_long, fecha: '${g['expense_date']}', estado: 'Pendiente de pago',
+                monto: num.tryParse('${g['amount']}'), lineas: ['${g['category']}${g['description'] != null ? ' · ${g['description']}' : ''}', '${g['expense_date']} · ${g['created_by']}']))
+            .acciones.add(('Pagar gasto', () => _formulario('pagoGasto', {'gastoId': g['id']}, '${g['category']} · ${_soles(g['amount'])}')));
+      }
+      for (final g in lista('porRevisar')) {
+        final id = '${g['id']}';
+        final f = fila(id, () => _Fila(id: id, tipo: 'Gasto', icono: Icons.receipt_long, fecha: '${g['expense_date']}', estado: 'Área por revisar',
+            monto: num.tryParse('${g['amount']}'), lineas: ['${g['category']}${g['description'] != null ? ' · ${g['description']}' : ''}', '${g['expense_date']} · ${g['created_by']}']));
+        final sug = g['suggestion'];
+        if (sug is Map && sug['source'] != 'to_review') f.lineas.add('Sugerido: ${_areas[sug['area']] ?? sug['area']}');
+        f.acciones.add(('Elegir para qué fue', () => _revisarArea(Map<String, dynamic>.from(g))));
+      }
+    }
+    for (final a in lista('adelantos')) {
+      final id = '${a['id']}';
+      fila(id, () => _Fila(id: id, tipo: 'Adelanto', icono: Icons.handshake, fecha: '${a['advance_date']}', estado: 'Abierto',
+          monto: num.tryParse('${a['open_balance']}'), lineas: ['$id · ${a['party_id']}', 'Desde ${a['advance_date']}']));
+    }
+    if (dueno) {
+      for (final b in lista('banco')) {
+        final id = 'banco-${b['id'] ?? b['operation_number'] ?? b['movement_date']}-${b['amount']}';
+        fila(id, () => _Fila(id: id, tipo: 'Banco', icono: Icons.account_balance, fecha: '${b['movement_date']}', estado: 'Por cruzar',
+            monto: num.tryParse('${b['amount']}'), lineas: ['${b['description']}', '${b['movement_date']} · op. ${b['operation_number'] ?? '—'}']));
+      }
+    }
+    final todas = filas.values.toList()..sort((x, y) => y.fecha.compareTo(x.fecha));
+    return todas;
+  }
+
+  Color _color(String estado) {
+    if (estado == 'Pagado' || estado == 'Pagada' || estado == 'Entregado') return Colors.green.shade700;
+    if (estado == 'Rechazado') return Colors.red.shade700;
+    return Colors.orange.shade800;
+  }
+
+  Future<void> _tocar(_Fila f) async {
+    if (f.acciones.isEmpty) return;
+    if (f.acciones.length == 1) return f.acciones.first.$2();
+    final elegida = await showModalBottomSheet<int>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(title: Text('${f.tipo}${f.monto != null ? ' · ${_soles(f.monto)}' : ''}', style: const TextStyle(fontWeight: FontWeight.w600))),
+          for (var i = 0; i < f.acciones.length; i++) ListTile(title: Text(f.acciones[i].$1), onTap: () => Navigator.pop(ctx, i)),
+        ]),
+      ),
+    );
+    if (elegida != null) await f.acciones[elegida].$2();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_error != null) return _Mensaje(texto: _error!, onReintentar: _cargar);
-    if (_datos == null) return const Center(child: CircularProgressIndicator());
-    List<dynamic> lista(String k) => (_datos![k] as List?) ?? [];
+    if (_datos == null || _solicitudes == null) return const Center(child: CircularProgressIndicator());
+    final filas = _filas();
     return RefreshIndicator(
       onRefresh: _cargar,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _Seccion(titulo: 'Sin precio', vacio: 'Ninguna entrega espera precio', items: [
-            for (final d in lista('sinPrecio'))
-              ListTile(
-                title: Text('${d['id']} · ${d['kg']} kg'),
-                subtitle: Text('${d['farmer_id']} · ${d['delivery_date']}'),
-                trailing: const Icon(Icons.price_change),
-                onTap: () async {
-                  if (await _abrirFormulario(context, 'precio', fijos: {'entregaId': d['id']}, subtitulo: '${d['id']} · ${d['kg']} kg')) _cargar();
-                },
-              ),
-          ]),
-          if (widget.esDueno)
-            _Seccion(titulo: 'Adelantos por aprobar', vacio: 'Ningún adelanto espera aprobación', items: [
-              for (final q in lista('adelantosPorAprobar'))
-                ListTile(
-                  title: Text('${q['party']} · ${_soles(q['amount'])}'),
-                  subtitle: Text('${q['reason'] ?? ''}${q['reason'] != null ? ' · ' : ''}${q['request_date']} · ${q['created_by']}'),
-                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                    IconButton(
-                      icon: Icon(Icons.close, color: Colors.red.shade600),
-                      tooltip: 'Rechazar',
-                      onPressed: () async {
-                        if (await _abrirFormulario(context, 'rechazarAdelanto', fijos: {'solicitudId': q['id']}, subtitulo: '${q['party']} · ${_soles(q['amount'])}')) _cargar();
-                      },
+      child: filas.isEmpty
+          ? ListView(children: const [Padding(padding: EdgeInsets.all(24), child: Text('No hay nada pendiente', textAlign: TextAlign.center))])
+          : ListView.separated(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: filas.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (_, i) {
+                final f = filas[i];
+                return ListTile(
+                  leading: Icon(f.icono),
+                  title: Text('${f.tipo}${f.monto != null ? ' · ${_soles(f.monto)}' : ''}'),
+                  subtitle: Text(f.lineas.join('\n')),
+                  isThreeLine: f.lineas.length > 2,
+                  trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(color: _color(f.estado).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                      child: Text(f.estado, style: TextStyle(color: _color(f.estado), fontWeight: FontWeight.w600, fontSize: 12)),
                     ),
-                    IconButton(
-                      icon: Icon(Icons.check_circle, color: Colors.green.shade700),
-                      tooltip: 'Aprobar',
-                      onPressed: () async {
-                        if (await _abrirFormulario(context, 'aprobarAdelanto', fijos: {'solicitudId': q['id']}, subtitulo: '${q['party']} · ${_soles(q['amount'])}')) _cargar();
-                      },
-                    ),
+                    if (f.acciones.isNotEmpty) Icon(Icons.chevron_right, size: 18, color: Colors.grey.shade500),
                   ]),
-                ),
-            ]),
-          _Seccion(titulo: 'Compras por pagar', vacio: 'No se debe ninguna compra', items: [
-            for (final p in lista('porPagar'))
-              ListTile(
-                title: Text('${p['id']} · debe ${_soles(p['still_owed'])}'),
-                subtitle: Text('${p['farmer_id']} · ${p['purchase_date']}'),
-                trailing: widget.esDueno ? const Icon(Icons.payments) : null,
-                onTap: !widget.esDueno
-                    ? null
-                    : () async {
-                        if (await _abrirFormulario(context, 'pago', fijos: {'compraId': p['id']}, subtitulo: '${p['id']} · debe ${_soles(p['still_owed'])}')) _cargar();
-                      },
-              ),
-          ]),
-          if (widget.esDueno)
-            _Seccion(titulo: 'Gastos por pagar', vacio: 'Ningún gasto espera pago', items: [
-              for (final g in lista('gastosPorPagar'))
-                ListTile(
-                  title: Text('${g['category']} · ${_soles(g['amount'])}'),
-                  subtitle: Text('${g['description'] ?? ''}${g['description'] != null ? ' · ' : ''}${g['expense_date']} · ${g['created_by']}'),
-                  trailing: const Icon(Icons.payments),
-                  onTap: () async {
-                    if (await _abrirFormulario(context, 'pagoGasto', fijos: {'gastoId': g['id']}, subtitulo: '${g['category']} · ${_soles(g['amount'])}')) _cargar();
-                  },
-                ),
-            ]),
-          if (widget.esDueno)
-            _Seccion(titulo: 'Áreas por revisar', vacio: 'Ningún gasto espera revisión', items: [
-              for (final g in lista('porRevisar'))
-                ListTile(
-                  title: Text('${g['category']} · ${_soles(g['amount'])}'),
-                  subtitle: Text('${g['description'] ?? ''}${g['description'] != null ? ' · ' : ''}${g['expense_date']} · ${g['created_by']}'
-                      '${(g['suggestion'] is Map && g['suggestion']['source'] != 'to_review') ? '\nSugerido: ${_areas[g['suggestion']['area']] ?? g['suggestion']['area']}' : ''}'),
-                  trailing: const Icon(Icons.rule),
-                  onTap: () => _revisarArea(Map<String, dynamic>.from(g as Map)),
-                ),
-            ]),
-          _Seccion(titulo: 'Adelantos abiertos', vacio: 'Ningún adelanto abierto', items: [
-            for (final a in lista('adelantos'))
-              ListTile(
-                title: Text('${a['id']} · ${a['party_id']} · abierto ${_soles(a['open_balance'])}'),
-                subtitle: Text('Desde ${a['advance_date']}'),
-              ),
-          ]),
-          if (widget.esDueno)
-            _Seccion(titulo: 'Banco por cruzar', vacio: 'Todo el banco está cruzado', items: [
-              for (final b in lista('banco'))
-                ListTile(
-                  title: Text('${b['description']} · ${_soles(b['amount'])}'),
-                  subtitle: Text('${b['movement_date']} · op. ${b['operation_number'] ?? '—'}'
-                      '${b['suggested_payment'] != null ? ' · sugerido ${b['suggested_payment']}' : ''}'),
-                ),
-            ]),
-        ],
-      ),
+                  onTap: f.acciones.isEmpty ? null : () => _tocar(f),
+                );
+              },
+            ),
     );
   }
 }
@@ -864,76 +915,6 @@ class _Mensaje extends StatelessWidget {
 // ─── Mis solicitudes ─────────────────────────────────────────────────────────
 
 /// Lo que cada persona registró o pidió y en qué quedó. Administración ve las de todos.
-class _Solicitudes extends StatefulWidget {
-  const _Solicitudes({required this.esDueno});
-  final bool esDueno;
-
-  @override
-  State<_Solicitudes> createState() => _SolicitudesState();
-}
-
-class _SolicitudesState extends State<_Solicitudes> {
-  List<dynamic>? _lista;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _cargar();
-  }
-
-  Future<void> _cargar() async {
-    final r = await AdministracionService.solicitudes();
-    if (!mounted) return;
-    setState(() { _lista = (r.data?['solicitudes'] as List?) ?? []; _error = r.isSuccess ? null : r.error; });
-  }
-
-  static const _iconos = {'gasto': Icons.receipt_long, 'adelanto': Icons.handshake, 'entrega': Icons.local_shipping};
-  static const _nombres = {'gasto': 'Gasto', 'adelanto': 'Adelanto', 'entrega': 'Entrega'};
-
-  Color _color(String estado) {
-    if (estado == 'Pagado' || estado == 'Pagada' || estado == 'Entregado') return Colors.green.shade700;
-    if (estado == 'Rechazado') return Colors.red.shade700;
-    return Colors.orange.shade800;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_error != null) return _Mensaje(texto: _error!, onReintentar: _cargar);
-    if (_lista == null) return const Center(child: CircularProgressIndicator());
-    return RefreshIndicator(
-      onRefresh: _cargar,
-      child: _lista!.isEmpty
-          ? ListView(children: const [Padding(padding: EdgeInsets.all(24), child: Text('Todavía no hay solicitudes', textAlign: TextAlign.center))])
-          : ListView.separated(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: _lista!.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (_, i) {
-                final s = _lista![i] as Map;
-                final estado = '${s['status']}';
-                final monto = s['amount'] == null ? '' : ' · S/ ${(num.tryParse('${s['amount']}') ?? 0).toStringAsFixed(2)}';
-                return ListTile(
-                  leading: Icon(_iconos[s['kind']] ?? Icons.description),
-                  title: Text('${_nombres[s['kind']] ?? s['kind']}$monto'),
-                  subtitle: Text([
-                    '${s['description'] ?? ''}',
-                    '${s['request_date']}${widget.esDueno ? ' · ${s['created_by']}' : ''}',
-                    if (s['detail'] != null) '${s['detail']}',
-                  ].where((t) => t.isNotEmpty).join('\n')),
-                  isThreeLine: s['detail'] != null,
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: _color(estado).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                    child: Text(estado, style: TextStyle(color: _color(estado), fontWeight: FontWeight.w600, fontSize: 12)),
-                  ),
-                );
-              },
-            ),
-    );
-  }
-}
-
 // ─── Mi área ─────────────────────────────────────────────────────────────────
 
 /// Los gastos del área de la persona (Administración ve todas): por mes y los últimos.
