@@ -113,7 +113,7 @@ void main() {
       expect(find.text(t), findsOneWidget);
     }
     expect(find.text('Solicitudes'), findsNothing);
-    for (final t in ['Registrar gasto', 'Registrar entrega', 'Solicitar adelanto', 'Registrar proveedor']) {
+    for (final t in ['Registrar gasto', 'Registrar café recibido', 'Solicitar adelanto', 'Registrar proveedor']) {
       expect(find.text(t), findsOneWidget);
     }
     expect(find.text('Pasar dinero a caja'), findsNothing);
@@ -316,7 +316,7 @@ void main() {
   testWidgets('choosing a farmer: a search screen in pages, closed with the X, nothing chosen', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
-      await tester.tap(find.text('Registrar entrega'));
+      await tester.tap(find.text('Registrar café recibido'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Agricultor'));
       await tester.pumpAndSettle();
@@ -333,7 +333,7 @@ void main() {
   testWidgets('scrolling down loads the next page of people', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
-      await tester.tap(find.text('Registrar entrega'));
+      await tester.tap(find.text('Registrar café recibido'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Agricultor'));
       await tester.pumpAndSettle();
@@ -344,10 +344,20 @@ void main() {
     expect(pedidos.where((r) => r.url.path.endsWith('/personas/buscar')).map((r) => r.url.queryParameters['offset']).toSet(), containsAll(['0', '20']));
   });
 
-  testWidgets('Registrar entrega does not ask who collected it', (tester) async {
+  testWidgets('the coffee button says it records coffee we received', (tester) async {
+    await abrir(tester, rol: 'staff');
+    expect(find.text('Registrar entrega'), findsNothing);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Registrar café recibido'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Registrar café recibido'), findsOneWidget); // the form title repeats the button
+  });
+
+  testWidgets('Registrar café recibido does not ask who collected it', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
-      await tester.tap(find.text('Registrar entrega'));
+      await tester.tap(find.text('Registrar café recibido'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     expect(find.textContaining('Recogido por'), findsNothing);
@@ -357,7 +367,7 @@ void main() {
   testWidgets('choosing a farmer by nickname fills the field', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
-      await tester.tap(find.text('Registrar entrega'));
+      await tester.tap(find.text('Registrar café recibido'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Agricultor'));
       await tester.pumpAndSettle();

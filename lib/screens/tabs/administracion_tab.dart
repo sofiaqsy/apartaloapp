@@ -243,15 +243,15 @@ bool _esDevolucion(Map<String, dynamic> v) => v['tipo'] == 'advance_return';
 // Nombres de acción (verbo + cosa), iguales en el botón y en el título del formulario.
 const _titulos = {
   'gasto': 'Registrar gasto', 'pagoGasto': 'Pagar gasto', 'adelanto': 'Solicitar adelanto', 'aprobarAdelanto': 'Aprobar adelanto',
-  'rechazarAdelanto': 'Rechazar adelanto', 'proveedor': 'Registrar proveedor', 'entrega': 'Registrar entrega',
-  'precio': 'Poner precio a la entrega', 'pago': 'Pagar compra', 'ingreso': 'Registrar ingreso', 'retiro': 'Pasar dinero a caja',
+  'rechazarAdelanto': 'Rechazar adelanto', 'proveedor': 'Registrar proveedor', 'entrega': 'Registrar café recibido',
+  'precio': 'Poner precio al café recibido', 'pago': 'Pagar compra', 'ingreso': 'Registrar ingreso', 'retiro': 'Pasar dinero a caja',
 };
 
 // Lo que pasó y lo que sigue, después de guardar.
 const _hecho = {
   'gasto': 'Gasto registrado ✓ Administración lo pagará', 'pagoGasto': 'Gasto pagado ✓',
   'adelanto': 'Adelanto solicitado ✓ Administración lo revisará', 'aprobarAdelanto': 'Adelanto aprobado y entregado ✓',
-  'rechazarAdelanto': 'Adelanto rechazado', 'proveedor': 'Proveedor registrado ✓', 'entrega': 'Entrega registrada ✓',
+  'rechazarAdelanto': 'Adelanto rechazado', 'proveedor': 'Proveedor registrado ✓', 'entrega': 'Café recibido registrado ✓',
   'precio': 'Precio puesto ✓ Lo que falta queda por pagar', 'pago': 'Compra pagada ✓', 'retiro': 'Dinero pasado a caja ✓',
 };
 
@@ -603,7 +603,7 @@ class _Registrar extends StatelessWidget {
     // Todos registran y piden; sólo Administración mueve dinero (Pagar compra, Retiro a caja).
     final botones = <(String, IconData, String)>[
       ('gasto', Icons.receipt_long, _titulos['gasto']!),
-      ('entrega', Icons.local_shipping, _titulos['entrega']!),
+      ('entrega', Icons.move_to_inbox, _titulos['entrega']!), // café que llega a nosotros
       ('adelanto', Icons.handshake, _titulos['adelanto']!),
       ('proveedor', Icons.person_add_alt_1, _titulos['proveedor']!),
       if (esDueno) ('pago', Icons.payments, 'Pagar compras'),
@@ -734,8 +734,8 @@ class _PendientesState extends State<_Pendientes> {
     if (await _abrirFormulario(context, formulario, fijos: fijos, subtitulo: subtitulo)) _cargar();
   }
 
-  static const _iconos = {'gasto': Icons.receipt_long, 'adelanto': Icons.handshake, 'entrega': Icons.local_shipping};
-  static const _nombres = {'gasto': 'Gasto', 'adelanto': 'Adelanto', 'entrega': 'Entrega'};
+  static const _iconos = {'gasto': Icons.receipt_long, 'adelanto': Icons.handshake, 'entrega': Icons.move_to_inbox};
+  static const _nombres = {'gasto': 'Gasto', 'adelanto': 'Adelanto', 'entrega': 'Café recibido'};
 
   /// Una sola lista: lo que se pidió o registró (como en Solicitudes) y lo que espera a Administración, sin repetir.
   List<_Fila> _filas() {
@@ -758,7 +758,7 @@ class _PendientesState extends State<_Pendientes> {
 
     for (final d in lista('sinPrecio')) {
       final id = '${d['id']}';
-      fila(id, () => _Fila(id: id, tipo: 'Entrega', icono: Icons.local_shipping, fecha: '${d['delivery_date']}', estado: 'Sin precio',
+      fila(id, () => _Fila(id: id, tipo: 'Café recibido', icono: Icons.move_to_inbox, fecha: '${d['delivery_date']}', estado: 'Sin precio',
               lineas: ['${d['kg']} kg · ${d['farmer_id']}', '${d['delivery_date']}']))
           .acciones.add(('Poner precio', () => _formulario('precio', {'entregaId': d['id']}, '$id · ${d['kg']} kg')));
     }
