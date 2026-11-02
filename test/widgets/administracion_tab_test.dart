@@ -41,6 +41,7 @@ void main() {
           {'category': 'Transporte', 'what_goes_here': 'Pasajes y movilidad de personas.', 'not_here': 'Gasolina (Combustible).', 'default_area': 'sourcing', 'default_cost_centre': 'coffee', 'main': true},
           {'category': 'Combustible', 'what_goes_here': 'Gasolina y petróleo.', 'default_area': 'fulfillment', 'default_cost_centre': 'coffee', 'main': true},
           {'category': 'Mano de obra', 'what_goes_here': 'Pago por día.', 'default_area': 'farm', 'default_cost_centre': 'farm', 'main': true},
+          {'category': 'Personal', 'what_goes_here': 'Sueldo fijo.', 'default_area': 'people', 'default_cost_centre': 'coffee', 'main': true},
           {'category': 'Flete', 'what_goes_here': 'Envío al cliente.', 'default_area': 'fulfillment', 'default_cost_centre': 'coffee', 'main': false},
           {'category': 'Otro', 'what_goes_here': 'Solo si nada encaja.', 'default_area': 'shared', 'default_cost_centre': 'coffee', 'main': false, 'needs_description': true},
         ],
@@ -226,6 +227,18 @@ void main() {
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     expect(find.textContaining('Área: Logística'), findsOneWidget);
+  });
+
+  testWidgets('Personal is under Ver más categorías even if the database marks it main', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Registrar gasto'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Personal'), findsNothing);
+    await tester.tap(find.text('Ver más categorías'));
+    await tester.pumpAndSettle();
+    expect(find.text('Personal'), findsOneWidget);
   });
 
   testWidgets('Registrar gasto opens with Combustible first and already chosen', (tester) async {

@@ -106,8 +106,12 @@ class _Categoria {
 
   factory _Categoria.desde(Map m) => _Categoria('${m['category']}', '${m['what_goes_here'] ?? ''}', m['not_here'] as String?,
       '${m['default_area'] ?? 'shared'}', '${m['default_cost_centre'] ?? 'coffee'}',
-      principal: m['main'] == true, pideDescripcion: m['needs_description'] == true);
+      principal: m['main'] == true && !_soloEnVerMas.contains('${m['category']}'), pideDescripcion: m['needs_description'] == true);
 }
+
+/// Categorías que van bajo "Ver más categorías" aunque la base las marque como principales
+/// (General Manager, 1 nov 2026: Personal).
+const _soloEnVerMas = {'Personal'};
 
 /// El gasto más frecuente: va primero y ya elegido al abrir Registrar gasto (General Manager, 1 nov 2026).
 const _categoriaInicial = 'Combustible';
@@ -116,7 +120,7 @@ const _guiaRespaldo = [
   _Categoria('Combustible', 'Gasolina y petróleo de la camioneta, el carro o una máquina.', 'Gas GLP de la tostadora (Gas).', 'fulfillment', 'coffee', principal: true),
   _Categoria('Transporte', 'Pasajes y movilidad de personas, y traslado del café comprado antes de venderlo.', 'Gasolina (Combustible). Envío al cliente (Flete).', 'sourcing', 'coffee', principal: true),
   _Categoria('Mano de obra', 'Pago por día, por kilo o por lata: jornaleros, cosechadores, maquinista.', 'Sueldos mensuales (Personal).', 'farm', 'farm', principal: true),
-  _Categoria('Personal', 'Sueldo fijo o mensual, ayuda médica a trabajadores, cursos.', 'Jornales (Mano de obra).', 'people', 'coffee', principal: true),
+  _Categoria('Personal', 'Sueldo fijo o mensual, ayuda médica a trabajadores, cursos.', 'Jornales (Mano de obra).', 'people', 'coffee'),
   _Categoria('Insumos', 'Abono, plantas, almácigo, fungicidas, herramientas de campo.', 'Bolsas de café (Empaque).', 'farm', 'farm', principal: true),
   _Categoria('Construcción', 'Obras: local, cafetería, cocina, techo, piso, carretera. Escribe qué obra.', 'Reparaciones (Mantenimiento).', 'strategy', 'venue', principal: true, pideDescripcion: true),
   _Categoria('Mantenimiento', 'Reparar máquinas y vehículos. Repara, no compra.', 'Máquina nueva (inversión).', 'production', 'coffee', principal: true),
