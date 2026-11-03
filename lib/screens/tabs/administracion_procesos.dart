@@ -768,10 +768,11 @@ class _Ficha extends StatelessWidget {
             Text(detalle!, style: TextStyle(fontSize: 13, color: Colors.grey.shade700), maxLines: 2, overflow: TextOverflow.ellipsis),
         ]),
       ),
-      // La etiqueta de la derecha nunca empuja la fila fuera de la pantalla: comparte el ancho con el texto y se corta.
+      // La etiqueta siempre pegada a la derecha, junto a la flecha (General Manager, 3 nov 2026); el texto toma el
+      // resto. Nunca más de 150 de ancho, así no empuja la fila fuera de la pantalla.
       if (fin != null) ...[
         const SizedBox(width: 8),
-        Flexible(child: Align(alignment: Alignment.centerRight, widthFactor: 1, child: fin!)),
+        ConstrainedBox(constraints: const BoxConstraints(maxWidth: 150), child: fin!),
       ],
       if (onTap != null) Icon(Icons.chevron_right, color: Colors.grey.shade600),
     ]);
@@ -893,7 +894,7 @@ mixin _ProveedoresDelProceso<T extends StatefulWidget> on State<T> {
             onChanged: _buscarProveedor,
           ),
         ),
-        _encabezado('Proveedores', _totalProv == null ? '' : '$_totalProv en total'),
+        _encabezado('Proveedores', _totalProv == null ? '' : '$_totalProv'),
         for (final p in _proveedores)
           _Ficha(
             inicio: _Insignia(_inicialesProv('${p['nombre'] ?? ''}'), tono: p['agricultor'] == true ? Colors.green : Colors.blue),
@@ -969,7 +970,6 @@ class _LogisticaScreenState extends _ProcesoState<_LogisticaScreen> with _Provee
               detalle: 'Pedido ${p['numero'] ?? ''}',
               fin: _Pildora(_estados[p['estado']] ?? '${p['estado']}', p['estado'] == 'shipped' ? Colors.blue : Colors.orange),
             ),
-          if (abiertos > pedidos.length) _vacio('Se ven los ${pedidos.length} más antiguos; el resto está en Pedidos.'),
         ],
       ];
     });
@@ -1040,9 +1040,6 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
     if (r.isSuccess) cargar();
   }
 
-  Widget _masAntiguos(int total, int vistos) =>
-      total > vistos ? _vacio('Se ven los $vistos más antiguos; paga estos primero y aparecerán los demás.') : const SizedBox.shrink();
-
   @override
   Widget build(BuildContext context) {
     return pantalla('Finanzas', (d) {
@@ -1090,7 +1087,6 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
                       subtitulo: '${c['agricultor'] ?? c['id']} · pidieron ${_soles(c['monto'] ?? c['debe'])}',
                       iniciales: {if (c['monto'] != null) 'monto': c['monto']}),
             ),
-          _masAntiguos(n('compras'), compras.length),
         ] else if (_pestana == 1) ...[
           if (gastos.isEmpty) _vacio('No hay gastos por pagar.'),
           for (final g in gastos)
@@ -1105,7 +1101,6 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
               fin: _Pildora(_soles(g['monto']), Colors.orange),
               onTap: () => formulario('pagoGasto', fijos: {'gastoId': g['id']}, subtitulo: '${g['categoria']} · ${_soles(g['monto'])}'),
             ),
-          _masAntiguos(n('gastos'), gastos.length),
         ] else ...[
           if (adelantos.isEmpty) _vacio('No hay adelantos por aprobar.'),
           for (final a in adelantos)
@@ -1117,7 +1112,6 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
               fin: _Pildora(_soles(a['monto']), Colors.purple),
               onTap: () => _adelanto(a),
             ),
-          _masAntiguos(n('adelantos'), adelantos.length),
         ],
       ];
     });
@@ -1204,7 +1198,6 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
   final List<Map<String, dynamic>> _compras = [];
   bool _cargandoCompras = false;
   bool _hayMasCompras = true;
-  int? _totalCompras;
   String? _errorCompras;
 
   @override
@@ -1223,7 +1216,6 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
       if (r.isSuccess) {
         _compras.addAll(_lista(r.data!['compras']));
         _hayMasCompras = r.data!['hayMas'] == true;
-        _totalCompras = (r.data!['total'] as num?)?.toInt();
       } else {
         _errorCompras = r.error;
         _hayMasCompras = false;
@@ -1345,8 +1337,6 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
           const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
         else if (_compras.isEmpty)
           _vacio('Todavía no hay compras.')
-        else
-          _vacio('${_totalCompras ?? _compras.length} ${(_totalCompras ?? _compras.length) == 1 ? 'compra' : 'compras'} en total'),
       ];
 
   @override
@@ -1963,7 +1953,7 @@ class _ElegirProductoState extends State<_ElegirProducto> {
                     return const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()));
                   return Padding(
                     padding: const EdgeInsets.all(24),
-                    child: Text(_productos.isEmpty ? 'Ningún producto con ese nombre' : '${_productos.length} en total',
+                    child: Text(_productos.isEmpty ? 'Ningún producto con ese nombre' : '',
                         textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600)),
                   );
                 }

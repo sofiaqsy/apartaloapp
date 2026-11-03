@@ -1253,7 +1253,7 @@ class _ElegirPersonaState extends State<_ElegirPersona> {
                   if (_cargando || _hayMas) return const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()));
                   return Padding(
                     padding: const EdgeInsets.all(24),
-                    child: Text(_personas.isEmpty ? 'Nadie con ese nombre' : '${_personas.length} en total',
+                    child: Text(_personas.isEmpty ? 'Nadie con ese nombre' : '', // al final de la lista no va texto
                         textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600)),
                   );
                 }

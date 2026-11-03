@@ -928,7 +928,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Proveedores'));
       await tester.pumpAndSettle();
-      expect(find.text('31 en total'), findsOneWidget);
+      expect(find.text('31'), findsOneWidget); // the count goes in the header, never at the end
       final primero = pedidos.lastWhere((r) => r.url.path.endsWith('/personas/buscar'));
       expect(primero.url.queryParameters['rol'], 'agricultor'); // Compras: only the farmers who sell coffee
       expect(pedidos.where((r) => r.url.path.endsWith('/personas/buscar')).length, 1); // only the first page
@@ -936,13 +936,13 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
       expect(find.text('Pedro Ramírez Ñique'), findsOneWidget); // found by nickname
-      expect(find.text('1 en total'), findsOneWidget);
+      expect(find.text('1'), findsWidgets);
       expect(find.byIcon(Icons.chevron_right), findsNothing); // information, not buttons
       await tester.enterText(find.widgetWithText(TextField, 'Buscar por nombre o apodo'), '');
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
       final antes = pedidos.where((r) => r.url.path.endsWith('/personas/buscar')).length;
-      await tester.drag(find.text('31 en total'), const Offset(0, -3000));
+      await tester.drag(find.text('31'), const Offset(0, -3000));
       await tester.pumpAndSettle();
       expect(pedidos.where((r) => r.url.path.endsWith('/personas/buscar')).length, greaterThan(antes)); // next page
     }, () => MockClient((req) async => responder(req)));
@@ -992,7 +992,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Cafe Uno'), findsOneWidget); // the oldest open order first
       expect(find.text('En camino'), findsWidgets);
-      expect(find.text('Se ven los 2 más antiguos; el resto está en Pedidos.'), findsOneWidget);
+      expect(find.textContaining('Se ven los'), findsNothing); // no text at the end of a list
       await tester.tap(find.text('Registrar gasto'));
       await tester.pumpAndSettle();
       await tester.enterText(find.widgetWithText(TextField, 'Monto (S/)'), '35');
@@ -1140,5 +1140,28 @@ void main() {
       expect(find.text(t), findsWidgets, reason: t);
     }
     expect(find.textContaining('ADV-007 · S/ 500 · usado en café S/ 300'), findsOneWidget);
+  });
+
+  testWidgets('lists end without a text: no "en total" and no "Se ven los…" at the bottom', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      await tester.drag(find.text('Pedro Ramírez Ñique'), const Offset(0, -6000));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.textContaining('en total'), findsNothing);
+    expect(find.textContaining('Se ven los'), findsNothing);
+  });
+
+  testWidgets('the label of a row sits at the right edge, next to the arrow', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final flecha = tester.getTopLeft(find.byIcon(Icons.chevron_right).first).dx;
+    final etiqueta = tester.getTopRight(find.text('Sin precio').first).dx;
+    expect(flecha - etiqueta, lessThan(20)); // label right before the arrow
   });
 }
