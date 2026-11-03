@@ -3,8 +3,11 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/api_service.dart';
 import 'pedidos/helpers/estado_pago_helper.dart';
 
+/// Reporte de ventas (pedidos de la tienda). Vive en Administración → Registrar → Comercialización, que pone
+/// arriba sus 4 datos en [encabezado]; con encabezado no se repiten las tarjetas de semana, mes y mes anterior.
 class ReportesTab extends StatefulWidget {
-  const ReportesTab({super.key});
+  const ReportesTab({super.key, this.encabezado});
+  final Widget? encabezado;
 
   @override
   State<ReportesTab> createState() => _ReportesTabState();
@@ -243,27 +246,32 @@ class _ReportesTabState extends State<ReportesTab> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (widget.encabezado != null) ...[widget.encabezado!, const SizedBox(height: 20)],
           // ── Header ──
           Row(
             children: [
-              const Text('Reportes', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-              const Spacer(),
+              Expanded(
+                child: Text('Reporte de ventas',
+                    style: TextStyle(fontSize: widget.encabezado != null ? 20 : 24, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+              ),
               Text('${_pedidos.length} pedidos', style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
             ],
           ),
           const SizedBox(height: 16),
 
-          // ── Cards de resumen ──
-          Row(
-            children: [
-              Expanded(child: _statCard('Esta semana', semana['total'], semana['count'], Colors.blue)),
-              const SizedBox(width: 8),
-              Expanded(child: _statCard('Este mes', mesActual['total'], mesActual['count'], Colors.green)),
-              const SizedBox(width: 8),
-              Expanded(child: _statCard('Mes anterior', maPrevTotal, maPrevCount, Colors.purple)),
-            ],
-          ),
-          const SizedBox(height: 20),
+          // ── Cards de resumen ── (con encabezado, los 4 datos de Comercialización ya lo dicen)
+          if (widget.encabezado == null) ...[
+            Row(
+              children: [
+                Expanded(child: _statCard('Esta semana', semana['total'], semana['count'], Colors.blue)),
+                const SizedBox(width: 8),
+                Expanded(child: _statCard('Este mes', mesActual['total'], mesActual['count'], Colors.green)),
+                const SizedBox(width: 8),
+                Expanded(child: _statCard('Mes anterior', maPrevTotal, maPrevCount, Colors.purple)),
+              ],
+            ),
+            const SizedBox(height: 20),
+          ],
 
           // ── Top productos ──
           _sectionHeader(Icons.star_rounded, 'Productos más vendidos', Colors.amber, ''),
@@ -352,7 +360,7 @@ class _ReportesTabState extends State<ReportesTab> {
         children: [
           Icon(icon, color: color, size: 20),
           const SizedBox(width: 8),
-          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          Flexible(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
           if (badge.isNotEmpty && badge != '0') ...[
             const SizedBox(width: 8),
             Container(
@@ -378,7 +386,7 @@ class _ReportesTabState extends State<ReportesTab> {
         children: [
           Icon(icon, color: color, size: 20),
           const SizedBox(width: 10),
-          Text(msg, style: TextStyle(color: Colors.grey.shade600)),
+          Flexible(child: Text(msg, style: TextStyle(color: Colors.grey.shade600))),
         ],
       ),
     );

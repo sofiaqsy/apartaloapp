@@ -1016,7 +1016,6 @@ class _Resumen extends StatefulWidget {
 class _ResumenState extends State<_Resumen> {
   List<dynamic> _meses = [];
   String? _error;
-  bool _verVentas = false;
 
   @override
   void initState() {
@@ -1034,27 +1033,17 @@ class _ResumenState extends State<_Resumen> {
 
   @override
   Widget build(BuildContext context) {
-    // Los reportes de ventas de siempre, sin cambios.
-    if (_verVentas || !widget.esDueno) {
-      return Column(children: [
-        if (widget.esDueno)
-          Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () => setState(() => _verVentas = false), icon: const Icon(Icons.arrow_back), label: const Text('Dinero del mes'))),
-        const Expanded(child: ReportesTab()),
-      ]);
+    // El reporte de ventas se mudó a Registrar → Comercialización (General Manager, 3 nov 2026).
+    if (!widget.esDueno) {
+      return const Center(
+        child: Padding(padding: EdgeInsets.all(24), child: Text('El reporte de ventas está en Registrar → Comercialización.', textAlign: TextAlign.center)),
+      );
     }
     return RefreshIndicator(
       onRefresh: _cargar,
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          ListTile(
-            leading: const Icon(Icons.bar_chart_rounded),
-            title: const Text('Reportes de ventas'),
-            subtitle: const Text('Ventas por mes, por cobrar, clientes'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => setState(() => _verVentas = true),
-          ),
-          const Divider(),
           const Text('Dinero del mes', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!)),
           if (_error == null && _meses.isEmpty) const Padding(padding: EdgeInsets.only(top: 8), child: Text('Aún no hay movimientos')),

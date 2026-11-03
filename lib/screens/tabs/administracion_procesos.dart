@@ -43,6 +43,7 @@ class _Registrar extends StatefulWidget {
 class _RegistrarState extends State<_Registrar> {
   Map<String, dynamic>? _compras;
   Map<String, dynamic>? _produccion;
+  Map<String, dynamic>? _comercial;
   String? _error;
 
   @override
@@ -59,6 +60,7 @@ class _RegistrarState extends State<_Registrar> {
       if (r.isSuccess) {
         _compras = _mapa(r.data!['compras']);
         _produccion = _mapa(r.data!['produccion']);
+        _comercial = _mapa(r.data!['comercial']);
       }
     });
   }
@@ -80,6 +82,19 @@ class _RegistrarState extends State<_Registrar> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // Con tres tarjetas no cabe todo: los botones de todos los días van arriba, siempre a la vista.
+          _Acciones(compactas: true, acciones: [
+            (
+              Icons.receipt_long,
+              _titulos['gasto']!,
+              () async {
+                if (await _abrirFormulario(context, 'gasto')) _cargar();
+              }
+            ),
+            if (widget.esDueno) (Icons.account_balance_wallet, _titulos['retiro']!, () => _abrirFormulario(context, 'retiro')),
+          ]),
+          const SizedBox(height: 12),
+          // Una tarjeta por proceso, en el orden del café: se compra, se produce, se vende.
           _TarjetaProceso(
             titulo: 'Compras',
             indicadores: _compras == null ? null : _indicadoresCompras(_compras!, widget.esDueno),
@@ -93,18 +108,13 @@ class _RegistrarState extends State<_Registrar> {
             error: _error,
             onTap: () => _entrar(const _ProduccionScreen()),
           ),
-          const SizedBox(height: 12),
-          // Botones bajos para que se vean sin deslizar, debajo de las dos tarjetas.
-          _Acciones(compactas: true, acciones: [
-            (
-              Icons.receipt_long,
-              _titulos['gasto']!,
-              () async {
-                if (await _abrirFormulario(context, 'gasto')) _cargar();
-              }
-            ),
-            if (widget.esDueno) (Icons.account_balance_wallet, _titulos['retiro']!, () => _abrirFormulario(context, 'retiro')),
-          ]),
+          const SizedBox(height: 10),
+          _TarjetaProceso(
+            titulo: 'Comercialización',
+            indicadores: _comercial == null ? null : _indicadoresComercial(_comercial!),
+            error: _error,
+            onTap: () => _entrar(const _ComercialScreen()),
+          ),
         ],
       ),
     );
@@ -192,6 +202,34 @@ List<_Indicador> _indicadoresProduccion(Map<String, dynamic> p) {
         atencion: enCurso > 0),
     _Indicador(Icons.trending_down, mes['merma_pct'] != null ? '${mes['merma_pct']}%' : '—', 'Merma',
         tono: Colors.red, nota: '${_kg(mes['kg_verde'])} → ${_kg(mes['kg_tostado'])}'),
+  ];
+}
+
+/// Comercialización: siempre 4, de las ventas de la tienda por mes (pedidos no cancelados).
+/// "Por cobrar" no va aquí: el estado de pago de los pedidos en la base no coincide con el reporte;
+/// la lista de clientes por cobrar está dentro, en el reporte de ventas.
+List<_Indicador> _indicadoresComercial(Map<String, dynamic> c) {
+  final meses = _lista(c['meses']);
+  final hoy = DateTime.now();
+  String clave(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}';
+  Map<String, dynamic> mes(DateTime d) =>
+      meses.firstWhere((m) => '${m['month']}'.startsWith(clave(d)), orElse: () => <String, dynamic>{});
+  num n(dynamic v) => v is num ? v : num.tryParse('${v ?? ''}') ?? 0;
+  final actual = mes(hoy);
+  final anterior = mes(DateTime(hoy.year, hoy.month - 1));
+  final pedidos = n(actual['orders']);
+  final anio = meses.where((m) => '${m['month']}'.startsWith('${hoy.year}-'));
+  final pedidosAnio = anio.fold<num>(0, (t, m) => t + n(m['orders']));
+  String plural(num k) => '$k ${k == 1 ? 'pedido' : 'pedidos'}';
+  return [
+    _Indicador(Icons.point_of_sale, _soles(n(actual['total'])), 'Vendido este mes', tono: Colors.green,
+        nota: '${_meses[hoy.month - 1]} · ${plural(pedidos)}'),
+    _Indicador(Icons.history, _soles(n(anterior['total'])), 'Mes anterior', tono: Colors.blue,
+        nota: '${_meses[DateTime(hoy.year, hoy.month - 1).month - 1]} · ${plural(n(anterior['orders']))}'),
+    _Indicador(Icons.receipt, pedidos > 0 ? _soles((n(actual['total']) / pedidos).round()) : '—', 'Ticket promedio',
+        tono: Colors.purple, nota: 'por pedido este mes'),
+    _Indicador(Icons.calendar_month, _soles(anio.fold<num>(0, (t, m) => t + n(m['total']))), 'En el año',
+        tono: Colors.orange, nota: '${hoy.year} · ${plural(pedidosAnio)}'),
   ];
 }
 
@@ -603,6 +641,52 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> {
         ],
       ];
     });
+  }
+}
+
+// ─── Comercialización ───────────────────────────────────────────────────────
+
+/// Los 4 datos de ventas arriba y, debajo, el reporte de ventas de siempre (antes en Resumen).
+class _ComercialScreen extends StatefulWidget {
+  const _ComercialScreen();
+
+  @override
+  State<_ComercialScreen> createState() => _ComercialScreenState();
+}
+
+class _ComercialScreenState extends State<_ComercialScreen> {
+  Map<String, dynamic>? _datos;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    final r = await AdministracionService.procesos();
+    if (!mounted) return;
+    setState(() {
+      _error = r.isSuccess ? null : r.error;
+      if (r.isSuccess) _datos = _mapa(r.data!['comercial']);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = _datos;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Comercialización')),
+      body: ReportesTab(
+        encabezado: d != null
+            ? _CuatroDatos(indicadores: _indicadoresComercial(d), grande: true)
+            : Padding(
+                padding: const EdgeInsets.all(16),
+                child: _error != null ? Text(_error!) : const Center(child: CircularProgressIndicator()),
+              ),
+      ),
+    );
   }
 }
 

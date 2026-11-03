@@ -102,6 +102,9 @@ void main() {
           'mes': {'tuestes': 5, 'kg_verde': 820, 'kg_tostado': 683, 'merma_pct': 16.7},
           'tostado_kg': 203.6, 'por_procesar': [],
         },
+        'comercial': {'meses': [
+          {'month': '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-01', 'orders': 3, 'total': 3000, 'unpaid': 3000},
+        ]},
       }), 200);
     }
     if (p.contains('/tostador/events/')) return http.Response(jsonEncode({'ok': true}), 200);
@@ -720,10 +723,31 @@ void main() {
     expect(jsonDecode(req.body)['area'], 'production');
   });
 
-  testWidgets('both cards and the Otros buttons fit on an iPhone without scrolling', (tester) async {
+  testWidgets('the everyday buttons are on top and the first card is fully visible on an iPhone', (tester) async {
     await abrir(tester, rol: 'owner');
     // On the phone the app bar and the bottom tabs take about 190 points of the 844.
-    final abajo = tester.getBottomLeft(find.text('Pasar dinero a caja')).dy;
-    expect(abajo, lessThan(844 - 190), reason: 'bottom of Otros at $abajo');
+    expect(tester.getTopLeft(find.text('Registrar gasto')).dy, lessThan(tester.getTopLeft(find.text('Compras')).dy));
+    final abajo = tester.getBottomLeft(find.text('Adelantos abiertos')).dy;
+    expect(abajo, lessThan(844 - 190), reason: 'bottom of the Compras card at $abajo');
+  });
+
+  testWidgets('Comercialización is the third card, with the sales report inside; Resumen no longer has it', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await tester.scrollUntilVisible(find.text('Vendido este mes'), 200, scrollable: find.byType(Scrollable).last);
+    expect(find.text('Comercialización'), findsOneWidget);
+    expect(find.text('S/ 3,000'), findsNWidgets(2)); // this month and the year (only one month in the test)
+    expect(find.text('Ticket promedio'), findsOneWidget);
+    expect(find.text('S/ 1,000'), findsOneWidget);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Comercialización'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Reporte de ventas'), findsOneWidget);
+    expect(find.text('Esta semana'), findsNothing); // the 4 indicators replace the old summary cards
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Resumen'));
+    await tester.pumpAndSettle();
+    expect(find.text('El reporte de ventas está en Registrar → Comercialización.'), findsOneWidget);
   });
 }
