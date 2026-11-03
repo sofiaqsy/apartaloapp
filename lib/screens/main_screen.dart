@@ -17,6 +17,7 @@ import 'businesses_screen.dart';
 import '../services/session_store.dart';
 import '../widgets/fincas_widgets.dart';
 import 'business_requests_screen.dart';
+import 'team_screen.dart';
 import '../theme/legacy_theme.dart';
 
 class MainScreen extends StatefulWidget {
@@ -242,6 +243,12 @@ class _MainScreenState extends State<MainScreen> {
                     ),
                   );
                   break;
+                case 'invitar':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => TeamScreen(businessId: widget.businessId, businessName: widget.businessName)),
+                  );
+                  break;
                 case 'requests':
                   Navigator.push(context, MaterialPageRoute(builder: (_) => const BusinessRequestsScreen()));
                   break;
@@ -267,6 +274,8 @@ class _MainScreenState extends State<MainScreen> {
               const PopupMenuItem(value: 'businesses', child: Text('Mis negocios')),
               // Perfil: mis áreas, Mi área y, para los dueños, Equipo.
               const PopupMenuItem(value: 'perfil', child: Text('Perfil')),
+              // Atajo a Perfil → Equipo → Invitar y solicitudes (era difícil de encontrar).
+              if (_isOwner) const PopupMenuItem(value: 'invitar', child: Text('Invitar persona')),
               if (_isPlatformAdmin)
                 const PopupMenuItem(value: 'requests', child: Text('Solicitudes de negocios')),
               const PopupMenuDivider(),
