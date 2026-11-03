@@ -29,6 +29,26 @@ String _fechaCorta(dynamic iso) {
 Map<String, dynamic> _mapa(dynamic v) => v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
 List<Map<String, dynamic>> _lista(dynamic v) => v is List ? v.map(_mapa).toList() : <Map<String, dynamic>>[];
 
+/// Las mismas áreas que Perfil marca: las guardadas que son de la persona; sin nada guardado, la principal.
+/// (Los dueños sin áreas asignadas tienen todas.) null si no se pudo leer.
+Future<Set<String>?> _areasMarcadas() async {
+  final r = await AdministracionService.miArea();
+  List<String> guardadas = [];
+  try {
+    guardadas = (await SharedPreferences.getInstance()).getStringList(claveAreasElegidas) ?? [];
+  } catch (_) {}
+  if (!r.isSuccess) return null;
+  final todas = ((r.data!['areas'] as List?) ?? []).map(_mapa).toList();
+  final asignadas = todas.where((a) => a['role'] == 'lead' || a['role'] == 'member').toList();
+  final mias = asignadas.isNotEmpty ? asignadas : todas;
+  final validas = mias.map((a) => '${a['area']}').toSet();
+  final elegidas = guardadas.where(validas.contains).toSet();
+  if (elegidas.isEmpty && mias.isNotEmpty) {
+    elegidas.add('${mias.firstWhere((a) => a['principal'] == true, orElse: () => mias.first)['area']}');
+  }
+  return elegidas;
+}
+
 Future<T?> _abrirPantalla<T>(BuildContext context, Widget pantalla) =>
     Navigator.of(context).push<T>(CupertinoPageRoute(builder: (_) => pantalla));
 
@@ -62,24 +82,9 @@ class _RegistrarState extends State<_Registrar> {
     super.dispose();
   }
 
-  /// Las mismas áreas que Perfil marca: las guardadas que son de la persona; sin nada guardado, la principal.
-  /// (Los dueños sin áreas asignadas tienen todas.)
   Future<void> _leerAreas() async {
-    final r = await AdministracionService.miArea();
-    List<String> guardadas = [];
-    try {
-      guardadas = (await SharedPreferences.getInstance()).getStringList(claveAreasElegidas) ?? [];
-    } catch (_) {}
-    if (!mounted || !r.isSuccess) return;
-    final todas = ((r.data!['areas'] as List?) ?? []).map(_mapa).toList();
-    final asignadas = todas.where((a) => a['role'] == 'lead' || a['role'] == 'member').toList();
-    final mias = asignadas.isNotEmpty ? asignadas : todas;
-    final validas = mias.map((a) => '${a['area']}').toSet();
-    final elegidas = guardadas.where(validas.contains).toSet();
-    if (elegidas.isEmpty && mias.isNotEmpty) {
-      elegidas.add('${mias.firstWhere((a) => a['principal'] == true, orElse: () => mias.first)['area']}');
-    }
-    setState(() => _areas = elegidas);
+    final m = await _areasMarcadas();
+    if (mounted && m != null) setState(() => _areas = m);
   }
 
   Future<void> _cargar() async {
@@ -363,14 +368,16 @@ class _CuatroDatos extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // En la tarjeta los datos no van en cajas (General Manager, 3 nov 2026: parecían botones): sólo líneas finas
+    // entre ellos. Toda la tarjeta es el único botón.
+    final linea = Colors.blue.shade100;
     final filas = <Widget>[];
-    final espacio = grande ? 10.0 : 6.0;
     for (var i = 0; i < indicadores.length; i += 2) {
-      if (i > 0) filas.add(SizedBox(height: espacio));
+      if (i > 0) filas.add(grande ? const SizedBox(height: 10) : Divider(height: 1, thickness: 1, color: linea));
       filas.add(IntrinsicHeight(
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Expanded(child: _DatoCaja(indicadores[i], grande: grande)),
-          SizedBox(width: grande ? 10 : 8),
+          grande ? const SizedBox(width: 10) : VerticalDivider(width: 17, thickness: 1, color: linea),
           Expanded(child: i + 1 < indicadores.length ? _DatoCaja(indicadores[i + 1], grande: grande) : const SizedBox()),
         ]),
       ));
@@ -389,20 +396,16 @@ class _DatoCaja extends StatelessWidget {
     final color = grande ? d.tono.shade700 : (d.atencion ? Colors.orange.shade800 : Colors.blue.shade700);
     final valorColor = d.atencion ? Colors.orange.shade800 : Colors.black87;
     return Container(
-      padding: grande ? const EdgeInsets.all(12) : const EdgeInsets.fromLTRB(8, 6, 8, 6),
-      decoration: BoxDecoration(
-        color: grande ? d.tono.shade50 : Colors.white.withValues(alpha: 0.85),
-        borderRadius: BorderRadius.circular(grande ? 16 : 12),
-      ),
+      padding: grande ? const EdgeInsets.all(12) : const EdgeInsets.symmetric(vertical: 8),
+      decoration: grande ? BoxDecoration(color: d.tono.shade50, borderRadius: BorderRadius.circular(16)) : null,
       child: Row(crossAxisAlignment: grande ? CrossAxisAlignment.center : CrossAxisAlignment.start, children: [
-        Container(
-          padding: EdgeInsets.all(grande ? 8 : 5),
-          decoration: BoxDecoration(
-            color: grande ? Colors.white : color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(grande ? 12 : 8),
-          ),
-          child: Icon(d.icono, size: grande ? 24 : 18, color: color),
-        ),
+        grande
+            ? Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                child: Icon(d.icono, size: 24, color: color),
+              )
+            : Padding(padding: const EdgeInsets.only(top: 2), child: Icon(d.icono, size: 20, color: color)),
         SizedBox(width: grande ? 10 : 8),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [

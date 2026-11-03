@@ -13,7 +13,7 @@ void main() {
   final pedidos = <http.Request>[];
   var sugerencia = <String, dynamic>{'area': 'fulfillment', 'cost_centre': 'coffee', 'source': 'to_review'};
   // Las áreas marcadas en Perfil deciden qué tarjetas muestra Registrar.
-  var marcadas = ['farm', 'sourcing', 'production', 'commercial'];
+  var marcadas = ['farm', 'sourcing', 'production', 'commercial', 'finance'];
   var sinComercial = false; // el servidor no manda Comercialización (no es área de la persona)
 
   http.Response responder(http.Request req) {
@@ -74,6 +74,7 @@ void main() {
             {'area': 'farm', 'name': 'Finca', 'role': 'member', 'principal': false},
             {'area': 'production', 'name': 'Producción', 'role': 'member', 'principal': false},
             {'area': 'commercial', 'name': 'Comercial', 'role': 'member', 'principal': false},
+            {'area': 'finance', 'name': 'Finanzas', 'role': 'member', 'principal': false},
           ],
         ],
         'area': 'fulfillment',
@@ -133,7 +134,7 @@ void main() {
   setUp(() {
     pedidos.clear();
     sugerencia = {'area': 'fulfillment', 'cost_centre': 'coffee', 'source': 'to_review'};
-    marcadas = ['farm', 'sourcing', 'production', 'commercial'];
+    marcadas = ['farm', 'sourcing', 'production', 'commercial', 'finance'];
     sinComercial = false;
     dotenv.testLoad(fileInput: 'API_BASE_URL=https://api.test\nBUSINESS_ID=BIZ-002');
   });
@@ -818,5 +819,20 @@ void main() {
     await abrir(tester, rol: 'staff');
     expect(find.text('Compras'), findsOneWidget);
     expect(find.text('Comercialización'), findsNothing);
+  });
+
+  testWidgets('Pendientes follows the ticked areas, with a way to see the others', (tester) async {
+    marcadas = ['farm'];
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Pendientes'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.textContaining('Café recibido'), findsNothing); // coffee is Compras and Finanzas
+    expect(find.textContaining('de otras áreas'), findsOneWidget);
+    expect(find.text('Nada pendiente en tus áreas'), findsOneWidget);
+    await tester.tap(find.textContaining('de otras áreas'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Café recibido'), findsWidgets);
   });
 }

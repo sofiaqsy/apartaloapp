@@ -645,7 +645,7 @@ class _Pendientes extends StatefulWidget {
 /// Una fila de Pendientes: qué es, cuánto, detalles, estado y lo que Administración puede hacer con ella.
 class _Fila {
   _Fila({required this.id, required this.tipo, required this.icono, required this.lineas, required this.fecha,
-      required this.estado, this.monto});
+      required this.estado, this.monto, this.areas = const {}});
   final String id;
   final String tipo;
   final IconData icono;
@@ -654,20 +654,42 @@ class _Fila {
   String estado;
   final num? monto;
   final List<(String, Future<void> Function())> acciones = [];
+  /// Áreas a las que toca la fila; se ve si alguna está marcada en Perfil. Vacío = se ve siempre.
+  final Set<String> areas;
 }
+
+// Qué áreas tocan a cada cosa pendiente: el café y las compras son de Compras y Finanzas (que paga), los
+// adelantos también, el banco es de Finanzas, y un gasto es de su área y de Finanzas.
+const _areasCafe = {'sourcing', 'finance'};
+Set<String> _areasGasto(dynamic area) => {if (area != null) '$area', 'finance'};
 
 class _PendientesState extends State<_Pendientes> {
   Map<String, dynamic>? _datos;
   List<dynamic>? _solicitudes;
   String? _error;
+  Set<String>? _marcadas; // áreas marcadas en Perfil (General Manager, 3 nov 2026: Pendientes también las sigue)
+  bool _verTodas = false; // "Ver también las de otras áreas", para no perder un pago
 
   @override
   void initState() {
     super.initState();
+    cambioDeAreas.addListener(_leerMarcadas);
     _cargar();
   }
 
+  @override
+  void dispose() {
+    cambioDeAreas.removeListener(_leerMarcadas);
+    super.dispose();
+  }
+
+  Future<void> _leerMarcadas() async {
+    final m = await _areasMarcadas();
+    if (mounted && m != null) setState(() => _marcadas = m);
+  }
+
   Future<void> _cargar() async {
+    _leerMarcadas();
     final rs = await Future.wait([AdministracionService.pendientes(), AdministracionService.solicitudes()]);
     if (!mounted) return;
     setState(() {
@@ -716,6 +738,7 @@ class _PendientesState extends State<_Pendientes> {
       final id = '${s['id']}';
       filas[id] = _Fila(
         id: id, tipo: _nombres[s['kind']] ?? '${s['kind']}', icono: _iconos[s['kind']] ?? Icons.description,
+        areas: s['kind'] == 'gasto' ? _areasGasto(s['area']) : _areasCafe,
         monto: num.tryParse('${s['amount'] ?? ''}'), fecha: '${s['request_date'] ?? ''}', estado: '${s['status']}',
         lineas: [
           '${s['description'] ?? ''}',
@@ -728,13 +751,13 @@ class _PendientesState extends State<_Pendientes> {
 
     for (final d in lista('sinPrecio')) {
       final id = '${d['id']}';
-      fila(id, () => _Fila(id: id, tipo: 'Café recibido', icono: Icons.move_to_inbox, fecha: '${d['delivery_date']}', estado: 'Sin precio',
+      fila(id, () => _Fila(id: id, tipo: 'Café recibido', icono: Icons.move_to_inbox, fecha: '${d['delivery_date']}', estado: 'Sin precio', areas: _areasCafe,
               lineas: ['${d['kg']} kg · ${d['farmer_id']}', '${d['delivery_date']}']))
           .acciones.add(('Poner precio', () => _formulario('precio', {'entregaId': d['id']}, '$id · ${d['kg']} kg')));
     }
     for (final p in lista('porPagar')) {
       final id = '${p['delivery_id'] ?? p['id']}'; // la compra va en la fila de su entrega
-      final f = fila(id, () => _Fila(id: id, tipo: 'Compra', icono: Icons.shopping_bag, fecha: '${p['purchase_date']}', estado: 'Por pagar',
+      final f = fila(id, () => _Fila(id: id, tipo: 'Compra', icono: Icons.shopping_bag, fecha: '${p['purchase_date']}', estado: 'Por pagar', areas: _areasCafe,
           monto: num.tryParse('${p['still_owed']}'), lineas: ['${p['id']} · ${p['farmer_id']}', 'Falta ${_soles(p['still_owed'])}']));
       if (dueno) f.acciones.add(('Pagar compra', () => _formulario('pago', {'compraId': p['id']}, '${p['id']} · debe ${_soles(p['still_owed'])}')));
     }
@@ -742,7 +765,7 @@ class _PendientesState extends State<_Pendientes> {
       for (final q in lista('adelantosPorAprobar')) {
         final id = '${q['id']}';
         final sub = '${q['party']} · ${_soles(q['amount'])}';
-        fila(id, () => _Fila(id: id, tipo: 'Adelanto', icono: Icons.handshake, fecha: '${q['request_date']}', estado: 'Por aprobar',
+        fila(id, () => _Fila(id: id, tipo: 'Adelanto', icono: Icons.handshake, fecha: '${q['request_date']}', estado: 'Por aprobar', areas: _areasCafe,
                 monto: num.tryParse('${q['amount']}'), lineas: ['${q['party']}${q['reason'] != null ? ' · ${q['reason']}' : ''}', '${q['request_date']} · ${q['created_by']}']))
             .acciones
           ..add(('Aprobar y entregar', () => _formulario('aprobarAdelanto', {'solicitudId': q['id']}, sub)))
@@ -751,12 +774,12 @@ class _PendientesState extends State<_Pendientes> {
       // Los gastos por pagar se ven con su estado, pero Pendientes no ofrece pagarlos (General Manager, 1 nov 2026).
       for (final g in lista('gastosPorPagar')) {
         final id = '${g['id']}';
-        fila(id, () => _Fila(id: id, tipo: 'Gasto', icono: Icons.receipt_long, fecha: '${g['expense_date']}', estado: 'Pendiente de pago',
+        fila(id, () => _Fila(id: id, tipo: 'Gasto', icono: Icons.receipt_long, fecha: '${g['expense_date']}', estado: 'Pendiente de pago', areas: _areasGasto(g['area']),
             monto: num.tryParse('${g['amount']}'), lineas: ['${g['category']}${g['description'] != null ? ' · ${g['description']}' : ''}', '${g['expense_date']} · ${g['created_by']}']));
       }
       for (final g in lista('porRevisar')) {
         final id = '${g['id']}';
-        final f = fila(id, () => _Fila(id: id, tipo: 'Gasto', icono: Icons.receipt_long, fecha: '${g['expense_date']}', estado: 'Área por revisar',
+        final f = fila(id, () => _Fila(id: id, tipo: 'Gasto', icono: Icons.receipt_long, fecha: '${g['expense_date']}', estado: 'Área por revisar', areas: _areasGasto(g['area']),
             monto: num.tryParse('${g['amount']}'), lineas: ['${g['category']}${g['description'] != null ? ' · ${g['description']}' : ''}', '${g['expense_date']} · ${g['created_by']}']));
         final sug = g['suggestion'];
         if (sug is Map && sug['source'] != 'to_review') f.lineas.add('Sugerido: ${_areas[sug['area']] ?? sug['area']}');
@@ -765,13 +788,13 @@ class _PendientesState extends State<_Pendientes> {
     }
     for (final a in lista('adelantos')) {
       final id = '${a['id']}';
-      fila(id, () => _Fila(id: id, tipo: 'Adelanto', icono: Icons.handshake, fecha: '${a['advance_date']}', estado: 'Abierto',
+      fila(id, () => _Fila(id: id, tipo: 'Adelanto', icono: Icons.handshake, fecha: '${a['advance_date']}', estado: 'Abierto', areas: _areasCafe,
           monto: num.tryParse('${a['open_balance']}'), lineas: ['$id · ${a['party_id']}', 'Desde ${a['advance_date']}']));
     }
     if (dueno) {
       for (final b in lista('banco')) {
         final id = 'banco-${b['id'] ?? b['operation_number'] ?? b['movement_date']}-${b['amount']}';
-        fila(id, () => _Fila(id: id, tipo: 'Banco', icono: Icons.account_balance, fecha: '${b['movement_date']}', estado: 'Por cruzar',
+        fila(id, () => _Fila(id: id, tipo: 'Banco', icono: Icons.account_balance, fecha: '${b['movement_date']}', estado: 'Por cruzar', areas: const {'finance'},
             monto: num.tryParse('${b['amount']}'), lineas: ['${b['description']}', '${b['movement_date']} · op. ${b['operation_number'] ?? '—'}']));
       }
     }
@@ -804,16 +827,39 @@ class _PendientesState extends State<_Pendientes> {
   Widget build(BuildContext context) {
     if (_error != null) return _Mensaje(texto: _error!, onReintentar: _cargar);
     if (_datos == null || _solicitudes == null) return const Center(child: CircularProgressIndicator());
-    final filas = _filas();
+    final todas = _filas();
+    final marcadas = _marcadas;
+    bool deMisAreas(_Fila f) => marcadas == null || f.areas.isEmpty || f.areas.any(marcadas.contains);
+    final filas = _verTodas ? todas : todas.where(deMisAreas).toList();
+    final ocultas = todas.length - filas.length;
+    // Al final: cuántas son de otras áreas, para no perder un pago.
+    final pie = ocultas > 0 || _verTodas
+        ? Padding(
+            padding: const EdgeInsets.all(12),
+            child: Center(
+              child: TextButton(
+                onPressed: () => setState(() => _verTodas = !_verTodas),
+                child: Text(_verTodas ? 'Ver sólo mis áreas' : 'Ver también $ocultas de otras áreas'),
+              ),
+            ),
+          )
+        : null;
     return RefreshIndicator(
       onRefresh: _cargar,
       child: filas.isEmpty
-          ? ListView(children: const [Padding(padding: EdgeInsets.all(24), child: Text('No hay nada pendiente', textAlign: TextAlign.center))])
+          ? ListView(children: [
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(ocultas > 0 ? 'Nada pendiente en tus áreas' : 'No hay nada pendiente', textAlign: TextAlign.center),
+              ),
+              if (pie != null) pie,
+            ])
           : ListView.separated(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: filas.length,
+              itemCount: filas.length + (pie != null ? 1 : 0),
               separatorBuilder: (_, __) => const Divider(height: 1),
               itemBuilder: (_, i) {
+                if (i == filas.length) return pie!;
                 final f = filas[i];
                 return ListTile(
                   leading: Icon(f.icono),
