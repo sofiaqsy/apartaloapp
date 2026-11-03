@@ -718,7 +718,7 @@ void main() {
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     // Opens on Tuestes because there are roasts; Lotes and Proveedores are the other tabs.
-    for (final t in ['Tostar café', 'Registrar gasto de producción', 'Omagua 250 g', 'Omagua 1 kg', '16.7%', '820 kg → 683 kg', '1 tostando ahora']) {
+    for (final t in ['Tostar café', 'Registrar gasto', 'Omagua 250 g', 'Omagua 1 kg', '16.7%', '820 kg → 683 kg', '1 tostando ahora']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     expect(find.text('Finalizar'), findsOneWidget); // the roast in progress
@@ -755,7 +755,7 @@ void main() {
     await http.runWithClient(() async {
       await tester.tap(find.text('Producción'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Registrar gasto de producción'));
+      await tester.tap(find.text('Registrar gasto'));
       await tester.pumpAndSettle();
       await tester.enterText(find.widgetWithText(TextField, 'Monto (S/)'), '45');
       await tester.tap(find.text('Guardar'));
@@ -785,7 +785,7 @@ void main() {
       await tester.tap(find.text('Finca'));
       await tester.pumpAndSettle();
       expect(find.text('Jornal deshierbo · Pendiente de pago'), findsOneWidget);
-      await tester.tap(find.text('Registrar gasto de finca'));
+      await tester.tap(find.text('Registrar gasto'));
       await tester.pumpAndSettle();
       await tester.enterText(find.widgetWithText(TextField, 'Monto (S/)'), '60');
       await tester.tap(find.text('Guardar'));
@@ -924,7 +924,7 @@ void main() {
       expect(find.text('Cafe Uno'), findsOneWidget); // the oldest open order first
       expect(find.text('En camino'), findsWidgets);
       expect(find.text('Se ven los 2 más antiguos; el resto está en Pedidos.'), findsOneWidget);
-      await tester.tap(find.text('Registrar gasto de logística'));
+      await tester.tap(find.text('Registrar gasto'));
       await tester.pumpAndSettle();
       await tester.enterText(find.widgetWithText(TextField, 'Monto (S/)'), '35');
       await tester.tap(find.text('Guardar'));

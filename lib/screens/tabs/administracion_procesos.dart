@@ -862,7 +862,7 @@ class _LogisticaScreenState extends _ProcesoState<_LogisticaScreen> with _Provee
         _Acciones(acciones: [
           (
             Icons.receipt_long,
-            'Registrar gasto de logística',
+            _titulos['gasto']!, // el mismo nombre en cada proceso; el área va fija (General Manager, 3 nov 2026)
             () => formulario('gasto', fijos: const {'area': 'fulfillment'}, subtitulo: 'Área: Logística')
           ),
         ]),
@@ -924,7 +924,7 @@ class _FincaScreenState extends _ProcesoState<_FincaScreen> with _ProveedoresDel
         _Acciones(acciones: [
           (
             Icons.receipt_long,
-            'Registrar gasto de finca',
+            _titulos['gasto']!, // el mismo nombre en cada proceso; el área va fija (General Manager, 3 nov 2026)
             () => formulario('gasto', fijos: const {'area': 'farm'}, subtitulo: 'Área: Finca')
           ),
         ]),
@@ -1080,7 +1080,7 @@ class _ComercialScreenState extends State<_ComercialScreen> {
                 _Acciones(acciones: [
                   (
                     Icons.receipt_long,
-                    'Registrar gasto de comercialización',
+                    _titulos['gasto']!, // el mismo nombre en cada proceso; el área va fija (General Manager, 3 nov 2026)
                     () => _abrirFormulario(context, 'gasto', fijos: const {'area': 'commercial'}, subtitulo: 'Área: Comercial'),
                   ),
                 ]),
@@ -1167,7 +1167,7 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
           (Icons.local_fire_department, 'Tostar café', _tostar),
           (
             Icons.receipt_long,
-            'Registrar gasto de producción',
+            _titulos['gasto']!, // el mismo nombre en cada proceso; el área va fija (General Manager, 3 nov 2026)
             () => formulario('gasto', fijos: const {'area': 'production'}, subtitulo: 'Área: Producción')
           ),
         ]),
