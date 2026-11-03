@@ -1261,6 +1261,67 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
 
   static const _colorSituacion = _coloresCompra;
 
+  // Pestaña Adelantos: los pedidos que esperan a Finanzas y los adelantos, de 20 en 20.
+  final List<Map<String, dynamic>> _adelantos = [];
+  List<Map<String, dynamic>> _porAprobar = [];
+  bool _cargandoAdelantos = false;
+  bool _hayMasAdelantos = true;
+  String? _errorAdelantos;
+
+  Future<void> _masAdelantos() async {
+    if (_cargandoAdelantos || !_hayMasAdelantos) return;
+    setState(() => _cargandoAdelantos = true);
+    final r = await AdministracionService.adelantos(offset: _adelantos.length);
+    if (!mounted) return;
+    setState(() {
+      _cargandoAdelantos = false;
+      if (r.isSuccess) {
+        if (_adelantos.isEmpty) _porAprobar = _lista(r.data!['porAprobar']);
+        _adelantos.addAll(_lista(r.data!['adelantos']));
+        _hayMasAdelantos = r.data!['hayMas'] == true;
+      } else {
+        _errorAdelantos = r.error;
+        _hayMasAdelantos = false;
+      }
+    });
+  }
+
+  static const _estadosAdelanto = {'open': 'Abierto', 'partly_used': 'Usado en parte', 'settled': 'Liquidado'};
+
+  List<Widget> _listaAdelantos() => [
+        if (_porAprobar.isNotEmpty) ...[
+          _encabezado('Esperan a Finanzas', '${_porAprobar.length}'),
+          for (final q in _porAprobar)
+            _Ficha(
+              inicio: _Insignia(_fechaCorta(q['request_date']), tono: Colors.purple),
+              titulo: '${q['party'] ?? 'Sin nombre'}',
+              detalle: [if ((q['reason'] ?? '').toString().isNotEmpty) '${q['reason']}', 'pidió ${q['created_by'] ?? ''}'].join(' · '),
+              fin: _Pildora('${_soles(q['amount'])} · por aprobar', Colors.purple),
+            ),
+        ],
+        _encabezado('Adelantos', ''),
+        for (final a in _adelantos)
+          _Ficha(
+            inicio: _Insignia(_fechaCorta(a['advance_date']), tono: ((a['open_balance'] as num?) ?? 0) > 0 ? Colors.blue : Colors.green),
+            titulo: '${a['nombre'] ?? a['party_id'] ?? 'Sin nombre'}',
+            detalle: [
+              '${a['id']} · ${_soles(a['amount'])}',
+              if (((a['used_in_coffee'] as num?) ?? 0) > 0) 'usado en café ${_soles(a['used_in_coffee'])}',
+              if (((a['returned_in_money'] as num?) ?? 0) > 0) 'devuelto ${_soles(a['returned_in_money'])}',
+              _estadosAdelanto[a['status']] ?? '${a['status'] ?? ''}',
+            ].join(' · '),
+            fin: ((a['open_balance'] as num?) ?? 0) > 0
+                ? _Pildora('queda ${_soles(a['open_balance'])}', Colors.blue)
+                : const _Pildora('Liquidado', Colors.green),
+          ),
+        if (_errorAdelantos != null)
+          Padding(padding: const EdgeInsets.all(16), child: Text(_errorAdelantos!, textAlign: TextAlign.center))
+        else if (_cargandoAdelantos || _hayMasAdelantos)
+          const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
+        else if (_adelantos.isEmpty)
+          _vacio('Todavía no hay adelantos.'),
+      ];
+
   List<Widget> _listaCompras() => [
         const SizedBox(height: 12),
         for (final c in _compras)
@@ -1299,7 +1360,6 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
   @override
   Widget build(BuildContext context) {
     return pantalla('Compras', (d) {
-      final almacen = _lista(d['almacen']);
       return [
         // Sin resumen arriba (General Manager, 3 nov 2026): la tarjeta de Procesos ya lo muestra.
         // Todas del mismo tamaño; las de dinero sólo para dueños.
@@ -1314,30 +1374,18 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
           ),
         ]),
         _Pestanas(
-          nombres: const ['Compras', 'En almacén', 'Proveedores'],
+          // Adelantos en lugar de En almacén (General Manager, 3 nov 2026).
+          nombres: const ['Compras', 'Adelantos', 'Proveedores'],
           elegida: _pestana,
           onElegir: (i) {
             setState(() => _pestana = i);
             if (i == 2) abrirProveedores();
+            if (i == 1 && _adelantos.isEmpty && _hayMasAdelantos) _masAdelantos();
           },
         ),
-        if (_pestana == 2)
-          ..._listaProveedores()
-        else if (_pestana == 0)
-          ..._listaCompras()
-        else ...[
-          _encabezado('Café en almacén', '${almacen.length} ${almacen.length == 1 ? 'estado' : 'estados'}'),
-          if (almacen.isEmpty) _vacio('No hay café de compras guardado.'),
-          for (final a in almacen)
-            _Ficha(
-              inicio: const _InsigniaIcono(Icons.inventory_2_outlined, tono: Colors.brown),
-              titulo: _estadosCafe[a['estado']] ?? '${a['estado']}',
-              detalle: '${a['lotes']} ${a['lotes'] == 1 ? 'lote' : 'lotes'}',
-              fin: Text(_kg(a['kg']), style: const TextStyle(fontWeight: FontWeight.w600)),
-            ),
-        ],
+        if (_pestana == 2) ..._listaProveedores() else if (_pestana == 0) ..._listaCompras() else ..._listaAdelantos(),
       ];
-    }, alFinal: _pestana == 2 ? masProveedores : (_pestana == 0 ? _masCompras : null));
+    }, alFinal: _pestana == 2 ? masProveedores : (_pestana == 0 ? _masCompras : _masAdelantos));
   }
 }
 

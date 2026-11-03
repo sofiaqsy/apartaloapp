@@ -114,6 +114,16 @@ void main() {
       final pagina = todas.skip(offset).take(20).toList();
       return http.Response(jsonEncode({'compras': pagina, 'total': todas.length, 'hayMas': offset + 20 < todas.length}), 200);
     }
+    if (p.endsWith('/adelantos')) {
+      return http.Response(jsonEncode({
+        'porAprobar': [{'id': 'SOL-0001', 'request_date': '2026-11-02', 'party': 'Misael Cusi', 'amount': 1500, 'reason': 'Compras', 'created_by': 'misael@x'}],
+        'adelantos': [
+          {'id': 'ADV-007', 'party_id': 'P-0001', 'nombre': 'Pedro Ramírez Ñique', 'advance_date': '2026-11-01', 'amount': 500, 'used_in_coffee': 300, 'returned_in_money': 0, 'open_balance': 200, 'status': 'partly_used'},
+          {'id': 'ADV-003', 'party_id': 'P-0002', 'nombre': 'Agricultor Dos', 'advance_date': '2026-10-01', 'amount': 400, 'used_in_coffee': 400, 'returned_in_money': 0, 'open_balance': 0, 'status': 'settled'},
+        ],
+        'hayMas': false,
+      }), 200);
+    }
     if (p.endsWith('/compras/DL-0002')) {
       return http.Response(jsonEncode({'compra': {
         'id': 'DL-0002', 'fecha': '2026-11-02', 'agricultor': 'Agricultor Parte', 'estado': 'parchment', 'kg': 50,
@@ -245,7 +255,7 @@ void main() {
       await tester.tap(find.text('Compras'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    for (final t in ['Registrar compra', 'Solicitar adelanto', 'Registrar proveedor', 'Registrar gasto', 'En almacén', 'Pedro Ramírez Ñique']) {
+    for (final t in ['Registrar compra', 'Solicitar adelanto', 'Registrar proveedor', 'Registrar gasto', 'Adelantos', 'Pedro Ramírez Ñique']) {
       expect(find.text(t), findsOneWidget);
     }
     expect(find.text('Pagar compras'), findsNothing);
@@ -1026,7 +1036,7 @@ void main() {
       expect(find.text('Adelantos abiertos'), findsNothing); // no summary on top any more
       expect(find.text('Últimos recibidos'), findsNothing);
       expect(find.text('Recibidos'), findsNothing);
-      expect(find.text('En almacén'), findsOneWidget);
+      expect(find.text('Adelantos'), findsOneWidget);
       expect(find.text('Sin precio'), findsOneWidget); // its state, on a row with an arrow
       expect(find.byIcon(Icons.chevron_right), findsWidgets);
       await tester.tap(find.text('Pedro Ramírez Ñique'));
@@ -1115,5 +1125,20 @@ void main() {
     final r = pedidos.lastWhere((r) => r.url.path.contains('/registrar/'));
     expect(r.url.path, endsWith('/registrar/pagoConAdelanto'));
     expect(jsonDecode(r.body)['solicitudId'], 9);
+  });
+
+  testWidgets('Compras shows Adelantos (instead of En almacén): requests waiting and each advance with what is left', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      expect(find.text('En almacén'), findsNothing);
+      await tester.tap(find.text('Adelantos'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    for (final t in ['Esperan a Finanzas', 'Misael Cusi', 'queda S/ 200', 'Liquidado']) {
+      expect(find.text(t), findsWidgets, reason: t);
+    }
+    expect(find.textContaining('ADV-007 · S/ 500 · usado en café S/ 300'), findsOneWidget);
   });
 }
