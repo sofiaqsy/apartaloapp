@@ -67,10 +67,12 @@ class AdministracionService {
       _get('equipo/${Uri.encodeComponent(perfilId)}/sugerencia');
 
   /// Busca personas por nombre o apodo, de a una página: {personas, total, hayMas}.
-  static Future<ApiResponse<Map<String, dynamic>>> buscarPersonas({String q = '', String? rol, int offset = 0, int limit = 20}) {
+  /// [area]: sólo los proveedores de ese proceso (los asignados o los que le vendieron un gasto).
+  static Future<ApiResponse<Map<String, dynamic>>> buscarPersonas({String q = '', String? rol, String? area, int offset = 0, int limit = 20}) {
     final qs = Uri(queryParameters: {
       if (q.isNotEmpty) 'q': q,
       if (rol != null) 'rol': rol,
+      if (area != null) 'area': area,
       'offset': '$offset',
       'limit': '$limit',
     }).query;

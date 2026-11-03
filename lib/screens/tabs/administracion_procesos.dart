@@ -122,36 +122,55 @@ class _RegistrarState extends State<_Registrar> {
     // Registrar gasto y el retiro de efectivo están dentro de cada proceso (General Manager, 3 nov 2026).
     // Sólo se ven las de las áreas marcadas en Perfil → Mis áreas (General Manager, 3 nov 2026).
     final tarjetas = <(String, Object?, Widget)>[
-      ('commercial', _comercial, _TarjetaProceso(
-        titulo: 'Comercialización',
-        indicadores: _comercial == null ? null : _indicadoresComercial(_comercial!),
-        error: _error,
-        onTap: () => _entrar(const _ComercialScreen()),
-      )),
-      ('production', _produccion, _TarjetaProceso(
-        titulo: 'Producción',
-        indicadores: _produccion == null ? null : _indicadoresProduccion(_produccion!),
-        error: _error,
-        onTap: () => _entrar(const _ProduccionScreen()),
-      )),
-      ('sourcing', _compras, _TarjetaProceso(
-        titulo: 'Compras',
-        indicadores: _compras == null ? null : _indicadoresCompras(_compras!, widget.esDueno),
-        error: _error,
-        onTap: () => _entrar(_ComprasScreen(esDueno: widget.esDueno)),
-      )),
-      ('farm', _finca, _TarjetaProceso(
-        titulo: 'Finca',
-        indicadores: _finca == null ? null : _indicadoresFinca(_finca!, widget.esDueno),
-        error: _error,
-        onTap: () => _entrar(_FincaScreen(esDueno: widget.esDueno)),
-      )),
+      (
+        'commercial',
+        _comercial,
+        _TarjetaProceso(
+          titulo: 'Comercialización',
+          indicadores: _comercial == null ? null : _indicadoresComercial(_comercial!),
+          error: _error,
+          onTap: () => _entrar(const _ComercialScreen()),
+        )
+      ),
+      (
+        'production',
+        _produccion,
+        _TarjetaProceso(
+          titulo: 'Producción',
+          indicadores: _produccion == null ? null : _indicadoresProduccion(_produccion!),
+          error: _error,
+          onTap: () => _entrar(const _ProduccionScreen()),
+        )
+      ),
+      (
+        'sourcing',
+        _compras,
+        _TarjetaProceso(
+          titulo: 'Compras',
+          indicadores: _compras == null ? null : _indicadoresCompras(_compras!, widget.esDueno),
+          error: _error,
+          onTap: () => _entrar(_ComprasScreen(esDueno: widget.esDueno)),
+        )
+      ),
+      (
+        'farm',
+        _finca,
+        _TarjetaProceso(
+          titulo: 'Finca',
+          indicadores: _finca == null ? null : _indicadoresFinca(_finca!, widget.esDueno),
+          error: _error,
+          onTap: () => _entrar(_FincaScreen(esDueno: widget.esDueno)),
+        )
+      ),
     ];
     final areas = _areas;
     // Marcada en Perfil y, ya cargado, con datos del servidor (que no manda procesos de áreas ajenas).
     final visibles = areas == null
         ? <Widget>[]
-        : [for (final (area, datos, t) in tarjetas) if (areas.contains(area) && (!_cargado || datos != null)) t];
+        : [
+            for (final (area, datos, t) in tarjetas)
+              if (areas.contains(area) && (!_cargado || datos != null)) t
+          ];
     return RefreshIndicator(
       onRefresh: _cargar,
       child: ListView(
@@ -211,17 +230,17 @@ List<_Indicador> _indicadoresFinca(Map<String, dynamic> f, bool esDueno) {
   final cosecha = _mapa(f['cosecha']);
   final nMes = (mes['n'] as num?)?.toInt() ?? 0;
   final gastos = (int n) => '$n ${n == 1 ? 'gasto' : 'gastos'}';
-  final cosechaInd = _Indicador(Icons.agriculture, _kg(cosecha['kg']), 'Cosecha', tono: Colors.green,
-      nota: 'cereza · ${cosecha['anio'] ?? DateTime.now().year}');
+  final cosechaInd = _Indicador(Icons.agriculture, _kg(cosecha['kg']), 'Cosecha',
+      tono: Colors.green, nota: 'cereza · ${cosecha['anio'] ?? DateTime.now().year}');
   if (esDueno && mes['total'] != null) {
     final porPagar = (_mapa(f['por_pagar'])['total'] as num?) ?? 0;
     return [
-      _Indicador(Icons.receipt_long, _soles(mes['total']), 'Gastos este mes', tono: Colors.orange,
-          nota: '${_meses[DateTime.now().month - 1]} · ${gastos(nMes)}'),
-      _Indicador(Icons.account_balance_wallet, _soles(porPagar), 'Por pagar', tono: Colors.blue, atencion: porPagar > 0,
-          nota: porPagar > 0 ? 'gastos de finca' : 'todo pagado'),
-      _Indicador(Icons.calendar_month, _soles(anio['total']), 'Gastos en el año', tono: Colors.purple,
-          nota: '${DateTime.now().year} · ${gastos((anio['n'] as num?)?.toInt() ?? 0)}'),
+      _Indicador(Icons.receipt_long, _soles(mes['total']), 'Gastos este mes',
+          tono: Colors.orange, nota: '${_meses[DateTime.now().month - 1]} · ${gastos(nMes)}'),
+      _Indicador(Icons.account_balance_wallet, _soles(porPagar), 'Por pagar',
+          tono: Colors.blue, atencion: porPagar > 0, nota: porPagar > 0 ? 'gastos de finca' : 'todo pagado'),
+      _Indicador(Icons.calendar_month, _soles(anio['total']), 'Gastos en el año',
+          tono: Colors.purple, nota: '${DateTime.now().year} · ${gastos((anio['n'] as num?)?.toInt() ?? 0)}'),
       cosechaInd,
     ];
   }
@@ -230,8 +249,7 @@ List<_Indicador> _indicadoresFinca(Map<String, dynamic> f, bool esDueno) {
   return [
     _Indicador(Icons.receipt_long, '$nMes', 'Gastos este mes', tono: Colors.orange, nota: 'registrados'),
     cosechaInd,
-    _Indicador(Icons.landscape, '${parcelas['n'] ?? 0}', 'Parcelas', tono: Colors.brown,
-        nota: '${parcelas['hectareas'] ?? 0} ha'),
+    _Indicador(Icons.landscape, '${parcelas['n'] ?? 0}', 'Parcelas', tono: Colors.brown, nota: '${parcelas['hectareas'] ?? 0} ha'),
     _Indicador(Icons.event_note, '$nAct', 'Labores del mes', tono: Colors.blue, nota: 'en las parcelas'),
   ];
 }
@@ -299,8 +317,7 @@ List<_Indicador> _indicadoresComercial(Map<String, dynamic> c) {
   final meses = _lista(c['meses']);
   final hoy = DateTime.now();
   String clave(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}';
-  Map<String, dynamic> mes(DateTime d) =>
-      meses.firstWhere((m) => '${m['month']}'.startsWith(clave(d)), orElse: () => <String, dynamic>{});
+  Map<String, dynamic> mes(DateTime d) => meses.firstWhere((m) => '${m['month']}'.startsWith(clave(d)), orElse: () => <String, dynamic>{});
   num n(dynamic v) => v is num ? v : num.tryParse('${v ?? ''}') ?? 0;
   final actual = mes(hoy);
   final anterior = mes(DateTime(hoy.year, hoy.month - 1));
@@ -309,10 +326,10 @@ List<_Indicador> _indicadoresComercial(Map<String, dynamic> c) {
   final pedidosAnio = anio.fold<num>(0, (t, m) => t + n(m['orders']));
   String plural(num k) => '$k ${k == 1 ? 'pedido' : 'pedidos'}';
   return [
-    _Indicador(Icons.point_of_sale, _soles(n(actual['total'])), 'Vendido este mes', tono: Colors.green,
-        nota: '${_meses[hoy.month - 1]} · ${plural(pedidos)}'),
-    _Indicador(Icons.history, _soles(n(anterior['total'])), 'Mes anterior', tono: Colors.blue,
-        nota: '${_meses[DateTime(hoy.year, hoy.month - 1).month - 1]} · ${plural(n(anterior['orders']))}'),
+    _Indicador(Icons.point_of_sale, _soles(n(actual['total'])), 'Vendido este mes',
+        tono: Colors.green, nota: '${_meses[hoy.month - 1]} · ${plural(pedidos)}'),
+    _Indicador(Icons.history, _soles(n(anterior['total'])), 'Mes anterior',
+        tono: Colors.blue, nota: '${_meses[DateTime(hoy.year, hoy.month - 1).month - 1]} · ${plural(n(anterior['orders']))}'),
     _Indicador(Icons.receipt, pedidos > 0 ? _soles((n(actual['total']) / pedidos).round()) : '—', 'Ticket promedio',
         tono: Colors.purple, nota: 'por pedido este mes'),
     _Indicador(Icons.calendar_month, _soles(anio.fold<num>(0, (t, m) => t + n(m['total']))), 'En el año',
@@ -429,56 +446,42 @@ class _DatoCaja extends StatelessWidget {
   }
 }
 
-/// Botones grandes de acción, dos por fila.
+/// Botones de acción del proceso: todos del mismo tamaño, dos por fila (General Manager, 3 nov 2026).
 class _Acciones extends StatelessWidget {
-  const _Acciones({required this.acciones, this.compactas = false});
+  const _Acciones({required this.acciones});
   final List<(IconData, String, VoidCallback)> acciones;
-  final bool compactas; // una fila baja: ícono y texto lado a lado
 
   @override
   Widget build(BuildContext context) {
-    if (compactas) {
-      // Con tres botones no cabe el texto al lado del ícono: va debajo.
-      final debajo = acciones.length > 2;
-      return IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        for (final (i, (icono, texto, onTap)) in acciones.indexed) ...[
-          if (i > 0) const SizedBox(width: 8),
-          Expanded(
-            child: Material(
-              color: Colors.blue.shade50,
-              borderRadius: BorderRadius.circular(14),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: onTap,
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: debajo ? 6 : 10, vertical: debajo ? 10 : 14),
-                  child: debajo
-                      ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Icon(icono, size: 22, color: Colors.blue.shade700),
-                          const SizedBox(height: 4),
-                          Text(texto, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600), maxLines: 2),
-                        ])
-                      : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Icon(icono, size: 22, color: Colors.blue.shade700),
-                          const SizedBox(width: 6),
-                          Flexible(child: Text(texto, style: const TextStyle(fontWeight: FontWeight.w600), maxLines: 2)),
-                        ]),
-                ),
-              ),
-            ),
-          ),
-        ],
-        if (acciones.length == 1) const Expanded(child: SizedBox()),
-      ]));
-    }
     return GridView.count(
       crossAxisCount: 2,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      childAspectRatio: 1.6,
-      children: [for (final (icono, texto, onTap) in acciones) _BotonGrande(icono: icono, texto: texto, onTap: onTap)],
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: 2.3,
+      children: [
+        for (final (icono, texto, onTap) in acciones)
+          Material(
+            color: Colors.blue.shade50,
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Row(children: [
+                  Icon(icono, size: 24, color: Colors.blue.shade700),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(texto,
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -521,15 +524,15 @@ abstract class _ProcesoState<T extends StatefulWidget> extends State<T> {
           return false;
         },
         child: RefreshIndicator(
-        onRefresh: cargar,
-        child: d == null
-            ? ListView(children: [
-                Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: error != null ? Text(error!, textAlign: TextAlign.center) : const Center(child: CircularProgressIndicator()),
-                ),
-              ])
-            : ListView(padding: const EdgeInsets.all(16), children: contenido(d)),
+          onRefresh: cargar,
+          child: d == null
+              ? ListView(children: [
+                  Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: error != null ? Text(error!, textAlign: TextAlign.center) : const Center(child: CircularProgressIndicator()),
+                  ),
+                ])
+              : ListView(padding: const EdgeInsets.all(16), children: contenido(d)),
         ),
       ),
     );
@@ -674,59 +677,13 @@ class _Ficha extends StatelessWidget {
   }
 }
 
-// ─── Finca ───────────────────────────────────────────────────────────────────
-
-class _FincaScreen extends StatefulWidget {
-  const _FincaScreen({required this.esDueno});
-  final bool esDueno;
-
-  @override
-  State<_FincaScreen> createState() => _FincaScreenState();
-}
-
-class _FincaScreenState extends _ProcesoState<_FincaScreen> {
-  @override
-  String get clave => 'finca';
-
-  @override
-  Widget build(BuildContext context) {
-    return pantalla('Finca', (d) {
-      final recientes = _lista(d['recientes']);
-      return [
-        _CuatroDatos(indicadores: _indicadoresFinca(d, widget.esDueno), grande: true), // los mismos 4 de la tarjeta
-        const SizedBox(height: 16),
-        _Acciones(acciones: [
-          (Icons.receipt_long, 'Registrar gasto de finca', () => formulario('gasto', fijos: const {'area': 'farm'}, subtitulo: 'Área: Finca')),
-        ]),
-        _encabezado('Últimos gastos de la finca', '${recientes.length}'),
-        if (recientes.isEmpty) _vacio('Todavía no hay gastos de la finca.'),
-        for (final g in recientes)
-          _Ficha(
-            inicio: _Insignia(_fechaCorta(g['fecha']), tono: Colors.green),
-            titulo: '${g['categoria'] ?? 'Gasto'}',
-            detalle: [if ((g['descripcion'] ?? '').toString().isNotEmpty) '${g['descripcion']}', '${g['estado'] ?? ''}']
-                .where((t) => t.isNotEmpty)
-                .join(' · '),
-            // La base ya dice el estado en español ("Pendiente de pago", "Pagado").
-            fin: g['monto'] != null ? _Pildora(_soles(g['monto']), '${g['estado']}'.startsWith('Pagado') ? Colors.green : Colors.orange) : null,
-          ),
-      ];
-    });
-  }
-}
-
-// ─── Compras ─────────────────────────────────────────────────────────────────
-
-class _ComprasScreen extends StatefulWidget {
-  const _ComprasScreen({required this.esDueno});
-  final bool esDueno;
-
-  @override
-  State<_ComprasScreen> createState() => _ComprasScreenState();
-}
-
-class _ComprasScreenState extends _ProcesoState<_ComprasScreen> {
-  int _pestana = 0; // 0 Recibidos, 1 En almacén, 2 Proveedores
+/// Lista de proveedores de un proceso dentro de su pantalla: buscar por nombre o apodo, de 20 en 20 desde el
+/// servidor al llegar al final, con su carga. Compras: los agricultores que venden café; Finca y Producción: los
+/// proveedores de su área (General Manager, 3 nov 2026).
+mixin _ProveedoresDelProceso<T extends StatefulWidget> on State<T> {
+  String? get rolProveedores => null;
+  String? get areaProveedores => null;
+  String get vacioProveedores => 'Todavía no hay proveedores de este proceso.';
 
   // Proveedores: de 20 en 20 desde el servidor, con búsqueda por nombre o apodo (como el buscador de personas).
   static const _porPagina = 20;
@@ -745,6 +702,11 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> {
     super.dispose();
   }
 
+  /// Primera página al abrir la pestaña.
+  void abrirProveedores() {
+    if (_proveedores.isEmpty && _hayMasProv && !_cargandoProv) masProveedores();
+  }
+
   void _buscarProveedor(String texto) {
     _espera?.cancel();
     _espera = Timer(const Duration(milliseconds: 300), () {
@@ -757,15 +719,16 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> {
         _cargandoProv = false;
         _pedidoProv++;
       });
-      _masProveedores();
+      masProveedores();
     });
   }
 
-  Future<void> _masProveedores() async {
+  Future<void> masProveedores() async {
     if (_cargandoProv || !_hayMasProv) return;
     final pedido = _pedidoProv;
     setState(() => _cargandoProv = true);
-    final r = await AdministracionService.buscarPersonas(q: _busqueda, offset: _proveedores.length, limit: _porPagina);
+    final r = await AdministracionService.buscarPersonas(
+        q: _busqueda, rol: rolProveedores, area: areaProveedores, offset: _proveedores.length, limit: _porPagina);
     if (!mounted || pedido != _pedidoProv) return;
     setState(() {
       _cargandoProv = false;
@@ -792,14 +755,15 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> {
     return partes.join(' · ');
   }
 
-  String _iniciales(String nombre) =>
+  String _inicialesProv(String nombre) =>
       nombre.trim().split(RegExp(r'\s+')).where((x) => x.isNotEmpty).take(2).map((x) => x[0].toUpperCase()).join();
 
   List<Widget> _listaProveedores() => [
         Padding(
           padding: const EdgeInsets.only(top: 12),
           child: TextField(
-            decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Buscar por nombre o apodo', border: OutlineInputBorder()),
+            decoration:
+                const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Buscar por nombre o apodo', border: OutlineInputBorder()),
             textInputAction: TextInputAction.search,
             onChanged: _buscarProveedor,
           ),
@@ -807,7 +771,7 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> {
         _encabezado('Proveedores', _totalProv == null ? '' : '$_totalProv en total'),
         for (final p in _proveedores)
           _Ficha(
-            inicio: _Insignia(_iniciales('${p['nombre'] ?? ''}'), tono: p['agricultor'] == true ? Colors.green : Colors.blue),
+            inicio: _Insignia(_inicialesProv('${p['nombre'] ?? ''}'), tono: p['agricultor'] == true ? Colors.green : Colors.blue),
             titulo: '${p['nombre'] ?? 'Sin nombre'}',
             detalle: _queEs(p),
           ),
@@ -816,11 +780,93 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> {
         else if (_cargandoProv || _hayMasProv)
           const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
         else if (_proveedores.isEmpty)
-          _vacio(_busqueda.isEmpty ? 'Todavía no hay proveedores.' : 'Nadie con ese nombre.'),
+          _vacio(_busqueda.isEmpty ? vacioProveedores : 'Nadie con ese nombre.'),
       ];
+}
+
+// ─── Finca ───────────────────────────────────────────────────────────────────
+
+class _FincaScreen extends StatefulWidget {
+  const _FincaScreen({required this.esDueno});
+  final bool esDueno;
+
+  @override
+  State<_FincaScreen> createState() => _FincaScreenState();
+}
+
+class _FincaScreenState extends _ProcesoState<_FincaScreen> with _ProveedoresDelProceso {
+  int _pestana = 0; // 0 Gastos, 1 Proveedores
+
+  @override
+  String get clave => 'finca';
+  @override
+  String? get areaProveedores => 'farm';
+
+  @override
+  Widget build(BuildContext context) {
+    return pantalla('Finca', alFinal: () {
+      if (_pestana == 1) masProveedores();
+    }, (d) {
+      final recientes = _lista(d['recientes']);
+      return [
+        _CuatroDatos(indicadores: _indicadoresFinca(d, widget.esDueno), grande: true), // los mismos 4 de la tarjeta
+        const SizedBox(height: 16),
+        _Acciones(acciones: [
+          (
+            Icons.receipt_long,
+            'Registrar gasto de finca',
+            () => formulario('gasto', fijos: const {'area': 'farm'}, subtitulo: 'Área: Finca')
+          ),
+        ]),
+        _Pestanas(
+          nombres: const ['Gastos', 'Proveedores'],
+          elegida: _pestana,
+          onElegir: (i) {
+            setState(() => _pestana = i);
+            if (i == 1) abrirProveedores();
+          },
+        ),
+        if (_pestana == 1) ..._listaProveedores(),
+        if (_pestana == 0) _encabezado('Últimos gastos de la finca', '${recientes.length}'),
+        if (_pestana == 0 && recientes.isEmpty) _vacio('Todavía no hay gastos de la finca.'),
+        if (_pestana == 0)
+          for (final g in recientes)
+            _Ficha(
+              inicio: _Insignia(_fechaCorta(g['fecha']), tono: Colors.green),
+              titulo: '${g['categoria'] ?? 'Gasto'}',
+              detalle: [if ((g['descripcion'] ?? '').toString().isNotEmpty) '${g['descripcion']}', '${g['estado'] ?? ''}']
+                  .where((t) => t.isNotEmpty)
+                  .join(' · '),
+              // La base ya dice el estado en español ("Pendiente de pago", "Pagado").
+              fin: g['monto'] != null
+                  ? _Pildora(_soles(g['monto']), '${g['estado']}'.startsWith('Pagado') ? Colors.green : Colors.orange)
+                  : null,
+            ),
+      ];
+    });
+  }
+}
+
+// ─── Compras ─────────────────────────────────────────────────────────────────
+
+class _ComprasScreen extends StatefulWidget {
+  const _ComprasScreen({required this.esDueno});
+  final bool esDueno;
+
+  @override
+  State<_ComprasScreen> createState() => _ComprasScreenState();
+}
+
+class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _ProveedoresDelProceso {
+  int _pestana = 0; // 0 Recibidos, 1 En almacén, 2 Proveedores
 
   @override
   String get clave => 'compras';
+
+  @override
+  String? get rolProveedores => 'agricultor'; // en Compras, sólo quienes nos venden café
+  @override
+  String get vacioProveedores => 'Todavía no hay agricultores.';
 
   @override
   Widget build(BuildContext context) {
@@ -830,30 +876,25 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> {
       return [
         _CuatroDatos(indicadores: _indicadoresCompras(d, widget.esDueno), grande: true), // los mismos 4 de la tarjeta
         const SizedBox(height: 16),
-        // Las dos acciones de todos los días, grandes; las demás debajo, en una fila baja.
+        // Todas del mismo tamaño; las de dinero sólo para dueños.
         _Acciones(acciones: [
           (Icons.move_to_inbox, _titulos['entrega']!, () => formulario('entrega')),
           (Icons.handshake, _titulos['adelanto']!, () => formulario('adelanto')),
-        ]),
-        const SizedBox(height: 10),
-        _Acciones(compactas: true, acciones: [
           (Icons.person_add_alt_1, _titulos['proveedor']!, () => formulario('proveedor')),
-          (Icons.receipt_long, _titulos['gasto']!, () => formulario('gasto', fijos: const {'area': 'sourcing'}, subtitulo: 'Área: Compras')),
+          (
+            Icons.receipt_long,
+            _titulos['gasto']!,
+            () => formulario('gasto', fijos: const {'area': 'sourcing'}, subtitulo: 'Área: Compras')
+          ),
+          if (widget.esDueno) (Icons.payments, 'Pagar compras', () => Navigator.of(context).pop('pendientes')),
+          if (widget.esDueno) (Icons.account_balance_wallet, _titulos['retiro']!, () => formulario('retiro')),
         ]),
-        // Sólo dueños mueven dinero.
-        if (widget.esDueno) ...[
-          const SizedBox(height: 10),
-          _Acciones(compactas: true, acciones: [
-            (Icons.payments, 'Pagar compras', () => Navigator.of(context).pop('pendientes')),
-            (Icons.account_balance_wallet, _titulos['retiro']!, () => formulario('retiro')),
-          ]),
-        ],
         _Pestanas(
           nombres: const ['Recibidos', 'En almacén', 'Proveedores'],
           elegida: _pestana,
           onElegir: (i) {
             setState(() => _pestana = i);
-            if (i == 2 && _proveedores.isEmpty) _masProveedores();
+            if (i == 2) abrirProveedores();
           },
         ),
         if (_pestana == 2)
@@ -882,7 +923,7 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> {
             ),
         ],
       ];
-    }, alFinal: _pestana == 2 ? _masProveedores : null);
+    }, alFinal: _pestana == 2 ? masProveedores : null);
   }
 }
 
@@ -926,7 +967,7 @@ class _ComercialScreenState extends State<_ComercialScreen> {
             ? Column(children: [
                 _CuatroDatos(indicadores: _indicadoresComercial(d), grande: true),
                 const SizedBox(height: 16),
-                _Acciones(compactas: true, acciones: [
+                _Acciones(acciones: [
                   (
                     Icons.receipt_long,
                     'Registrar gasto de comercialización',
@@ -952,8 +993,11 @@ class _ProduccionScreen extends StatefulWidget {
   State<_ProduccionScreen> createState() => _ProduccionScreenState();
 }
 
-class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> {
-  int? _pestana; // 0 Tuestes, 1 Lotes; al abrir: Tuestes si hay alguno, si no Lotes
+class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _ProveedoresDelProceso {
+  int? _pestana; // 0 Tuestes, 1 Lotes, 2 Proveedores; al abrir: Tuestes si hay alguno, si no Lotes
+
+  @override
+  String? get areaProveedores => 'production';
 
   @override
   String get clave => 'produccion';
@@ -999,7 +1043,9 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return pantalla('Producción', (d) {
+    return pantalla('Producción', alFinal: () {
+      if (_pestana == 2) masProveedores();
+    }, (d) {
       final lotes = _lista(d['lotes_verdes']);
       final tuestes = _lista(d['tuestes']);
       final porProcesar = _lista(d['por_procesar']);
@@ -1015,8 +1061,17 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> {
             () => formulario('gasto', fijos: const {'area': 'production'}, subtitulo: 'Área: Producción')
           ),
         ]),
-        _Pestanas(nombres: const ['Tuestes', 'Lotes de café verde'], elegida: pestana, onElegir: (i) => setState(() => _pestana = i)),
-        if (pestana == 0) ...[
+        _Pestanas(
+          nombres: const ['Tuestes', 'Lotes', 'Proveedores'],
+          elegida: pestana,
+          onElegir: (i) {
+            setState(() => _pestana = i);
+            if (i == 2) abrirProveedores();
+          },
+        ),
+        if (pestana == 2)
+          ..._listaProveedores()
+        else if (pestana == 0) ...[
           _encabezado('Tuestes en curso y programados', '${tuestes.length}'),
           if (tuestes.isEmpty) _vacio('No hay tuestes programados. Toca "Tostar café".'),
           for (final t in tuestes)

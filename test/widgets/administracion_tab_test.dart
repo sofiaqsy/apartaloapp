@@ -709,13 +709,13 @@ void main() {
       await tester.tap(find.text('Producción'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    // Opens on Tuestes because there are roasts; Lotes de café verde is the other tab.
+    // Opens on Tuestes because there are roasts; Lotes and Proveedores are the other tabs.
     for (final t in ['Tostar café', 'Registrar gasto de producción', 'Omagua 250 g', 'Omagua 1 kg', '16.7%', '820 kg → 683 kg', '1 tostando ahora']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     expect(find.text('Finalizar'), findsOneWidget); // the roast in progress
     expect(find.text('Iniciar'), findsOneWidget); // the planned one
-    await tester.tap(find.text('Lotes de café verde'));
+    await tester.tap(find.text('Lotes'));
     await tester.pump();
     for (final t in ['L-1', 'Catimor · cosecha 2026', '760 kg / 1,000 kg', '76%']) {
       expect(find.text(t), findsOneWidget, reason: t);
@@ -844,7 +844,7 @@ void main() {
     expect(find.textContaining('Café recibido'), findsWidgets);
   });
 
-  testWidgets('Compras lists the providers in pages of 20, searchable, without actions', (tester) async {
+  testWidgets('Compras lists the farmers in pages of 20, searchable, without actions', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
       await tester.tap(find.text('Compras'));
@@ -852,6 +852,8 @@ void main() {
       await tester.tap(find.text('Proveedores'));
       await tester.pumpAndSettle();
       expect(find.text('31 en total'), findsOneWidget);
+      final primero = pedidos.lastWhere((r) => r.url.path.endsWith('/personas/buscar'));
+      expect(primero.url.queryParameters['rol'], 'agricultor'); // Compras: only the farmers who sell coffee
       expect(pedidos.where((r) => r.url.path.endsWith('/personas/buscar')).length, 1); // only the first page
       await tester.enterText(find.widgetWithText(TextField, 'Buscar por nombre o apodo'), 'chato');
       await tester.pump(const Duration(milliseconds: 400));
@@ -867,5 +869,39 @@ void main() {
       await tester.pumpAndSettle();
       expect(pedidos.where((r) => r.url.path.endsWith('/personas/buscar')).length, greaterThan(antes)); // next page
     }, () => MockClient((req) async => responder(req)));
+  });
+
+  testWidgets('Finca and Producción list their own providers', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Producción'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Proveedores'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(pedidos.lastWhere((r) => r.url.path.endsWith('/personas/buscar')).url.queryParameters['area'], 'production');
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Finca'), 200, scrollable: find.byType(Scrollable).last);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Finca'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Proveedores'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(pedidos.lastWhere((r) => r.url.path.endsWith('/personas/buscar')).url.queryParameters['area'], 'farm');
+  });
+
+  testWidgets('all the Compras buttons are the same size', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final tamanos = {
+      for (final t in ['Registrar café recibido', 'Solicitar adelanto', 'Registrar proveedor', 'Registrar gasto', 'Pagar compras', 'Registrar retiro de efectivo'])
+        tester.getSize(find.ancestor(of: find.text(t), matching: find.byType(InkWell)).first),
+    };
+    expect(tamanos, hasLength(1));
   });
 }
