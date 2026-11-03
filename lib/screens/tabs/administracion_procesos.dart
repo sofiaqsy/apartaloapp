@@ -973,22 +973,63 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
   @override
   String get clave => 'finanzas';
 
-  Future<void> _adelanto(Map<String, dynamic> a) async {
-    final sub = '${a['para'] ?? ''} · ${_soles(a['monto'])}';
-    final elegido = await showModalBottomSheet<String>(
+  static int _nEvidencias(Map<String, dynamic> f) => (f['evidencias'] as num?)?.toInt() ?? 0;
+  static String _textoEvidencias(Map<String, dynamic> f) => _nEvidencias(f) == 1 ? '1 evidencia' : '${_nEvidencias(f)} evidencias';
+
+  /// Lo que se puede hacer con una fila: pagar (o aprobar), Subir evidencia y, si ya tiene, Ver evidencia.
+  Future<void> _menu(
+      String titulo, String tipo, String id, Map<String, dynamic> fila, List<(IconData, String, Future<void> Function())> pagar) async {
+    final n = _nEvidencias(fila);
+    final opciones = <(IconData, String, Future<void> Function())>[
+      ...pagar,
+      (
+        Icons.add_a_photo_outlined,
+        'Subir evidencia',
+        () async {
+          if (await _subirEvidencia(context, tipo, id)) cargar();
+        }
+      ),
+      if (n > 0)
+        (
+          Icons.photo_library_outlined,
+          'Ver evidencia ($n)',
+          () async {
+            await _abrirPantalla<void>(context, _EvidenciasScreen(tipo: tipo, id: id, titulo: titulo));
+            cargar();
+          }
+        ),
+    ];
+    final elegido = await showModalBottomSheet<int>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(title: Text('Adelanto · $sub', style: const TextStyle(fontWeight: FontWeight.w600))),
-          ListTile(
-              leading: const Icon(Icons.check_circle_outline),
-              title: const Text('Aprobar y entregar'),
-              onTap: () => Navigator.pop(ctx, 'aprobarAdelanto')),
-          ListTile(leading: const Icon(Icons.cancel_outlined), title: const Text('Rechazar'), onTap: () => Navigator.pop(ctx, 'rechazarAdelanto')),
+          ListTile(title: Text(titulo, style: const TextStyle(fontWeight: FontWeight.w600))),
+          for (var i = 0; i < opciones.length; i++)
+            ListTile(leading: Icon(opciones[i].$1), title: Text(opciones[i].$2), onTap: () => Navigator.pop(ctx, i)),
         ]),
       ),
     );
-    if (elegido != null && mounted) await formulario(elegido, fijos: {'solicitudId': a['id']}, subtitulo: sub);
+    if (elegido != null && mounted) await opciones[elegido].$3();
+  }
+
+  /// Paga (o aprueba) y, si se guardó, ofrece subir la evidencia del pago en el momento: después la fila sale de
+  /// Finanzas y la evidencia queda con su compra, gasto o adelanto.
+  Future<void> _pagar(String form, String tipo, String id,
+      {required Map<String, dynamic> fijos, required String subtitulo, Map<String, dynamic> iniciales = const {}}) async {
+    if (!await _abrirFormulario(context, form, fijos: fijos, subtitulo: subtitulo, iniciales: iniciales) || !mounted) return;
+    cargar();
+    final subir = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Subir la evidencia?'),
+        content: const Text('Una foto del voucher o del recibo, para tenerla con el pago.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Después')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Subir evidencia')),
+        ],
+      ),
+    );
+    if (subir == true && mounted) await _subirEvidencia(context, tipo, id);
   }
 
   /// Pagar con adelanto no mueve dinero: Finanzas confirma y la base descuenta el adelanto (revisando el saldo otra vez).
@@ -1049,15 +1090,22 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
                 c['metodo'] == 'advance' ? 'con el adelanto ${c['adelanto']}' : 'por transferencia',
                 if (((c['pagado'] as num?) ?? 0) > 0) 'pagado ${_soles(c['pagado'])}',
                 if ((c['nota'] ?? '').toString().isNotEmpty) '${c['nota']}',
+                if (_nEvidencias(c) > 0) _textoEvidencias(c),
               ].join(' · '),
               // Lo que pidió Compras (puede ser una parte de lo que se debe).
               fin: _Pildora(_soles(c['monto'] ?? c['debe']), c['metodo'] == 'advance' ? Colors.purple : Colors.blue),
-              onTap: () => c['metodo'] == 'advance'
-                  ? _confirmarConAdelanto(c)
-                  : formulario('pago',
-                      fijos: {'compraId': c['id']},
-                      subtitulo: '${c['agricultor'] ?? c['id']} · pidieron ${_soles(c['monto'] ?? c['debe'])}',
-                      iniciales: {if (c['monto'] != null) 'monto': c['monto']}),
+              onTap: () => _menu('${c['agricultor'] ?? c['id']} · ${_soles(c['monto'] ?? c['debe'])}', 'purchase', '${c['id']}', c, [
+                c['metodo'] == 'advance'
+                    ? (Icons.savings_outlined, 'Pagar con el adelanto', () => _confirmarConAdelanto(c))
+                    : (
+                        Icons.payments_outlined,
+                        _titulos['pago']!,
+                        () => _pagar('pago', 'purchase', '${c['id']}',
+                            fijos: {'compraId': c['id']},
+                            subtitulo: '${c['agricultor'] ?? c['id']} · pidieron ${_soles(c['monto'] ?? c['debe'])}',
+                            iniciales: {if (c['monto'] != null) 'monto': c['monto']})
+                      ),
+              ]),
             ),
         ] else if (_pestana == 1) ...[
           if (gastos.isEmpty) _vacio('No hay gastos por pagar.'),
@@ -1069,9 +1117,17 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
                 if ((g['descripcion'] ?? '').toString().isNotEmpty) '${g['descripcion']}',
                 if (g['area'] != null) _areas[g['area']] ?? '${g['area']}',
                 if (g['por'] != null) '${g['por']}',
+                if (_nEvidencias(g) > 0) _textoEvidencias(g),
               ].join(' · '),
               fin: _Pildora(_soles(g['monto']), Colors.orange),
-              onTap: () => formulario('pagoGasto', fijos: {'gastoId': g['id']}, subtitulo: '${g['categoria']} · ${_soles(g['monto'])}'),
+              onTap: () => _menu('${g['categoria'] ?? 'Gasto'} · ${_soles(g['monto'])}', 'expense', '${g['id']}', g, [
+                (
+                  Icons.payments_outlined,
+                  _titulos['pagoGasto']!,
+                  () => _pagar('pagoGasto', 'expense', '${g['id']}',
+                      fijos: {'gastoId': g['id']}, subtitulo: '${g['categoria']} · ${_soles(g['monto'])}')
+                ),
+              ]),
             ),
         ] else ...[
           if (adelantos.isEmpty) _vacio('No hay adelantos por aprobar.'),
@@ -1079,9 +1135,25 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
             _Ficha(
               inicio: _Insignia(_fechaCorta(a['fecha']), tono: Colors.purple),
               titulo: '${a['para'] ?? 'Sin nombre'}',
-              detalle: [if ((a['motivo'] ?? '').toString().isNotEmpty) '${a['motivo']}', if (a['por'] != null) 'pidió ${a['por']}'].join(' · '),
+              detalle: [
+                if ((a['motivo'] ?? '').toString().isNotEmpty) '${a['motivo']}',
+                if (a['por'] != null) 'pidió ${a['por']}',
+                if (_nEvidencias(a) > 0) _textoEvidencias(a),
+              ].join(' · '),
               fin: _Pildora(_soles(a['monto']), Colors.purple),
-              onTap: () => _adelanto(a),
+              onTap: () => _menu('Adelanto · ${a['para'] ?? ''} · ${_soles(a['monto'])}', 'advance_request', '${a['id']}', a, [
+                (
+                  Icons.check_circle_outline,
+                  'Aprobar y entregar',
+                  () => _pagar('aprobarAdelanto', 'advance_request', '${a['id']}',
+                      fijos: {'solicitudId': a['id']}, subtitulo: '${a['para'] ?? ''} · ${_soles(a['monto'])}')
+                ),
+                (
+                  Icons.cancel_outlined,
+                  'Rechazar',
+                  () => formulario('rechazarAdelanto', fijos: {'solicitudId': a['id']}, subtitulo: '${a['para'] ?? ''}')
+                ),
+              ]),
             ),
         ],
       ];
@@ -1765,6 +1837,17 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
                     _dato('Adelanto usado', c['adelanto']?.toString()),
                   ]),
                 if (pagos.isNotEmpty) _panel('Pagos', [for (final p in pagos) _dato(_fechaCorta(p['fecha']), '${_soles(p['monto'])} · ${p['de']}')]),
+                // Dueños: la evidencia del pago se carga recién al tocar (General Manager, 3 nov 2026).
+                if (compra != null && c['compra_id'] != null) ...[
+                  const SizedBox(height: 12),
+                  _Ficha(
+                    inicio: const _InsigniaIcono(Icons.photo_library_outlined, tono: Colors.indigo),
+                    titulo: 'Evidencia',
+                    detalle: 'Vouchers y recibos de esta compra',
+                    onTap: () => _abrirPantalla<void>(
+                        context, _EvidenciasScreen(tipo: 'purchase', id: '${c['compra_id']}', titulo: '${c['agricultor'] ?? ''} · ${c['id']}')),
+                  ),
+                ],
                 const SizedBox(height: 20),
                 // Lo que se puede hacer con esta compra (botones de verdad).
                 if (situacion == 'Sin precio')
@@ -1789,6 +1872,196 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
                   // Compras no paga: pide el pago con este botón y Finanzas lo hace. No es automático.
                   _Acciones(acciones: [(Icons.schedule_send, 'Solicitar pago', () => _solicitarPago(c))]),
               ]),
+      ),
+    );
+  }
+}
+
+// ─── Evidencia ───────────────────────────────────────────────────────────────
+
+/// Subir evidencia (General Manager, 3 nov 2026): una foto del voucher o del recibo, con la cámara o de la galería.
+/// Sólo dueños (lo decide la base). true si se subió.
+Future<bool> _subirEvidencia(BuildContext context, String tipo, String id) async {
+  final fuente = await showModalBottomSheet<ImageSource>(
+    context: context,
+    builder: (ctx) => SafeArea(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const ListTile(title: Text('Subir evidencia', style: TextStyle(fontWeight: FontWeight.w600))),
+        ListTile(
+            leading: const Icon(Icons.photo_camera_outlined), title: const Text('Tomar foto'), onTap: () => Navigator.pop(ctx, ImageSource.camera)),
+        ListTile(
+            leading: const Icon(Icons.photo_library_outlined),
+            title: const Text('Elegir de la galería'),
+            onTap: () => Navigator.pop(ctx, ImageSource.gallery)),
+      ]),
+    ),
+  );
+  if (fuente == null || !context.mounted) return false;
+  final foto = await ImagePicker().pickImage(source: fuente, maxWidth: 2000, imageQuality: 80); // siempre JPG
+  if (foto == null || !context.mounted) return false;
+  final bytes = await foto.readAsBytes();
+  if (!context.mounted) return false;
+  final mensajes = ScaffoldMessenger.of(context);
+  mensajes.showSnackBar(const SnackBar(content: Text('Subiendo evidencia…'), duration: Duration(seconds: 30)));
+  final r = await AdministracionService.subirEvidencia(tipo: tipo, id: id, bytes: bytes);
+  mensajes.hideCurrentSnackBar();
+  mensajes.showSnackBar(SnackBar(content: Text(r.isSuccess ? 'Evidencia subida ✓' : (r.error ?? 'No se subió'))));
+  return r.isSuccess;
+}
+
+/// La evidencia de una compra, un gasto o un adelanto: fotos en cuadrícula; tocar una la abre en grande.
+class _EvidenciasScreen extends StatefulWidget {
+  const _EvidenciasScreen({required this.tipo, required this.id, required this.titulo});
+  final String tipo;
+  final String id;
+  final String titulo;
+
+  @override
+  State<_EvidenciasScreen> createState() => _EvidenciasScreenState();
+}
+
+class _EvidenciasScreenState extends State<_EvidenciasScreen> {
+  List<Map<String, dynamic>>? _items;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    final r = await AdministracionService.evidencias(widget.tipo, widget.id);
+    if (!mounted) return;
+    setState(() {
+      _error = r.isSuccess ? null : r.error;
+      if (r.isSuccess) _items = _lista(r.data!['evidencias']);
+    });
+  }
+
+  Future<void> _abrir(Map<String, dynamic> e) async {
+    final url = e['url'] as String?;
+    if (url == null) return;
+    if (e['tipo'] == 'application/pdf') {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      return;
+    }
+    final quitada = await _abrirPantalla<bool>(context, _EvidenciaVista(evidencia: e));
+    if (quitada == true) _cargar();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lista = _items;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Evidencia')),
+      body: RefreshIndicator(
+        onRefresh: _cargar,
+        child: ListView(padding: const EdgeInsets.all(16), children: [
+          Text(widget.titulo, style: TextStyle(color: Colors.grey.shade700)),
+          const SizedBox(height: 12),
+          _Acciones(acciones: [
+            (
+              Icons.add_a_photo_outlined,
+              'Subir evidencia',
+              () async {
+                if (await _subirEvidencia(context, widget.tipo, widget.id)) _cargar();
+              }
+            ),
+          ]),
+          const SizedBox(height: 16),
+          if (lista == null)
+            Padding(
+              padding: const EdgeInsets.all(32),
+              child: _error != null ? Text(_error!, textAlign: TextAlign.center) : const Center(child: CircularProgressIndicator()),
+            )
+          else if (lista.isEmpty)
+            _vacio('Todavía no hay evidencia.')
+          else
+            GridView.count(
+              crossAxisCount: 3,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              children: [
+                for (final e in lista)
+                  InkWell(
+                    onTap: () => _abrir(e),
+                    borderRadius: BorderRadius.circular(10),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Stack(fit: StackFit.expand, children: [
+                        e['tipo'] == 'application/pdf' || e['url'] == null
+                            ? Container(
+                                color: Colors.grey.shade200, child: Icon(Icons.picture_as_pdf_outlined, size: 36, color: Colors.grey.shade700))
+                            : Image.network('${e['url']}',
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(color: Colors.grey.shade200, child: const Icon(Icons.broken_image_outlined))),
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: Container(
+                            color: Colors.black54,
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            child:
+                                Text(_fechaCorta(e['fecha']), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 12)),
+                          ),
+                        ),
+                      ]),
+                    ),
+                  ),
+              ],
+            ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Una evidencia en grande (se puede acercar con los dedos) y Quitar evidencia (se archiva, nunca se borra).
+class _EvidenciaVista extends StatelessWidget {
+  const _EvidenciaVista({required this.evidencia});
+  final Map<String, dynamic> evidencia;
+
+  Future<void> _quitar(BuildContext context) async {
+    final si = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Quitar evidencia'),
+        content: const Text('Dejará de aparecer. Queda guardada como archivada.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Quitar evidencia')),
+        ],
+      ),
+    );
+    if (si != true || !context.mounted) return;
+    final r = await AdministracionService.registrar('quitarEvidencia', {'evidenciaId': evidencia['id']},
+        clave: AdministracionService.nuevaClave('quitarEvidencia'));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.isSuccess ? 'Evidencia quitada ✓' : (r.error ?? 'No se pudo quitar'))));
+    if (r.isSuccess) Navigator.pop(context, true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text([_fechaCorta(evidencia['fecha']), if (evidencia['por'] != null) '${evidencia['por']}'].join(' · '),
+            style: const TextStyle(fontSize: 15)),
+        actions: [IconButton(tooltip: 'Quitar evidencia', icon: const Icon(Icons.delete_outline), onPressed: () => _quitar(context))],
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          maxScale: 5,
+          child: Image.network('${evidencia['url']}',
+              errorBuilder: (_, __, ___) => const Text('No se pudo abrir. Vuelve a entrar.', style: TextStyle(color: Colors.white))),
+        ),
       ),
     );
   }

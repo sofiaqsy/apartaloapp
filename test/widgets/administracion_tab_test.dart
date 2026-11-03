@@ -128,6 +128,12 @@ void main() {
         'recientes': [{'id': 'DL-0001', 'fecha': '2026-11-03', 'estado': 'parchment', 'kg': 100}],
       }}), 200);
     }
+    if (p.endsWith('/evidencias') && req.method == 'GET') {
+      return http.Response(jsonEncode({'evidencias': [
+        {'id': 3, 'tipo': 'image/jpeg', 'nota': 'Voucher', 'fecha': '2026-11-03T15:00:00Z', 'por': 'owner@x', 'url': null},
+      ]}), 200);
+    }
+    if (p.endsWith('/evidencias') && req.method == 'POST') return http.Response(jsonEncode({'ok': true, 'evidencia': {'evidence_id': 4}}), 200);
     if (p.endsWith('/adelantos')) {
       return http.Response(jsonEncode({
         'porAprobar': [{'id': 'SOL-0001', 'request_date': '2026-11-02', 'party': 'Misael Cusi', 'amount': 1500, 'reason': 'Compras', 'created_by': 'misael@x'}],
@@ -182,7 +188,7 @@ void main() {
                 'compras': {'n': 1, 'total': 300}, 'gastos': {'n': 1, 'total': 120}, 'adelantos': {'n': 1, 'total': 1500},
                 'compras_por_pagar': [
                   {'id': 'PU-0001', 'entrega': 'DL-0001', 'fecha': '2026-11-04', 'agricultor': 'Pedro Ramírez Ñique', 'kg': 100, 'total': 1800, 'pagado': 1500, 'debe': 300,
-                   'monto': 300, 'metodo': 'transfer', 'solicitud': 8},
+                   'monto': 300, 'metodo': 'transfer', 'solicitud': 8, 'evidencias': 1},
                   {'id': 'PU-0002', 'entrega': 'DL-0002', 'fecha': '2026-11-02', 'agricultor': 'Agricultor Parte', 'kg': 50, 'total': 1000, 'pagado': 500, 'debe': 500,
                    'monto': 200, 'metodo': 'advance', 'adelanto': 'ADV-007', 'solicitud': 9},
                 ],
@@ -350,10 +356,17 @@ void main() {
     await http.runWithClient(() async {
       await tester.tap(find.text('Pedro Ramírez Ñique'));
       await tester.pumpAndSettle();
+      expect(find.text('Subir evidencia'), findsOneWidget); // the row opens what can be done with it
+      await tester.tap(find.text('Pagar compra'));
+      await tester.pumpAndSettle();
       expect(find.text('Pagar compra'), findsOneWidget);
       expect(find.text('Transferencia'), findsOneWidget);
       expect(find.textContaining('Número de operación'), findsNothing);
       await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      // After paying, the evidence is offered at once (the row then leaves Finanzas).
+      expect(find.text('¿Subir la evidencia?'), findsOneWidget);
+      await tester.tap(find.text('Después'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     final r = pedidos.lastWhere((r) => r.url.path.contains('/registrar/'));
@@ -1132,6 +1145,8 @@ void main() {
       expect(find.textContaining('con el adelanto ADV-007'), findsOneWidget);
       await tester.tap(find.text('Agricultor Parte'));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('Pagar con el adelanto'));
+      await tester.pumpAndSettle();
       expect(find.text('¿Pagar con el adelanto?'), findsOneWidget);
       await tester.tap(find.text('Confirmar'));
       await tester.pumpAndSettle();
@@ -1256,5 +1271,60 @@ void main() {
     for (final t in ['DNI o RUC', 'Teléfono', 'Cuentas para pagarle', '000-0000000-0-00', 'Cuenta · BCP · Pedro Ramírez Ñique', 'Le debemos', 'S/ 300']) {
       expect(find.text(t), findsWidgets, reason: t);
     }
+  });
+
+  testWidgets('Finanzas shows how much evidence a row has and opens it', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await entrarFinanzas(tester);
+    expect(find.textContaining('1 evidencia'), findsOneWidget);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Pedro Ramírez Ñique'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ver evidencia (1)'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Evidencia'), findsWidgets);
+    expect(find.text('Subir evidencia'), findsOneWidget);
+    expect(find.text('3 nov'), findsOneWidget); // one photo, with its date
+    final r = pedidos.lastWhere((r) => r.url.path.endsWith('/evidencias'));
+    expect(r.url.queryParameters, {'tipo': 'purchase', 'id': 'PU-0001'});
+  });
+
+  testWidgets('gastos and advance requests also offer Subir evidencia', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await entrarFinanzas(tester);
+    await http.runWithClient(() async {
+      await tester.tap(find.textContaining('Gastos ('));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Gas'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Pagar gasto'), findsOneWidget);
+    expect(find.text('Subir evidencia'), findsOneWidget);
+    expect(find.textContaining('Ver evidencia'), findsNothing); // none yet
+    await tester.tapAt(const Offset(10, 10)); // close the menu
+    await tester.pumpAndSettle();
+    await http.runWithClient(() async {
+      await tester.tap(find.textContaining('Adelantos ('));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Misael Cusi'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    for (final t in ['Aprobar y entregar', 'Rechazar', 'Subir evidencia']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+  });
+
+  testWidgets('the photo goes to the server with what it belongs to', (tester) async {
+    await abrir(tester, rol: 'owner');
+    late dynamic r;
+    await http.runWithClient(() async {
+      r = await AdministracionService.subirEvidencia(tipo: 'expense', id: 'EX-0001', bytes: [0xff, 0xd8, 0xff, 0xe0]);
+    }, () => MockClient((req) async => responder(req)));
+    expect(r.isSuccess, isTrue);
+    final body = jsonDecode(pedidos.last.body) as Map;
+    expect(body['tipo'], 'expense');
+    expect(body['id'], 'EX-0001');
+    expect(base64Decode(body['archivoBase64'] as String), [0xff, 0xd8, 0xff, 0xe0]);
   });
 }

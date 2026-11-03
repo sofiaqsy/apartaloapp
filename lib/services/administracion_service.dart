@@ -59,6 +59,28 @@ class AdministracionService {
   /// Reporte de un proveedor para el PDF ({reporte}): se pide sólo al tocar Generar reporte.
   static Future<ApiResponse<Map<String, dynamic>>> reporteProveedor(String id) => _get('proveedores/${Uri.encodeComponent(id)}/reporte');
 
+  /// Subir evidencia (dueños): una foto o PDF del voucher o recibo de una compra (purchase), un gasto (expense),
+  /// un pedido de adelanto (advance_request) o un adelanto (advance). El servidor revisa que sea foto o PDF.
+  static Future<ApiResponse<Map<String, dynamic>>> subirEvidencia(
+      {required String tipo, required String id, required List<int> bytes, String? nota}) async {
+    try {
+      final res = await http
+          .post(Uri.parse('$_base/evidencias'),
+              headers: _json,
+              body: jsonEncode({'tipo': tipo, 'id': id, 'archivoBase64': base64Encode(bytes), 'nota': nota, 'clientRef': nuevaClave('evidencia')}))
+          .timeout(const Duration(seconds: 60));
+      final body = _decode(res.body);
+      if (res.statusCode == 200 && body is Map && body['ok'] == true) return ApiResponse.success(Map<String, dynamic>.from(body));
+      return ApiResponse.error(_mensaje(res.statusCode, body));
+    } catch (_) {
+      return ApiResponse.error('No se subió: revisa la señal e inténtalo de nuevo.');
+    }
+  }
+
+  /// La evidencia de un registro ({evidencias}), con enlaces que sirven 10 minutos.
+  static Future<ApiResponse<Map<String, dynamic>>> evidencias(String tipo, String id) =>
+      _get('evidencias?tipo=${Uri.encodeComponent(tipo)}&id=${Uri.encodeComponent(id)}');
+
   /// Detalle de una compra ({compra}); el precio y los pagos sólo para dueños.
   static Future<ApiResponse<Map<String, dynamic>>> compra(String id) => _get('compras/${Uri.encodeComponent(id)}');
 
