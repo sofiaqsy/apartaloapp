@@ -689,32 +689,50 @@ class _Pildora extends StatelessWidget {
 
 /// Ficha blanca de una fila. Sin flecha: las filas de estas listas no abren otra pantalla.
 class _Ficha extends StatelessWidget {
-  const _Ficha({required this.inicio, required this.titulo, this.detalle, this.fin});
+  const _Ficha({required this.inicio, required this.titulo, this.detalle, this.fin, this.onTap});
   final Widget inicio;
   final String titulo;
   final String? detalle;
   final Widget? fin;
+  final VoidCallback? onTap; // con acción: ficha blanca y flecha; sin acción: fila simple con una línea debajo
 
   @override
   Widget build(BuildContext context) {
+    final fila = Row(children: [
+      inicio,
+      const SizedBox(width: 12),
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(titulo, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+          if (detalle != null)
+            Text(detalle!, style: TextStyle(fontSize: 13, color: Colors.grey.shade700), maxLines: 2, overflow: TextOverflow.ellipsis),
+        ]),
+      ),
+      if (fin != null) ...[const SizedBox(width: 8), fin!],
+      if (onTap != null) Icon(Icons.chevron_right, color: Colors.grey.shade600),
+    ]);
+    // Lo que no se toca no parece botón (General Manager, 3 nov 2026): sin caja blanca, sólo una línea fina.
+    if (onTap == null) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade200))),
+        child: fila,
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration:
-            BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
-        child: Row(children: [
-          inicio,
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(titulo, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
-              if (detalle != null)
-                Text(detalle!, style: TextStyle(fontSize: 13, color: Colors.grey.shade700), maxLines: 2, overflow: TextOverflow.ellipsis),
-            ]),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 12, 6, 12),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade300)),
+            child: fila,
           ),
-          if (fin != null) ...[const SizedBox(width: 8), fin!],
-        ]),
+        ),
       ),
     );
   }
@@ -968,7 +986,93 @@ class _ComprasScreen extends StatefulWidget {
 }
 
 class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _ProveedoresDelProceso {
-  int _pestana = 0; // 0 Recibidos, 1 En almacén, 2 Proveedores
+  int _pestana = 0; // 0 Compras, 1 En almacén, 2 Proveedores
+
+  // Pestaña Compras: todas las compras, de 20 en 20 desde el servidor al llegar al final; cada una abre su detalle.
+  final List<Map<String, dynamic>> _compras = [];
+  bool _cargandoCompras = false;
+  bool _hayMasCompras = true;
+  int? _totalCompras;
+  String? _errorCompras;
+
+  @override
+  void initState() {
+    super.initState();
+    _masCompras();
+  }
+
+  Future<void> _masCompras() async {
+    if (_cargandoCompras || !_hayMasCompras) return;
+    setState(() => _cargandoCompras = true);
+    final r = await AdministracionService.compras(offset: _compras.length);
+    if (!mounted) return;
+    setState(() {
+      _cargandoCompras = false;
+      if (r.isSuccess) {
+        _compras.addAll(_lista(r.data!['compras']));
+        _hayMasCompras = r.data!['hayMas'] == true;
+        _totalCompras = (r.data!['total'] as num?)?.toInt();
+      } else {
+        _errorCompras = r.error;
+        _hayMasCompras = false;
+      }
+    });
+  }
+
+  /// Después de registrar o pagar, la lista vuelve a empezar para mostrar lo nuevo.
+  Future<void> _recargarCompras() async {
+    setState(() {
+      _compras.clear();
+      _hayMasCompras = true;
+      _errorCompras = null;
+    });
+    await _masCompras();
+  }
+
+  Future<void> _abrirCompra(Map<String, dynamic> c) async {
+    var cambio = false;
+    await _abrirPantalla<void>(context, _CompraDetalleScreen(id: '${c['id']}', esDueno: widget.esDueno, onCambio: () => cambio = true));
+    if (cambio && mounted) {
+      cargar();
+      _recargarCompras();
+    }
+  }
+
+  @override
+  Future<void> formulario(String form, {Map<String, dynamic> fijos = const {}, String? subtitulo}) async {
+    if (await _abrirFormulario(context, form, fijos: fijos, subtitulo: subtitulo)) {
+      cargar();
+      if (form == 'entrega') _recargarCompras();
+    }
+  }
+
+  static const _colorSituacion = {'Sin precio': Colors.orange, 'Por pagar': Colors.blue, 'Pagado': Colors.green};
+
+  List<Widget> _listaCompras() => [
+        const SizedBox(height: 12),
+        for (final c in _compras)
+          _Ficha(
+            inicio: _Insignia(_fechaCorta(c['fecha']), tono: Colors.green),
+            titulo: '${c['agricultor'] ?? 'Sin nombre'}',
+            detalle: [
+              '${_estadosCafe[c['estado']] ?? c['estado']} · ${_kg(c['kg'])}',
+              if (c['producto'] != null) '${c['producto']}',
+            ].join(' · '),
+            fin: _Pildora(
+              c['precio'] != null ? '${_soles(c['precio'])}/kg' : '${c['situacion'] ?? ''}',
+              _colorSituacion[c['situacion']] ?? Colors.grey,
+            ),
+            onTap: () => _abrirCompra(c),
+          ),
+        if (_errorCompras != null)
+          Padding(padding: const EdgeInsets.all(16), child: Text(_errorCompras!, textAlign: TextAlign.center))
+        else if (_cargandoCompras || _hayMasCompras)
+          const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
+        else if (_compras.isEmpty)
+          _vacio('Todavía no hay compras.')
+        else
+          _vacio('${_totalCompras ?? _compras.length} ${(_totalCompras ?? _compras.length) == 1 ? 'compra' : 'compras'} en total'),
+      ];
 
   @override
   String get clave => 'compras';
@@ -982,10 +1086,8 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
   Widget build(BuildContext context) {
     return pantalla('Compras', (d) {
       final almacen = _lista(d['almacen']);
-      final recientes = _lista(d['recientes']);
       return [
-        _CuatroDatos(indicadores: _indicadoresCompras(d, widget.esDueno), grande: true), // los mismos 4 de la tarjeta
-        const SizedBox(height: 16),
+        // Sin resumen arriba (General Manager, 3 nov 2026): la tarjeta de Procesos ya lo muestra.
         // Todas del mismo tamaño; las de dinero sólo para dueños.
         _Acciones(acciones: [
           (Icons.move_to_inbox, _titulos['entrega']!, () => formulario('entrega')),
@@ -1000,7 +1102,7 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
           if (widget.esDueno) (Icons.account_balance_wallet, _titulos['retiro']!, () => formulario('retiro')),
         ]),
         _Pestanas(
-          nombres: const ['Recibidos', 'En almacén', 'Proveedores'],
+          nombres: const ['Compras', 'En almacén', 'Proveedores'],
           elegida: _pestana,
           onElegir: (i) {
             setState(() => _pestana = i);
@@ -1009,19 +1111,9 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
         ),
         if (_pestana == 2)
           ..._listaProveedores()
-        else if (_pestana == 0) ...[
-          _encabezado('Últimos recibidos', '${recientes.length} ${recientes.length == 1 ? 'entrega' : 'entregas'}'),
-          if (recientes.isEmpty) _vacio('Todavía no hay café recibido.'),
-          for (final r in recientes)
-            _Ficha(
-              inicio: _Insignia(_fechaCorta(r['fecha']), tono: Colors.green),
-              titulo: '${r['agricultor'] ?? 'Sin nombre'}',
-              detalle: '${_estadosCafe[r['estado']] ?? r['estado']} · ${_kg(r['kg'])}',
-              fin: r['precio'] != null
-                  ? _Pildora('${_soles(r['precio'])}/kg', Colors.green)
-                  : (widget.esDueno ? const _Pildora('Sin precio', Colors.orange) : null),
-            ),
-        ] else ...[
+        else if (_pestana == 0)
+          ..._listaCompras()
+        else ...[
           _encabezado('Café en almacén', '${almacen.length} ${almacen.length == 1 ? 'estado' : 'estados'}'),
           if (almacen.isEmpty) _vacio('No hay café de compras guardado.'),
           for (final a in almacen)
@@ -1033,7 +1125,143 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
             ),
         ],
       ];
-    }, alFinal: _pestana == 2 ? masProveedores : null);
+    }, alFinal: _pestana == 2 ? masProveedores : (_pestana == 0 ? _masCompras : null));
+  }
+}
+
+/// Detalle de una compra: sólo información (sin cajas que parezcan botones) y, abajo, lo que se puede hacer:
+/// poner el precio si no tiene, o pagarla (dueños) si se debe.
+class _CompraDetalleScreen extends StatefulWidget {
+  const _CompraDetalleScreen({required this.id, required this.esDueno, required this.onCambio});
+  final String id;
+  final bool esDueno;
+  final VoidCallback onCambio; // se puso precio o se pagó: la lista se recarga al volver
+
+  @override
+  State<_CompraDetalleScreen> createState() => _CompraDetalleScreenState();
+}
+
+class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
+  Map<String, dynamic>? _c;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    final r = await AdministracionService.compra(widget.id);
+    if (!mounted) return;
+    setState(() {
+      _error = r.isSuccess ? null : r.error;
+      if (r.isSuccess) _c = _mapa(r.data!['compra']);
+    });
+  }
+
+  Future<void> _formulario(String form, Map<String, dynamic> fijos, String subtitulo) async {
+    if (await _abrirFormulario(context, form, fijos: fijos, subtitulo: subtitulo)) {
+      widget.onCambio();
+      _cargar();
+    }
+  }
+
+  Widget _dato(String nombre, String? valor) => valor == null || valor.isEmpty || valor == 'null'
+      ? const SizedBox.shrink()
+      : Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade300))),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(width: 140, child: Text(nombre, style: TextStyle(color: Colors.grey.shade700))),
+            Expanded(child: Text(valor, style: const TextStyle(fontWeight: FontWeight.w600))),
+          ]),
+        );
+
+  Widget _panel(String titulo, List<Widget> filas) {
+    final visibles = filas.where((w) => w is! SizedBox).toList();
+    if (visibles.isEmpty) return const SizedBox.shrink();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+          padding: const EdgeInsets.fromLTRB(4, 16, 4, 6),
+          child: Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(16)),
+        child: Column(children: visibles),
+      ),
+    ]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = _c;
+    final compra = c == null || c['compra'] == null ? null : _mapa(c['compra']);
+    final revision = c == null || c['revision'] == null ? null : _mapa(c['revision']);
+    final lote = c == null || c['lote'] == null ? null : _mapa(c['lote']);
+    final pagos = c == null ? const <Map<String, dynamic>>[] : _lista(c['pagos']);
+    final situacion = '${c?['situacion'] ?? ''}';
+    return Scaffold(
+      appBar: AppBar(title: const Text('Compra')),
+      body: RefreshIndicator(
+        onRefresh: _cargar,
+        child: c == null
+            ? ListView(children: [
+                Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: _error != null ? Text(_error!, textAlign: TextAlign.center) : const Center(child: CircularProgressIndicator()),
+                ),
+              ])
+            : ListView(padding: const EdgeInsets.all(16), children: [
+                Row(children: [
+                  Expanded(
+                      child: Text('${c['agricultor'] ?? 'Sin nombre'}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
+                  _Pildora(situacion, situacion == 'Pagado' ? Colors.green : (situacion == 'Por pagar' ? Colors.blue : Colors.orange)),
+                ]),
+                Text('${c['id']} · ${_fechaCorta(c['fecha'])}', style: TextStyle(color: Colors.grey.shade700)),
+                _panel('Café', [
+                  _dato('Café', _estadosCafe[c['estado']] ?? '${c['estado']}'),
+                  _dato('Kilos', _kg(c['kg'])),
+                  _dato('Producto vinculado', c['producto']?.toString()),
+                  _dato('Lote',
+                      lote == null ? null : '${lote['id']} · calidad ${lote['calidad'] == 'pending' ? 'por revisar' : lote['calidad']}'),
+                  _dato('Humedad', revision?['humedad'] == null ? null : '${revision!['humedad']} %'),
+                  _dato('Factor de rendimiento', revision?['rendimiento']?.toString()),
+                  _dato('Notas', c['notas']?.toString()),
+                  _dato('Registrado por', c['registrado_por']?.toString()),
+                ]),
+                if (compra != null)
+                  _panel('Dinero', [
+                    _dato('Precio por kilo', compra['precio'] == null ? null : _soles(compra['precio'])),
+                    _dato('Total', compra['total'] == null ? null : _soles(compra['total'])),
+                    _dato('De adelantos', compra['de_adelantos'] == null ? null : _soles(compra['de_adelantos'])),
+                    _dato('Pagado', compra['pagado'] == null ? null : _soles(compra['pagado'])),
+                    _dato('Falta pagar', compra['debe'] == null ? null : _soles(compra['debe'])),
+                    _dato('Adelanto usado', c['adelanto']?.toString()),
+                  ]),
+                if (pagos.isNotEmpty)
+                  _panel('Pagos', [for (final p in pagos) _dato(_fechaCorta(p['fecha']), '${_soles(p['monto'])} · ${p['de']}')]),
+                const SizedBox(height: 20),
+                // Lo que se puede hacer con esta compra (botones de verdad).
+                if (situacion == 'Sin precio')
+                  _Acciones(acciones: [
+                    (
+                      Icons.sell_outlined,
+                      'Poner precio',
+                      () => _formulario('precio', {'entregaId': c['id']}, '${c['id']} · ${_kg(c['kg'])}')
+                    ),
+                  ])
+                else if (widget.esDueno && situacion == 'Por pagar' && compra != null)
+                  _Acciones(acciones: [
+                    (
+                      Icons.payments,
+                      'Pagar compra',
+                      () => _formulario('pago', {'compraId': compra['id']}, '${compra['id']} · debe ${_soles(compra['debe'])}')
+                    ),
+                  ]),
+              ]),
+      ),
+    );
   }
 }
 
@@ -1225,14 +1453,10 @@ class _FilaLote extends StatelessWidget {
     final inicial = (lote['kg_inicial'] as num?)?.toDouble() ?? 0;
     final parte = inicial > 0 ? (ahora / inicial).clamp(0.0, 1.0) : 0.0;
     final detalle = [if (lote['variedad'] != null) '${lote['variedad']}', if (lote['cosecha'] != null) 'cosecha ${lote['cosecha']}'];
+    // Sólo información: sin caja blanca, una línea fina debajo.
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade200))),
       child: Row(children: [
         _Insignia('${lote['codigo']}'),
         const SizedBox(width: 12),

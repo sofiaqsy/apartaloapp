@@ -102,6 +102,22 @@ void main() {
         {'codigo': 'prod-blend', 'nombre': 'Blend de Caturra, Pache, typica', 'categoria': 'Café', 'estado': 'ACTIVO'},
       ], 'total': 3}), 200);
     }
+    if (p.endsWith('/compras')) {
+      final offset = int.parse(req.url.queryParameters['offset'] ?? '0');
+      final todas = [
+        {'id': 'DL-0001', 'fecha': '2026-11-03', 'agricultor': 'Pedro Ramírez Ñique', 'estado': 'parchment', 'kg': 100, 'producto': 'Blend de Caturra, Pache, typica', 'situacion': 'Sin precio'},
+        for (var i = 0; i < 24; i++) {'id': 'DL-1$i', 'fecha': '2026-10-01', 'agricultor': 'Agricultor ${i.toString().padLeft(2, '0')}', 'estado': 'cherry', 'kg': 10, 'situacion': 'Pagado', 'precio': 5},
+      ];
+      final pagina = todas.skip(offset).take(20).toList();
+      return http.Response(jsonEncode({'compras': pagina, 'total': todas.length, 'hayMas': offset + 20 < todas.length}), 200);
+    }
+    if (p.contains('/compras/')) {
+      return http.Response(jsonEncode({'compra': {
+        'id': 'DL-0001', 'fecha': '2026-11-03', 'agricultor': 'Pedro Ramírez Ñique', 'estado': 'parchment', 'kg': 100,
+        'producto': 'Blend de Caturra, Pache, typica', 'situacion': 'Sin precio', 'lote': {'id': 'L-0001', 'calidad': 'pending'},
+        'revision': {'humedad': 12.5, 'rendimiento': null}, 'registrado_por': 'misael@x', 'compra': null, 'pagos': [],
+      }}), 200);
+    }
     if (p.endsWith('/procesos')) {
       final dueno = true;
       return http.Response(jsonEncode({
@@ -197,7 +213,7 @@ void main() {
       await tester.tap(find.text('Compras'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    for (final t in ['Registrar compra', 'Solicitar adelanto', 'Registrar proveedor', 'Registrar gasto', 'Recibidos', 'Pedro Ramírez Ñique']) {
+    for (final t in ['Registrar compra', 'Solicitar adelanto', 'Registrar proveedor', 'Registrar gasto', 'En almacén', 'Pedro Ramírez Ñique']) {
       expect(find.text(t), findsOneWidget);
     }
     expect(find.text('Pagar compras'), findsNothing);
@@ -964,5 +980,37 @@ void main() {
     }, () => MockClient((req) async => responder(req)));
     final req = pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/entrega'));
     expect(jsonDecode(req.body)['productoId'], 'prod-blend');
+  });
+
+  testWidgets('Compras: no summary on top, the Compras tab lists purchases that open their detail', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      expect(find.text('Adelantos abiertos'), findsNothing); // no summary on top any more
+      expect(find.text('Últimos recibidos'), findsNothing);
+      expect(find.text('Recibidos'), findsNothing);
+      expect(find.text('En almacén'), findsOneWidget);
+      expect(find.text('Sin precio'), findsOneWidget); // its state, on a row with an arrow
+      expect(find.byIcon(Icons.chevron_right), findsWidgets);
+      await tester.tap(find.text('Pedro Ramírez Ñique'));
+      await tester.pumpAndSettle();
+      for (final t in ['Compra', 'Blend de Caturra, Pache, typica', 'L-0001 · calidad por revisar', '12.5 %', 'Poner precio']) {
+        expect(find.text(t), findsWidgets, reason: t);
+      }
+    }, () => MockClient((req) async => responder(req)));
+    expect(pedidos.any((r) => r.url.path.endsWith('/compras/DL-0001')), isTrue);
+  });
+
+  testWidgets('the Compras list loads the next page near the end', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      final antes = pedidos.where((r) => r.url.path.endsWith('/compras')).length;
+      await tester.drag(find.text('Pedro Ramírez Ñique'), const Offset(0, -4000));
+      await tester.pumpAndSettle();
+      expect(pedidos.where((r) => r.url.path.endsWith('/compras')).length, greaterThan(antes));
+    }, () => MockClient((req) async => responder(req)));
   });
 }

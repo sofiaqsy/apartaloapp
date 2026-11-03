@@ -45,6 +45,12 @@ class AdministracionService {
   /// Tarjetas Compras y Producción: {compras: {...}, produccion: {...}} (el dinero sólo para dueños).
   static Future<ApiResponse<Map<String, dynamic>>> procesos() => _get('procesos');
 
+  /// Pestaña Compras: compras de la más nueva a la más antigua, de [limit] en [limit] ({compras, total, hayMas}).
+  static Future<ApiResponse<Map<String, dynamic>>> compras({int offset = 0, int limit = 20}) => _get('compras?offset=$offset&limit=$limit');
+
+  /// Detalle de una compra ({compra}); el precio y los pagos sólo para dueños.
+  static Future<ApiResponse<Map<String, dynamic>>> compra(String id) => _get('compras/${Uri.encodeComponent(id)}');
+
   /// Mis solicitudes: lo que la persona pidió y en qué quedó (Administración ve todas).
   static Future<ApiResponse<Map<String, dynamic>>> solicitudes() => _get('solicitudes');
 
