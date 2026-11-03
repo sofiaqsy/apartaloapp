@@ -114,6 +114,16 @@ void main() {
       final pagina = todas.skip(offset).take(20).toList();
       return http.Response(jsonEncode({'compras': pagina, 'total': todas.length, 'hayMas': offset + 20 < todas.length}), 200);
     }
+    if (p.contains('/proveedores/')) {
+      return http.Response(jsonEncode({'proveedor': {
+        'id': 'P-0001', 'nombre': 'Pedro Ramírez Ñique', 'tipo': 'person', 'comunidad': 'Sector Ejemplo', 'agricultor': true, 'vende': 'parchment',
+        'comprador': false, 'procesos': [], 'documento': esDuenoMock ? '00000000' : null, 'telefono': esDuenoMock ? '999000000' : null,
+        'cuentas': esDuenoMock ? [{'tipo': 'bank_account', 'banco': 'BCP', 'numero': '000-0000000-0-00', 'titular': 'Pedro Ramírez Ñique'}] : null,
+        'compras': {'n': 2, 'kg': 130, 'ultima': '2026-11-03'},
+        'dinero': esDuenoMock ? {'comprado': 1800, 'debe': 300} : null, 'adelantos': esDuenoMock ? {'n': 1, 'saldo': 200} : null,
+        'recientes': [{'id': 'DL-0001', 'fecha': '2026-11-03', 'estado': 'parchment', 'kg': 100}],
+      }}), 200);
+    }
     if (p.endsWith('/adelantos')) {
       return http.Response(jsonEncode({
         'porAprobar': [{'id': 'SOL-0001', 'request_date': '2026-11-02', 'party': 'Misael Cusi', 'amount': 1500, 'reason': 'Compras', 'created_by': 'misael@x'}],
@@ -921,7 +931,7 @@ void main() {
     expect(find.textContaining('Compra'), findsWidgets);
   });
 
-  testWidgets('Compras lists the farmers in pages of 20, searchable, without actions', (tester) async {
+  testWidgets('Compras lists the farmers in pages of 20, searchable, each opening its detail', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
       await tester.tap(find.text('Compras'));
@@ -937,7 +947,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Pedro Ramírez Ñique'), findsOneWidget); // found by nickname
       expect(find.text('1'), findsWidgets);
-      expect(find.byIcon(Icons.chevron_right), findsNothing); // information, not buttons
+      expect(find.byIcon(Icons.chevron_right), findsWidgets); // each provider opens its detail
       await tester.enterText(find.widgetWithText(TextField, 'Buscar por nombre o apodo'), '');
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
@@ -1163,5 +1173,38 @@ void main() {
     final flecha = tester.getTopLeft(find.byIcon(Icons.chevron_right).first).dx;
     final etiqueta = tester.getTopRight(find.text('Sin precio').first).dx;
     expect(flecha - etiqueta, lessThan(20)); // label right before the arrow
+  });
+
+  testWidgets('a provider opens its detail; staff never see DNI, phone, accounts or money', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Proveedores'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pedro Ramírez Ñique'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    for (final t in ['Proveedor', 'Pergamino', 'Sector Ejemplo', 'Lo que le compramos', '130 kg', 'Últimas compras']) {
+      expect(find.text(t), findsWidgets, reason: t);
+    }
+    for (final t in ['DNI o RUC', 'Teléfono', 'Cuentas para pagarle', 'Le debemos']) {
+      expect(find.text(t), findsNothing, reason: t);
+    }
+  });
+
+  testWidgets('owners see the provider\'s DNI, phone, accounts and what we owe', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Proveedores'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pedro Ramírez Ñique'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    for (final t in ['DNI o RUC', 'Teléfono', 'Cuentas para pagarle', 'BCP · 000-0000000-0-00 · Pedro Ramírez Ñique', 'Le debemos', 'S/ 300']) {
+      expect(find.text(t), findsWidgets, reason: t);
+    }
   });
 }

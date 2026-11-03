@@ -51,6 +51,9 @@ class AdministracionService {
   /// Compras → Adelantos: los pedidos por aprobar (en la primera página) y los adelantos, del más nuevo al más antiguo.
   static Future<ApiResponse<Map<String, dynamic>>> adelantos({int offset = 0, int limit = 20}) => _get('adelantos?offset=$offset&limit=$limit');
 
+  /// Detalle de un proveedor ({proveedor}); DNI o RUC, teléfono, cuentas y dinero sólo para dueños.
+  static Future<ApiResponse<Map<String, dynamic>>> proveedor(String id) => _get('proveedores/${Uri.encodeComponent(id)}');
+
   /// Detalle de una compra ({compra}); el precio y los pagos sólo para dueños.
   static Future<ApiResponse<Map<String, dynamic>>> compra(String id) => _get('compras/${Uri.encodeComponent(id)}');
 

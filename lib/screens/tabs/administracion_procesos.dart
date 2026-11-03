@@ -900,6 +900,8 @@ mixin _ProveedoresDelProceso<T extends StatefulWidget> on State<T> {
             inicio: _Insignia(_inicialesProv('${p['nombre'] ?? ''}'), tono: p['agricultor'] == true ? Colors.green : Colors.blue),
             titulo: '${p['nombre'] ?? 'Sin nombre'}',
             detalle: _queEs(p),
+            // Cada proveedor abre su detalle (General Manager, 3 nov 2026).
+            onTap: () => _abrirPantalla<void>(context, _ProveedorDetalleScreen(id: '${p['id']}')),
           ),
         if (_errorProv != null)
           Padding(padding: const EdgeInsets.all(16), child: Text(_errorProv!, textAlign: TextAlign.center))
@@ -1376,6 +1378,139 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
         if (_pestana == 2) ..._listaProveedores() else if (_pestana == 0) ..._listaCompras() else ..._listaAdelantos(),
       ];
     }, alFinal: _pestana == 2 ? masProveedores : (_pestana == 0 ? _masCompras : _masAdelantos));
+  }
+}
+
+/// Detalle de un proveedor: quién es, qué vende, sus procesos y lo que le compramos. DNI o RUC, teléfono, cuentas
+/// y dinero sólo para dueños (lo decide la base). Sólo información; cada compra reciente abre su detalle.
+class _ProveedorDetalleScreen extends StatefulWidget {
+  const _ProveedorDetalleScreen({required this.id});
+  final String id;
+
+  @override
+  State<_ProveedorDetalleScreen> createState() => _ProveedorDetalleScreenState();
+}
+
+class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
+  Map<String, dynamic>? _p;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    final r = await AdministracionService.proveedor(widget.id);
+    if (!mounted) return;
+    setState(() {
+      _error = r.isSuccess ? null : r.error;
+      if (r.isSuccess) _p = _mapa(r.data!['proveedor']);
+    });
+  }
+
+  static const _vende = {'cherry': 'Cereza', 'parchment': 'Pergamino', 'both': 'Cereza y pergamino'};
+  static const _tiposCuenta = {'bank_account': 'Cuenta', 'cci': 'CCI', 'phone_wallet': 'Yape o Plin', 'service_number': 'Nº de servicio'};
+
+  Widget _dato(String nombre, String? valor) => valor == null || valor.isEmpty || valor == 'null'
+      ? const SizedBox.shrink()
+      : Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade300))),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(width: 130, child: Text(nombre, style: TextStyle(color: Colors.grey.shade700))),
+            Expanded(child: Text(valor, style: const TextStyle(fontWeight: FontWeight.w600))),
+          ]),
+        );
+
+  Widget _panel(String titulo, List<Widget> filas) {
+    final visibles = filas.where((w) => w is! SizedBox).toList();
+    if (visibles.isEmpty) return const SizedBox.shrink();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+          padding: const EdgeInsets.fromLTRB(4, 16, 4, 6),
+          child: Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(16)),
+        child: Column(children: visibles),
+      ),
+    ]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = _p;
+    final compras = p == null ? const <String, dynamic>{} : _mapa(p['compras']);
+    final dinero = p == null || p['dinero'] == null ? null : _mapa(p['dinero']);
+    final adelantos = p == null || p['adelantos'] == null ? null : _mapa(p['adelantos']);
+    final cuentas = p == null ? const <Map<String, dynamic>>[] : _lista(p['cuentas']);
+    final recientes = p == null ? const <Map<String, dynamic>>[] : _lista(p['recientes']);
+    final procesos = p == null ? const <String>[] : [for (final a in (p['procesos'] as List? ?? const [])) _areas['$a'] ?? '$a'];
+    final es = p == null
+        ? ''
+        : [
+            if (p['agricultor'] == true) 'Agricultor',
+            if (p['comprador'] == true) 'Comprador',
+            if (p['agricultor'] != true && p['comprador'] != true) 'Proveedor',
+          ].join(' y ');
+    return Scaffold(
+      appBar: AppBar(title: const Text('Proveedor')),
+      body: RefreshIndicator(
+        onRefresh: _cargar,
+        child: p == null
+            ? ListView(children: [
+                Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: _error != null ? Text(_error!, textAlign: TextAlign.center) : const Center(child: CircularProgressIndicator()),
+                ),
+              ])
+            : ListView(padding: const EdgeInsets.all(16), children: [
+                Row(children: [
+                  Expanded(child: Text('${p['nombre'] ?? ''}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
+                  _Pildora(es, p['agricultor'] == true ? Colors.green : Colors.blue),
+                ]),
+                Text('${p['id']}${p['tipo'] == 'business' ? ' · Empresa' : ' · Persona'}', style: TextStyle(color: Colors.grey.shade700)),
+                _panel('Datos', [
+                  _dato('Vende', _vende[p['vende']] ?? p['vende']?.toString()),
+                  _dato('Lo recoge', p['recoge']?.toString()),
+                  _dato('Comunidad', p['comunidad']?.toString()),
+                  _dato('Procesos', procesos.isEmpty ? null : procesos.join(', ')),
+                  _dato('DNI o RUC', p['documento']?.toString()),
+                  _dato('Teléfono', p['telefono']?.toString()),
+                  _dato('Notas', p['notas']?.toString()),
+                ]),
+                if (cuentas.isNotEmpty)
+                  _panel('Cuentas para pagarle', [
+                    for (final c in cuentas)
+                      _dato(
+                          _tiposCuenta[c['tipo']] ?? '${c['tipo']}',
+                          [if (c['banco'] != null) '${c['banco']}', '${c['numero'] ?? ''}', if (c['titular'] != null) '${c['titular']}']
+                              .join(' · ')),
+                  ]),
+                _panel('Lo que le compramos', [
+                  _dato('Compras', '${compras['n'] ?? 0}'),
+                  _dato('Kilos', _kg(compras['kg'])),
+                  _dato('Última compra', compras['ultima'] == null ? null : _fechaCorta(compras['ultima'])),
+                  _dato('Comprado', dinero == null ? null : _soles(dinero['comprado'])),
+                  _dato('Le debemos', dinero == null ? null : _soles(dinero['debe'])),
+                  _dato('Adelantos abiertos',
+                      adelantos == null || (adelantos['n'] ?? 0) == 0 ? null : '${_soles(adelantos['saldo'])} (${adelantos['n']})'),
+                ]),
+                if (recientes.isNotEmpty) ...[
+                  _encabezado('Últimas compras', ''),
+                  for (final c in recientes)
+                    _Ficha(
+                      inicio: _Insignia(_fechaCorta(c['fecha']), tono: Colors.green),
+                      titulo: '${_estadosCafe[c['estado']] ?? c['estado']} · ${_kg(c['kg'])}',
+                      detalle: '${c['id']}',
+                      onTap: () => _abrirPantalla<void>(context, _CompraDetalleScreen(id: '${c['id']}', esDueno: false, onCambio: _cargar)),
+                    ),
+                ],
+              ]),
+      ),
+    );
   }
 }
 
