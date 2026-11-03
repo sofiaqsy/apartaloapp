@@ -14,7 +14,8 @@ void main() {
   var sugerencia = <String, dynamic>{'area': 'fulfillment', 'cost_centre': 'coffee', 'source': 'to_review'};
   // Las áreas marcadas en Perfil deciden qué tarjetas muestra Registrar.
   var marcadas = ['farm', 'sourcing', 'production', 'commercial', 'fulfillment', 'finance'];
-  var sinComercial = false; // el servidor no manda Comercialización (no es área de la persona)
+  var sinComercial = false;
+  var esDuenoMock = true; // el servidor de prueba responde como la persona de cada prueba (dueño o equipo) // el servidor no manda Comercialización (no es área de la persona)
 
   http.Response responder(http.Request req) {
     pedidos.add(req);
@@ -121,7 +122,7 @@ void main() {
       }}), 200);
     }
     if (p.endsWith('/procesos')) {
-      final dueno = true;
+      final dueno = esDuenoMock;
       return http.Response(jsonEncode({
         'compras': {
           'mes': {'recibidos': 2, 'kg': 130}, 'ultimo': '2026-11-03', 'sin_precio': {'n': 1, 'kg': 100},
@@ -145,6 +146,14 @@ void main() {
           'cosecha': {'anio': 2026, 'kg': 0},
           'recientes': [{'id': 'EX-0009', 'fecha': '2026-11-02', 'categoria': 'Mano de obra', 'descripcion': 'Jornal deshierbo', 'estado': 'Pendiente de pago', 'monto': 120}],
         },
+        'finanzas': dueno
+            ? {
+                'compras': {'n': 1, 'total': 300}, 'gastos': {'n': 1, 'total': 120}, 'adelantos': {'n': 1, 'total': 1500},
+                'compras_por_pagar': [{'id': 'PU-0001', 'entrega': 'DL-0001', 'fecha': '2026-11-04', 'agricultor': 'Pedro Ramírez Ñique', 'kg': 100, 'total': 1800, 'pagado': 1500, 'debe': 300}],
+                'gastos_por_pagar': [{'id': 'EX-0001', 'fecha': '2026-11-01', 'categoria': 'Gas', 'descripcion': 'Gasolina', 'area': 'fulfillment', 'monto': 120, 'por': 'staff@x'}],
+                'adelantos_por_aprobar': [{'id': 'SOL-0001', 'fecha': '2026-11-02', 'para': 'Misael Cusi', 'monto': 1500, 'motivo': 'Compras', 'por': 'misael@x'}],
+              }
+            : {'solo_duenos': true},
         'logistica': {
           'por_despachar': 2, 'en_camino': 1, 'entregados_mes': 5, 'gastos_mes': {'n': 1, 'total': dueno ? 40 : null},
           'por_pagar': {'total': 40}, 'abiertos': 3,
@@ -178,11 +187,20 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> entrarFinanzas(WidgetTester tester) async {
+    await tester.scrollUntilVisible(find.text('Finanzas'), 200, scrollable: find.byType(Scrollable).last);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Finanzas'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+  }
+
   Future<void> abrir(WidgetTester tester, {required String rol}) async {
     // An iPhone-sized screen (390 x 844 points).
     tester.view.physicalSize = const Size(1170, 2532);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
+    esDuenoMock = rol == 'owner';
     SharedPreferences.setMockInitialValues({'business_role': rol, 'mi_area_elegidas': marcadas});
     await http.runWithClient(() async {
       await tester.pumpWidget(const MaterialApp(home: Scaffold(body: AdministracionTab())));
@@ -222,19 +240,24 @@ void main() {
     expect(find.text('Ingreso de dinero'), findsNothing);
   });
 
-  testWidgets('the owner also sees Pagar compra and Retiro a caja', (tester) async {
+  testWidgets('Compras requests the payment; Finanzas pays and has the cash withdrawal', (tester) async {
     await abrir(tester, rol: 'owner');
     for (final t in ['Comprado', 'S/ 300']) {
-      expect(find.text(t), findsOneWidget, reason: t);
+      expect(find.text(t), findsWidgets, reason: t);
     }
-    expect(find.text('Por pagar'), findsWidgets); // Compras, and Finca further down
     expect(find.text('Adelantos abiertos'), findsNothing); // inside Compras, not on the card
     await http.runWithClient(() async {
       await tester.tap(find.text('Compras'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    expect(find.text('Pagar compras'), findsOneWidget);
-    expect(find.text('Registrar retiro de efectivo'), findsOneWidget);
+    expect(find.text('Pagar compras'), findsNothing);
+    expect(find.text('Registrar retiro de efectivo'), findsNothing);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await entrarFinanzas(tester);
+    for (final t in ['Registrar retiro de efectivo', 'Compras (1)', 'Gastos (1)', 'Adelantos (1)', 'Pedro Ramírez Ñique']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
   });
 
   testWidgets('an advance is a request: no payment fields', (tester) async {
@@ -250,13 +273,13 @@ void main() {
     expect(find.textContaining('Número de operación'), findsNothing);
   });
 
-  testWidgets('the owner approves an advance from Pendientes, choosing how it is paid', (tester) async {
+  testWidgets('the owner approves an advance in Finanzas, choosing how it is paid', (tester) async {
     await abrir(tester, rol: 'owner');
+    await entrarFinanzas(tester);
     await http.runWithClient(() async {
-      await tester.tap(find.text('Pendientes'));
+      await tester.tap(find.text('Adelantos (1)'));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.text('Adelanto · S/ 1500.00'), 200, scrollable: find.byType(Scrollable).last);
-      await tester.tap(find.text('Adelanto · S/ 1500.00'));
+      await tester.tap(find.text('Misael Cusi'));
       await tester.pumpAndSettle();
       expect(find.text('Rechazar'), findsOneWidget); // two actions: a small menu
       await tester.tap(find.text('Aprobar y entregar'));
@@ -285,23 +308,22 @@ void main() {
     expect(find.text('Sin precio (1)'), findsNothing); // no separate sections any more
   });
 
-  testWidgets('a transfer is saved without asking for the operation number (the bank fills it in)', (tester) async {
+  testWidgets('Finanzas pays a compra by transfer without asking for the operation number (the bank fills it in)', (tester) async {
     await abrir(tester, rol: 'owner');
+    await entrarFinanzas(tester);
     await http.runWithClient(() async {
-      await tester.tap(find.text('Pendientes'));
+      await tester.tap(find.text('Pedro Ramírez Ñique'));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.text('Adelanto · S/ 1500.00'), 200, scrollable: find.byType(Scrollable).last);
-      await tester.tap(find.text('Adelanto · S/ 1500.00'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Aprobar y entregar'));
-      await tester.pumpAndSettle();
+      expect(find.text('Pagar compra'), findsOneWidget);
       expect(find.text('Transferencia'), findsOneWidget);
       expect(find.textContaining('Número de operación'), findsNothing);
       await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     final r = pedidos.lastWhere((r) => r.url.path.contains('/registrar/'));
+    expect(r.url.path, endsWith('/registrar/pago'));
     final body = jsonDecode(r.body) as Map;
+    expect(body['compraId'], 'PU-0001');
     expect(body['metodo'], 'transfer');
     expect(body.containsKey('operacion'), isFalse);
   });
@@ -932,7 +954,7 @@ void main() {
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     final tamanos = {
-      for (final t in ['Registrar compra', 'Solicitar adelanto', 'Registrar proveedor', 'Registrar gasto', 'Pagar compras', 'Registrar retiro de efectivo'])
+      for (final t in ['Registrar compra', 'Solicitar adelanto', 'Registrar proveedor', 'Registrar gasto'])
         tester.getSize(find.ancestor(of: find.text(t), matching: find.byType(InkWell)).first),
     };
     expect(tamanos, hasLength(1));
@@ -1026,5 +1048,17 @@ void main() {
       expect(find.text(t), findsWidgets, reason: t);
     }
     expect(find.textContaining('Con descuento'), findsOneWidget);
+  });
+
+  testWidgets('a compra with a price says the payment was requested; staff never see Finanzas', (tester) async {
+    await abrir(tester, rol: 'staff');
+    expect(find.text('Finanzas'), findsNothing); // money is only for owners
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Agricultor Parte'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Pagar compra'), findsNothing);
   });
 }

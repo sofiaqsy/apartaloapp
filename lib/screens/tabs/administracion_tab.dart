@@ -757,19 +757,16 @@ class _PendientesState extends State<_Pendientes> {
       final id = '${p['delivery_id'] ?? p['id']}'; // la compra va en la fila de su entrega
       // Si ya se pagó algo (de un adelanto o un pago), es "Pagado en parte".
       final pagadoAlgo = (num.tryParse('${p['paid'] ?? 0}') ?? 0) + (num.tryParse('${p['from_advances'] ?? 0}') ?? 0) > 0;
-      final f = fila(id, () => _Fila(id: id, tipo: 'Compra', icono: Icons.shopping_bag, fecha: '${p['purchase_date']}', estado: pagadoAlgo ? 'Pagado en parte' : 'Por pagar', areas: _areasCafe,
+      // Se paga en Procesos → Finanzas (General Manager, 3 nov 2026); aquí sólo se ve que espera el pago.
+      fila(id, () => _Fila(id: id, tipo: 'Compra', icono: Icons.shopping_bag, fecha: '${p['purchase_date']}', estado: pagadoAlgo ? 'Pagado en parte' : 'Por pagar', areas: _areasCafe,
           monto: num.tryParse('${p['still_owed']}'), lineas: ['${p['id']} · ${p['farmer_id']}', 'Falta ${_soles(p['still_owed'])}']));
-      if (dueno) f.acciones.add(('Pagar compra', () => _formulario('pago', {'compraId': p['id']}, '${p['id']} · debe ${_soles(p['still_owed'])}')));
     }
     if (dueno) {
       for (final q in lista('adelantosPorAprobar')) {
         final id = '${q['id']}';
-        final sub = '${q['party']} · ${_soles(q['amount'])}';
+        // Se aprueba o rechaza en Procesos → Finanzas (General Manager, 3 nov 2026).
         fila(id, () => _Fila(id: id, tipo: 'Adelanto', icono: Icons.handshake, fecha: '${q['request_date']}', estado: 'Por aprobar', areas: _areasCafe,
-                monto: num.tryParse('${q['amount']}'), lineas: ['${q['party']}${q['reason'] != null ? ' · ${q['reason']}' : ''}', '${q['request_date']} · ${q['created_by']}']))
-            .acciones
-          ..add(('Aprobar y entregar', () => _formulario('aprobarAdelanto', {'solicitudId': q['id']}, sub)))
-          ..add(('Rechazar', () => _formulario('rechazarAdelanto', {'solicitudId': q['id']}, sub)));
+            monto: num.tryParse('${q['amount']}'), lineas: ['${q['party']}${q['reason'] != null ? ' · ${q['reason']}' : ''}', '${q['request_date']} · ${q['created_by']}']));
       }
       // Los gastos por pagar se ven con su estado, pero Pendientes no ofrece pagarlos (General Manager, 1 nov 2026).
       for (final g in lista('gastosPorPagar')) {
