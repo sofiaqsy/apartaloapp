@@ -147,7 +147,7 @@ void main() {
       await tester.tap(find.text('Compras'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    for (final t in ['Registrar café recibido', 'Solicitar adelanto', 'Registrar proveedor', 'Registrar gasto de compras']) {
+    for (final t in ['Registrar café recibido', 'Solicitar adelanto', 'Registrar proveedor', 'Recibidos', 'Pedro Ramírez Ñique']) {
       expect(find.text(t), findsOneWidget);
     }
     expect(find.text('Pagar compras'), findsNothing);
@@ -672,11 +672,18 @@ void main() {
       await tester.tap(find.text('Producción'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    for (final t in ['Tostar café', 'Registrar gasto de producción', 'Omagua 250 g', 'Omagua 1 kg', 'L-1', '760 kg de 1,000 kg', '16.7%', '820 kg → 683 kg', '1 tostando ahora']) {
+    // Opens on Tuestes because there are roasts; Lotes de café verde is the other tab.
+    for (final t in ['Tostar café', 'Registrar gasto de producción', 'Omagua 250 g', 'Omagua 1 kg', '16.7%', '820 kg → 683 kg', '1 tostando ahora']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     expect(find.text('Finalizar'), findsOneWidget); // the roast in progress
     expect(find.text('Iniciar'), findsOneWidget); // the planned one
+    await tester.tap(find.text('Lotes de café verde'));
+    await tester.pump();
+    for (final t in ['L-1', 'Catimor · cosecha 2026', '760 kg / 1,000 kg', '76%']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    expect(find.text('Finalizar'), findsNothing);
   });
 
   testWidgets('Finalizar asks the roasted kilos and never more than the green coffee', (tester) async {

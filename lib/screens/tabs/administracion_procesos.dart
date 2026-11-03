@@ -96,9 +96,14 @@ class _RegistrarState extends State<_Registrar> {
           const SizedBox(height: 12),
           // Botones bajos para que se vean sin deslizar, debajo de las dos tarjetas.
           _Acciones(compactas: true, acciones: [
-            (Icons.receipt_long, _titulos['gasto']!, () async { if (await _abrirFormulario(context, 'gasto')) _cargar(); }),
-            if (widget.esDueno)
-              (Icons.account_balance_wallet, _titulos['retiro']!, () => _abrirFormulario(context, 'retiro')),
+            (
+              Icons.receipt_long,
+              _titulos['gasto']!,
+              () async {
+                if (await _abrirFormulario(context, 'gasto')) _cargar();
+              }
+            ),
+            if (widget.esDueno) (Icons.account_balance_wallet, _titulos['retiro']!, () => _abrirFormulario(context, 'retiro')),
           ]),
         ],
       ),
@@ -108,8 +113,10 @@ class _RegistrarState extends State<_Registrar> {
 
 /// Un dato de un proceso: ícono, valor grande, nombre y una nota corta. [atencion] lo marca en naranja
 /// sólo cuando alguien tiene que hacer algo (por ejemplo café sin precio).
+/// [tono] es el color propio del dato (siempre el mismo para ese dato, no dice si es bueno o malo).
 class _Indicador {
-  const _Indicador(this.icono, this.valor, this.nombre, {this.nota, this.atencion = false});
+  const _Indicador(this.icono, this.valor, this.nombre, {this.nota, this.atencion = false, this.tono = Colors.blue});
+  final MaterialColor tono;
   final IconData icono;
   final String valor;
   final String nombre;
@@ -117,7 +124,20 @@ class _Indicador {
   final bool atencion;
 }
 
-const _meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const _meses = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre'
+];
 
 /// Compras: siempre 4. Dueños: lo recibido, lo que falta precio, lo que se debe y los adelantos.
 /// El equipo no ve dinero: en su lugar, el café en almacén y el último recibido.
@@ -127,9 +147,9 @@ List<_Indicador> _indicadoresCompras(Map<String, dynamic> c, bool esDueno) {
   final nRecibidos = (mes['recibidos'] as num?)?.toInt() ?? 0;
   final nSinPrecio = (sinPrecio['n'] as num?)?.toInt() ?? 0;
   final recibido = _Indicador(Icons.move_to_inbox, _kg(mes['kg']), 'Recibido',
-      nota: '${_meses[DateTime.now().month - 1]} · $nRecibidos ${nRecibidos == 1 ? 'entrega' : 'entregas'}');
+      tono: Colors.green, nota: '${_meses[DateTime.now().month - 1]} · $nRecibidos ${nRecibidos == 1 ? 'entrega' : 'entregas'}');
   final precio = _Indicador(Icons.sell_outlined, '$nSinPrecio', 'Sin precio',
-      nota: nSinPrecio == 0 ? 'todo con precio' : _kg(sinPrecio['kg']), atencion: nSinPrecio > 0);
+      tono: Colors.orange, nota: nSinPrecio == 0 ? 'todo con precio' : _kg(sinPrecio['kg']), atencion: nSinPrecio > 0);
   if (esDueno && c['por_pagar'] != null) {
     final porPagar = _mapa(c['por_pagar']);
     final adelantos = _mapa(c['adelantos']);
@@ -139,9 +159,9 @@ List<_Indicador> _indicadoresCompras(Map<String, dynamic> c, bool esDueno) {
       recibido,
       precio,
       _Indicador(Icons.account_balance_wallet, _soles(porPagar['total']), 'Por pagar',
-          nota: '$nPagar ${nPagar == 1 ? 'compra' : 'compras'}', atencion: nPagar > 0),
+          tono: Colors.blue, nota: '$nPagar ${nPagar == 1 ? 'compra' : 'compras'}', atencion: nPagar > 0),
       _Indicador(Icons.handshake, _soles(adelantos['saldo']), 'Adelantos abiertos',
-          nota: '$nAdel ${nAdel == 1 ? 'persona' : 'personas'}'),
+          tono: Colors.purple, nota: '$nAdel ${nAdel == 1 ? 'persona' : 'personas'}'),
     ];
   }
   final almacen = _lista(c['almacen']);
@@ -150,8 +170,8 @@ List<_Indicador> _indicadoresCompras(Map<String, dynamic> c, bool esDueno) {
     recibido,
     precio,
     _Indicador(Icons.inventory_2_outlined, _kg(kgAlmacen), 'En almacén',
-        nota: almacen.map((a) => _estadosCafe[a['estado']] ?? '${a['estado']}').join(', ')),
-    _Indicador(Icons.event, c['ultimo'] == null ? '—' : _fechaCorta(c['ultimo']), 'Último recibido'),
+        tono: Colors.brown, nota: almacen.map((a) => _estadosCafe[a['estado']] ?? '${a['estado']}').join(', ')),
+    _Indicador(Icons.event, c['ultimo'] == null ? '—' : _fechaCorta(c['ultimo']), 'Último recibido', tono: Colors.blue),
   ];
 }
 
@@ -163,13 +183,15 @@ List<_Indicador> _indicadoresProduccion(Map<String, dynamic> p) {
   final enCurso = tuestes.where((t) => t['estado'] == 'in_progress').length;
   final programados = tuestes.length - enCurso;
   return [
-    _Indicador(Icons.eco, _kg(p['verde_kg']), 'Café verde', nota: '${lotes.length} ${lotes.length == 1 ? 'lote' : 'lotes'}'),
-    _Indicador(Icons.coffee, _kg(p['tostado_kg']), 'Café tostado', nota: 'disponible'),
+    _Indicador(Icons.eco, _kg(p['verde_kg']), 'Café verde',
+        tono: Colors.green, nota: '${lotes.length} ${lotes.length == 1 ? 'lote' : 'lotes'}'),
+    _Indicador(Icons.coffee, _kg(p['tostado_kg']), 'Café tostado', tono: Colors.orange, nota: 'disponible'),
     _Indicador(Icons.local_fire_department, '${mes['tuestes'] ?? 0}', 'Tuestes este mes',
+        tono: Colors.blue,
         nota: enCurso > 0 ? '$enCurso tostando ahora' : (programados > 0 ? '$programados programados' : 'ninguno programado'),
         atencion: enCurso > 0),
     _Indicador(Icons.trending_down, mes['merma_pct'] != null ? '${mes['merma_pct']}%' : '—', 'Merma',
-        nota: '${_kg(mes['kg_verde'])} → ${_kg(mes['kg_tostado'])}'),
+        tono: Colors.red, nota: '${_kg(mes['kg_verde'])} → ${_kg(mes['kg_tostado'])}'),
   ];
 }
 
@@ -213,21 +235,24 @@ class _TarjetaProceso extends StatelessWidget {
   }
 }
 
-/// Los 4 datos en una cuadrícula de 2 x 2. Se usa en la tarjeta y arriba de la pantalla del proceso.
+/// Los 4 datos en una cuadrícula de 2 x 2. En la tarjeta van en cajas blancas; arriba de la pantalla
+/// del proceso ([grande]) cada caja lleva el color propio del dato.
 class _CuatroDatos extends StatelessWidget {
-  const _CuatroDatos({required this.indicadores});
+  const _CuatroDatos({required this.indicadores, this.grande = false});
   final List<_Indicador> indicadores;
+  final bool grande;
 
   @override
   Widget build(BuildContext context) {
     final filas = <Widget>[];
+    final espacio = grande ? 10.0 : 6.0;
     for (var i = 0; i < indicadores.length; i += 2) {
-      if (i > 0) filas.add(const SizedBox(height: 6));
+      if (i > 0) filas.add(SizedBox(height: espacio));
       filas.add(IntrinsicHeight(
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Expanded(child: _DatoCaja(indicadores[i])),
-          const SizedBox(width: 8),
-          Expanded(child: i + 1 < indicadores.length ? _DatoCaja(indicadores[i + 1]) : const SizedBox()),
+          Expanded(child: _DatoCaja(indicadores[i], grande: grande)),
+          SizedBox(width: grande ? 10 : 8),
+          Expanded(child: i + 1 < indicadores.length ? _DatoCaja(indicadores[i + 1], grande: grande) : const SizedBox()),
         ]),
       ));
     }
@@ -236,32 +261,43 @@ class _CuatroDatos extends StatelessWidget {
 }
 
 class _DatoCaja extends StatelessWidget {
-  const _DatoCaja(this.d);
+  const _DatoCaja(this.d, {this.grande = false});
   final _Indicador d;
+  final bool grande;
 
   @override
   Widget build(BuildContext context) {
-    final color = d.atencion ? Colors.orange.shade800 : Colors.blue.shade700;
+    final color = grande ? d.tono.shade700 : (d.atencion ? Colors.orange.shade800 : Colors.blue.shade700);
+    final valorColor = d.atencion ? Colors.orange.shade800 : Colors.black87;
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(12)),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      padding: grande ? const EdgeInsets.all(12) : const EdgeInsets.fromLTRB(8, 6, 8, 6),
+      decoration: BoxDecoration(
+        color: grande ? d.tono.shade50 : Colors.white.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(grande ? 16 : 12),
+      ),
+      child: Row(crossAxisAlignment: grande ? CrossAxisAlignment.center : CrossAxisAlignment.start, children: [
         Container(
-          padding: const EdgeInsets.all(5),
-          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-          child: Icon(d.icono, size: 18, color: color),
+          padding: EdgeInsets.all(grande ? 8 : 5),
+          decoration: BoxDecoration(
+            color: grande ? Colors.white : color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(grande ? 12 : 8),
+          ),
+          child: Icon(d.icono, size: grande ? 24 : 18, color: color),
         ),
-        const SizedBox(width: 8),
+        SizedBox(width: grande ? 10 : 8),
         Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
-              child: Text(d.valor, style: TextStyle(fontSize: 18, height: 1.15, fontWeight: FontWeight.bold, color: d.atencion ? color : Colors.black87)),
+              child:
+                  Text(d.valor, style: TextStyle(fontSize: grande ? 21 : 18, height: 1.15, fontWeight: FontWeight.bold, color: valorColor)),
             ),
-            Text(d.nombre, style: TextStyle(fontSize: 13, height: 1.2, color: Colors.grey.shade800), maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text(d.nombre,
+                style: TextStyle(fontSize: 13, height: 1.2, color: Colors.grey.shade800), maxLines: 1, overflow: TextOverflow.ellipsis),
             if (d.nota != null && d.nota!.isNotEmpty)
-              Text(d.nota!, style: TextStyle(fontSize: 12, height: 1.2, color: Colors.grey.shade600), maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text(d.nota!,
+                  style: TextStyle(fontSize: 12, height: 1.2, color: Colors.grey.shade600), maxLines: 1, overflow: TextOverflow.ellipsis),
           ]),
         ),
       ]),
@@ -278,7 +314,9 @@ class _Acciones extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (compactas) {
-      return Row(children: [
+      // Con tres botones no cabe el texto al lado del ícono: va debajo.
+      final debajo = acciones.length > 2;
+      return IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         for (final (i, (icono, texto, onTap)) in acciones.indexed) ...[
           if (i > 0) const SizedBox(width: 8),
           Expanded(
@@ -289,19 +327,25 @@ class _Acciones extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 onTap: onTap,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
-                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Icon(icono, size: 22, color: Colors.blue.shade700),
-                    const SizedBox(width: 6),
-                    Flexible(child: Text(texto, style: const TextStyle(fontWeight: FontWeight.w600), maxLines: 2)),
-                  ]),
+                  padding: EdgeInsets.symmetric(horizontal: debajo ? 6 : 10, vertical: debajo ? 10 : 14),
+                  child: debajo
+                      ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Icon(icono, size: 22, color: Colors.blue.shade700),
+                          const SizedBox(height: 4),
+                          Text(texto, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600), maxLines: 2),
+                        ])
+                      : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Icon(icono, size: 22, color: Colors.blue.shade700),
+                          const SizedBox(width: 6),
+                          Flexible(child: Text(texto, style: const TextStyle(fontWeight: FontWeight.w600), maxLines: 2)),
+                        ]),
                 ),
               ),
             ),
           ),
         ],
         if (acciones.length == 1) const Expanded(child: SizedBox()),
-      ]);
+      ]));
     }
     return GridView.count(
       crossAxisCount: 2,
@@ -360,15 +404,143 @@ abstract class _ProcesoState<T extends StatefulWidget> extends State<T> {
   }
 }
 
-Widget _subtitulo(String texto) => Padding(
-      padding: const EdgeInsets.only(top: 20, bottom: 6),
-      child: Text(texto, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-    );
-
 Widget _vacio(String texto) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Text(texto, style: TextStyle(color: Colors.grey.shade600)),
     );
+
+// ─── Partes de la pantalla de un proceso ─────────────────────────────────────
+// Estándar (General Manager, 3 nov 2026, de su ejemplo de Producción): los 4 datos con su color, dos
+// botones grandes con la acción principal, pestañas para las listas, y cada fila es una ficha blanca.
+
+/// Pestañas debajo de las acciones: el texto elegido en azul y subrayado.
+class _Pestanas extends StatelessWidget {
+  const _Pestanas({required this.nombres, required this.elegida, required this.onElegir});
+  final List<String> nombres;
+  final int elegida;
+  final ValueChanged<int> onElegir;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 20),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade300))),
+      child: Row(children: [
+        for (final (i, n) in nombres.indexed)
+          Expanded(
+            child: InkWell(
+              onTap: () => onElegir(i),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: i == elegida ? Colors.blue.shade700 : Colors.transparent, width: 3)),
+                ),
+                child: Text(n,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: i == elegida ? Colors.blue.shade700 : Colors.grey.shade600,
+                    )),
+              ),
+            ),
+          ),
+      ]),
+    );
+  }
+}
+
+/// Título de la lista con cuántos hay a la derecha ("6 lotes").
+Widget _encabezado(String titulo, String cuenta) => Padding(
+      padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+      child: Row(children: [
+        Expanded(child: Text(titulo, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+        Text(cuenta, style: TextStyle(fontSize: 15, color: Colors.grey.shade700)),
+      ]),
+    );
+
+/// Una etiqueta corta en una caja de color (el código del lote, la fecha).
+class _Insignia extends StatelessWidget {
+  const _Insignia(this.texto, {this.tono = Colors.blue});
+  final String texto;
+  final MaterialColor tono;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 48),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      decoration: BoxDecoration(color: tono.shade50, borderRadius: BorderRadius.circular(10)),
+      child: Text(texto, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: tono.shade800)),
+    );
+  }
+}
+
+/// La misma caja de color que [_Insignia], con un ícono en vez de texto.
+class _InsigniaIcono extends StatelessWidget {
+  const _InsigniaIcono(this.icono, {this.tono = Colors.blue});
+  final IconData icono;
+  final MaterialColor tono;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 48,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(color: tono.shade50, borderRadius: BorderRadius.circular(10)),
+      child: Icon(icono, color: tono.shade700),
+    );
+  }
+}
+
+/// Un número o estado corto en una píldora de color (76 %, Sin precio).
+class _Pildora extends StatelessWidget {
+  const _Pildora(this.texto, this.tono);
+  final String texto;
+  final MaterialColor tono;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: tono.shade50, borderRadius: BorderRadius.circular(20)),
+      child: Text(texto, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: tono.shade800)),
+    );
+  }
+}
+
+/// Ficha blanca de una fila. Sin flecha: las filas de estas listas no abren otra pantalla.
+class _Ficha extends StatelessWidget {
+  const _Ficha({required this.inicio, required this.titulo, this.detalle, this.fin});
+  final Widget inicio;
+  final String titulo;
+  final String? detalle;
+  final Widget? fin;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration:
+            BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
+        child: Row(children: [
+          inicio,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(titulo, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+              if (detalle != null)
+                Text(detalle!, style: TextStyle(fontSize: 13, color: Colors.grey.shade700), maxLines: 2, overflow: TextOverflow.ellipsis),
+            ]),
+          ),
+          if (fin != null) ...[const SizedBox(width: 8), fin!],
+        ]),
+      ),
+    );
+  }
+}
 
 // ─── Compras ─────────────────────────────────────────────────────────────────
 
@@ -381,6 +553,8 @@ class _ComprasScreen extends StatefulWidget {
 }
 
 class _ComprasScreenState extends _ProcesoState<_ComprasScreen> {
+  int _pestana = 0; // 0 Recibidos, 1 En almacén
+
   @override
   String get clave => 'compras';
 
@@ -390,38 +564,43 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> {
       final almacen = _lista(d['almacen']);
       final recientes = _lista(d['recientes']);
       return [
-        _CuatroDatos(indicadores: _indicadoresCompras(d, widget.esDueno)), // los mismos 4 de la tarjeta
+        _CuatroDatos(indicadores: _indicadoresCompras(d, widget.esDueno), grande: true), // los mismos 4 de la tarjeta
         const SizedBox(height: 16),
+        // Las dos acciones de todos los días, grandes; las demás debajo, en una fila baja.
         _Acciones(acciones: [
           (Icons.move_to_inbox, _titulos['entrega']!, () => formulario('entrega')),
           (Icons.handshake, _titulos['adelanto']!, () => formulario('adelanto')),
+        ]),
+        const SizedBox(height: 10),
+        _Acciones(compactas: true, acciones: [
           if (widget.esDueno) (Icons.payments, 'Pagar compras', () => Navigator.of(context).pop('pendientes')),
           (Icons.person_add_alt_1, _titulos['proveedor']!, () => formulario('proveedor')),
-          (Icons.receipt_long, 'Registrar gasto de compras',
-              () => formulario('gasto', fijos: const {'area': 'sourcing'}, subtitulo: 'Área: Compras')),
+          (Icons.receipt_long, _titulos['gasto']!, () => formulario('gasto', fijos: const {'area': 'sourcing'}, subtitulo: 'Área: Compras')),
         ]),
-        _subtitulo('Café en almacén'),
-        if (almacen.isEmpty) _vacio('No hay café de compras guardado.'),
-        for (final a in almacen)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.inventory_2_outlined),
-            title: Text(_estadosCafe[a['estado']] ?? '${a['estado']}'),
-            subtitle: Text('${a['lotes']} ${a['lotes'] == 1 ? 'lote' : 'lotes'}'),
-            trailing: Text(_kg(a['kg']), style: const TextStyle(fontWeight: FontWeight.w600)),
-          ),
-        _subtitulo('Últimos recibidos'),
-        if (recientes.isEmpty) _vacio('Todavía no hay café recibido.'),
-        for (final r in recientes)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text('${r['agricultor'] ?? 'Sin nombre'}'),
-            subtitle: Text('${_fechaCorta(r['fecha'])} · ${_estadosCafe[r['estado']] ?? r['estado']} · ${_kg(r['kg'])}'),
-            trailing: Text(
-              r['precio'] != null ? '${_soles(r['precio'])}/kg' : (widget.esDueno ? 'Sin precio' : ''),
-              style: TextStyle(color: r['precio'] != null ? Colors.black87 : Colors.orange.shade800),
+        _Pestanas(nombres: const ['Recibidos', 'En almacén'], elegida: _pestana, onElegir: (i) => setState(() => _pestana = i)),
+        if (_pestana == 0) ...[
+          _encabezado('Últimos recibidos', '${recientes.length} ${recientes.length == 1 ? 'entrega' : 'entregas'}'),
+          if (recientes.isEmpty) _vacio('Todavía no hay café recibido.'),
+          for (final r in recientes)
+            _Ficha(
+              inicio: _Insignia(_fechaCorta(r['fecha']), tono: Colors.green),
+              titulo: '${r['agricultor'] ?? 'Sin nombre'}',
+              detalle: '${_estadosCafe[r['estado']] ?? r['estado']} · ${_kg(r['kg'])}',
+              fin: r['precio'] != null
+                  ? _Pildora('${_soles(r['precio'])}/kg', Colors.green)
+                  : (widget.esDueno ? const _Pildora('Sin precio', Colors.orange) : null),
             ),
-          ),
+        ] else ...[
+          _encabezado('Café en almacén', '${almacen.length} ${almacen.length == 1 ? 'estado' : 'estados'}'),
+          if (almacen.isEmpty) _vacio('No hay café de compras guardado.'),
+          for (final a in almacen)
+            _Ficha(
+              inicio: const _InsigniaIcono(Icons.inventory_2_outlined, tono: Colors.brown),
+              titulo: _estadosCafe[a['estado']] ?? '${a['estado']}',
+              detalle: '${a['lotes']} ${a['lotes'] == 1 ? 'lote' : 'lotes'}',
+              fin: Text(_kg(a['kg']), style: const TextStyle(fontWeight: FontWeight.w600)),
+            ),
+        ],
       ];
     });
   }
@@ -437,6 +616,8 @@ class _ProduccionScreen extends StatefulWidget {
 }
 
 class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> {
+  int? _pestana; // 0 Tuestes, 1 Lotes; al abrir: Tuestes si hay alguno, si no Lotes
+
   @override
   String get clave => 'produccion';
 
@@ -485,47 +666,53 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> {
       final lotes = _lista(d['lotes_verdes']);
       final tuestes = _lista(d['tuestes']);
       final porProcesar = _lista(d['por_procesar']);
+      final pestana = _pestana ?? (tuestes.isNotEmpty ? 0 : 1);
       return [
-        _CuatroDatos(indicadores: _indicadoresProduccion(d)), // los mismos 4 de la tarjeta
+        _CuatroDatos(indicadores: _indicadoresProduccion(d), grande: true), // los mismos 4 de la tarjeta
         const SizedBox(height: 16),
         _Acciones(acciones: [
           (Icons.local_fire_department, 'Tostar café', _tostar),
-          (Icons.receipt_long, 'Registrar gasto de producción',
-              () => formulario('gasto', fijos: const {'area': 'production'}, subtitulo: 'Área: Producción')),
-        ]),
-        _subtitulo('Tuestes en curso y programados'),
-        if (tuestes.isEmpty) _vacio('No hay tuestes programados. Toca "Tostar café".'),
-        for (final t in tuestes)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(t['estado'] == 'in_progress' ? Icons.local_fire_department : Icons.schedule,
-                color: t['estado'] == 'in_progress' ? Colors.deepOrange : Colors.grey.shade700),
-            title: Text('${t['producto'] ?? 'Lote ${t['lote'] ?? ''}'}'),
-            subtitle: Text('Lote ${t['lote'] ?? '—'} · ${_kg(t['kg_verde'])} · ${_fechaCorta(t['fecha'])}'),
-            trailing: t['estado'] == 'in_progress'
-                ? ElevatedButton(onPressed: () => _finalizar(t), child: const Text('Finalizar'))
-                : OutlinedButton(onPressed: () => _iniciar(t), child: const Text('Iniciar')),
+          (
+            Icons.receipt_long,
+            'Registrar gasto de producción',
+            () => formulario('gasto', fijos: const {'area': 'production'}, subtitulo: 'Área: Producción')
           ),
-        _subtitulo('Lotes de café verde'),
-        if (lotes.isEmpty) _vacio('No hay lotes de café verde con stock.'),
-        for (final l in lotes) _FilaLote(lote: l),
-        if (porProcesar.isNotEmpty) ...[
-          _subtitulo('Café comprado por procesar'),
-          for (final p in porProcesar)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.inventory_2_outlined),
-              title: Text(_estadosCafe[p['estado']] ?? '${p['estado']}'),
-              subtitle: Text('${p['lotes']} ${p['lotes'] == 1 ? 'lote' : 'lotes'} · calidad: ${p['calidad'] == 'pending' ? 'por revisar' : p['calidad']}'),
-              trailing: Text(_kg(p['kg']), style: const TextStyle(fontWeight: FontWeight.w600)),
+        ]),
+        _Pestanas(nombres: const ['Tuestes', 'Lotes de café verde'], elegida: pestana, onElegir: (i) => setState(() => _pestana = i)),
+        if (pestana == 0) ...[
+          _encabezado('Tuestes en curso y programados', '${tuestes.length}'),
+          if (tuestes.isEmpty) _vacio('No hay tuestes programados. Toca "Tostar café".'),
+          for (final t in tuestes)
+            _Ficha(
+              inicio: _Insignia('${t['lote'] ?? '—'}', tono: t['estado'] == 'in_progress' ? Colors.deepOrange : Colors.blue),
+              titulo: '${t['producto'] ?? 'Lote ${t['lote'] ?? ''}'}',
+              detalle: '${t['estado'] == 'in_progress' ? 'Tostando' : 'Programado'} · ${_kg(t['kg_verde'])} · ${_fechaCorta(t['fecha'])}',
+              fin: t['estado'] == 'in_progress'
+                  ? ElevatedButton(onPressed: () => _finalizar(t), child: const Text('Finalizar'))
+                  : OutlinedButton(onPressed: () => _iniciar(t), child: const Text('Iniciar')),
             ),
+        ] else ...[
+          _encabezado('Lotes de café verde', '${lotes.length} ${lotes.length == 1 ? 'lote' : 'lotes'}'),
+          if (lotes.isEmpty) _vacio('No hay lotes de café verde con stock.'),
+          for (final l in lotes) _FilaLote(lote: l),
+          if (porProcesar.isNotEmpty) ...[
+            _encabezado('Café comprado por procesar', '${porProcesar.length}'),
+            for (final p in porProcesar)
+              _Ficha(
+                inicio: const _InsigniaIcono(Icons.inventory_2_outlined, tono: Colors.brown),
+                titulo: _estadosCafe[p['estado']] ?? '${p['estado']}',
+                detalle:
+                    '${p['lotes']} ${p['lotes'] == 1 ? 'lote' : 'lotes'} · calidad: ${p['calidad'] == 'pending' ? 'por revisar' : p['calidad']}',
+                fin: Text(_kg(p['kg']), style: const TextStyle(fontWeight: FontWeight.w600)),
+              ),
+          ],
         ],
       ];
     });
   }
 }
 
-/// Un lote verde: código, variedad y cosecha, y cuánto queda de lo que entró.
+/// Un lote verde en su ficha: código, variedad y cosecha, kilos que quedan de los que entraron, barra y %.
 class _FilaLote extends StatelessWidget {
   const _FilaLote({required this.lote});
   final Map<String, dynamic> lote;
@@ -534,25 +721,43 @@ class _FilaLote extends StatelessWidget {
   Widget build(BuildContext context) {
     final ahora = (lote['kg_ahora'] as num?)?.toDouble() ?? 0;
     final inicial = (lote['kg_inicial'] as num?)?.toDouble() ?? 0;
+    final parte = inicial > 0 ? (ahora / inicial).clamp(0.0, 1.0) : 0.0;
     final detalle = [if (lote['variedad'] != null) '${lote['variedad']}', if (lote['cosecha'] != null) 'cosecha ${lote['cosecha']}'];
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Text('${lote['codigo']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-          if (detalle.isNotEmpty) ...[
-            const SizedBox(width: 8),
-            Expanded(child: Text(detalle.join(' · '), style: TextStyle(color: Colors.grey.shade700), overflow: TextOverflow.ellipsis)),
-          ] else
-            const Spacer(),
-          Text('${_kg(ahora)} de ${_kg(inicial)}'),
-        ]),
-        const SizedBox(height: 6),
-        LinearProgressIndicator(
-          value: inicial > 0 ? (ahora / inicial).clamp(0, 1) : 0,
-          minHeight: 6,
-          borderRadius: BorderRadius.circular(3),
-          backgroundColor: Colors.grey.shade200,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(children: [
+        _Insignia('${lote['codigo']}'),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(
+                child: Text(detalle.isEmpty ? 'Café verde' : detalle.join(' · '),
+                    style: const TextStyle(fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+              Text('${_kg(ahora).replaceAll(' kg', '')} kg / ${_kg(inicial)}', style: TextStyle(color: Colors.grey.shade800)),
+            ]),
+            const SizedBox(height: 6),
+            Row(children: [
+              Expanded(
+                child: LinearProgressIndicator(
+                  value: parte,
+                  minHeight: 8,
+                  borderRadius: BorderRadius.circular(4),
+                  color: Colors.green.shade600,
+                  backgroundColor: Colors.grey.shade200,
+                ),
+              ),
+              const SizedBox(width: 10),
+              _Pildora('${(parte * 100).round()}%', Colors.green),
+            ]),
+          ]),
         ),
       ]),
     );
@@ -603,7 +808,8 @@ class _FinalizarTuesteState extends State<_FinalizarTueste> {
         ),
         const SizedBox(height: 12),
         TextField(controller: _notasCtrl, decoration: const InputDecoration(labelText: 'Notas (opcional)', border: OutlineInputBorder())),
-        if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!, style: const TextStyle(color: Colors.red))),
+        if (_error != null)
+          Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!, style: const TextStyle(color: Colors.red))),
       ]),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
@@ -663,7 +869,15 @@ class _ElegirProductoState extends State<_ElegirProducto> {
   void _buscar(String texto) {
     _espera?.cancel();
     _espera = Timer(const Duration(milliseconds: 300), () {
-      setState(() { _busqueda = texto.trim(); _productos.clear(); _pagina = 0; _hayMas = true; _error = null; _cargando = false; _pedido++; });
+      setState(() {
+        _busqueda = texto.trim();
+        _productos.clear();
+        _pagina = 0;
+        _hayMas = true;
+        _error = null;
+        _cargando = false;
+        _pedido++;
+      });
       _cargarMas();
     });
   }
@@ -714,7 +928,8 @@ class _ElegirProductoState extends State<_ElegirProducto> {
               itemBuilder: (context, i) {
                 if (i == _productos.length) {
                   if (_error != null) return Padding(padding: const EdgeInsets.all(24), child: Text(_error!, textAlign: TextAlign.center));
-                  if (_cargando || _hayMas) return const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()));
+                  if (_cargando || _hayMas)
+                    return const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()));
                   return Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(_productos.isEmpty ? 'Ningún producto con ese nombre' : '${_productos.length} en total',
