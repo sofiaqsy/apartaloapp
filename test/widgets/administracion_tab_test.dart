@@ -13,7 +13,7 @@ void main() {
   final pedidos = <http.Request>[];
   var sugerencia = <String, dynamic>{'area': 'fulfillment', 'cost_centre': 'coffee', 'source': 'to_review'};
   // Las áreas marcadas en Perfil deciden qué tarjetas muestra Registrar.
-  var marcadas = ['farm', 'sourcing', 'production', 'commercial', 'finance'];
+  var marcadas = ['farm', 'sourcing', 'production', 'commercial', 'fulfillment', 'finance'];
   var sinComercial = false; // el servidor no manda Comercialización (no es área de la persona)
 
   http.Response responder(http.Request req) {
@@ -120,6 +120,14 @@ void main() {
           'cosecha': {'anio': 2026, 'kg': 0},
           'recientes': [{'id': 'EX-0009', 'fecha': '2026-11-02', 'categoria': 'Mano de obra', 'descripcion': 'Jornal deshierbo', 'estado': 'Pendiente de pago', 'monto': 120}],
         },
+        'logistica': {
+          'por_despachar': 2, 'en_camino': 1, 'entregados_mes': 5, 'gastos_mes': {'n': 1, 'total': dueno ? 40 : null},
+          'por_pagar': {'total': 40}, 'abiertos': 3,
+          'pedidos': [
+            {'numero': 'P-101', 'cliente': 'Cafe Uno', 'estado': 'pending', 'fecha': '2026-11-01T10:00:00Z'},
+            {'numero': 'P-102', 'cliente': 'Cafe Dos', 'estado': 'shipped', 'fecha': '2026-11-02T10:00:00Z'},
+          ],
+        },
         if (!sinComercial) 'comercial': {'meses': [
           {'month': '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-01', 'orders': 3, 'total': 3000, 'unpaid': 3000},
         ]},
@@ -134,7 +142,7 @@ void main() {
   setUp(() {
     pedidos.clear();
     sugerencia = {'area': 'fulfillment', 'cost_centre': 'coffee', 'source': 'to_review'};
-    marcadas = ['farm', 'sourcing', 'production', 'commercial', 'finance'];
+    marcadas = ['farm', 'sourcing', 'production', 'commercial', 'fulfillment', 'finance'];
     sinComercial = false;
     dotenv.testLoad(fileInput: 'API_BASE_URL=https://api.test\nBUSINESS_ID=BIZ-002');
   });
@@ -816,7 +824,7 @@ void main() {
   });
 
   testWidgets('with no process area ticked, Registrar says where to tick them', (tester) async {
-    marcadas = ['fulfillment'];
+    marcadas = ['finance'];
     await abrir(tester, rol: 'staff');
     expect(find.text('Compras'), findsNothing);
     expect(find.textContaining('Perfil → Mis áreas'), findsOneWidget);
@@ -903,5 +911,26 @@ void main() {
         tester.getSize(find.ancestor(of: find.text(t), matching: find.byType(InkWell)).first),
     };
     expect(tamanos, hasLength(1));
+  });
+
+  testWidgets('Logística: orders to dispatch first, its gasto with the Logística area, and its providers', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await tester.scrollUntilVisible(find.text('Logística'), 200, scrollable: find.byType(Scrollable).last);
+    expect(find.text('Por despachar'), findsOneWidget);
+    expect(find.text('2 pedidos'), findsOneWidget);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Logística'));
+      await tester.pumpAndSettle();
+      expect(find.text('Cafe Uno'), findsOneWidget); // the oldest open order first
+      expect(find.text('En camino'), findsWidgets);
+      expect(find.text('Se ven los 2 más antiguos; el resto está en Pedidos.'), findsOneWidget);
+      await tester.tap(find.text('Registrar gasto de logística'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Monto (S/)'), '35');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final req = pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/gasto'));
+    expect(jsonDecode(req.body)['area'], 'fulfillment');
   });
 }

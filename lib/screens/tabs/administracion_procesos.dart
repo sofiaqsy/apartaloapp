@@ -65,6 +65,7 @@ class _RegistrarState extends State<_Registrar> {
   Map<String, dynamic>? _compras;
   Map<String, dynamic>? _produccion;
   Map<String, dynamic>? _comercial;
+  Map<String, dynamic>? _logistica;
   String? _error;
   Set<String>? _areas; // las áreas marcadas en Perfil; null mientras carga
   bool _cargado = false; // ya llegaron los resúmenes (hasta entonces cada tarjeta muestra su carga)
@@ -101,6 +102,7 @@ class _RegistrarState extends State<_Registrar> {
         _compras = de('compras');
         _produccion = de('produccion');
         _comercial = de('comercial');
+        _logistica = de('logistica');
       }
     });
   }
@@ -150,6 +152,16 @@ class _RegistrarState extends State<_Registrar> {
           indicadores: _compras == null ? null : _indicadoresCompras(_compras!, widget.esDueno),
           error: _error,
           onTap: () => _entrar(_ComprasScreen(esDueno: widget.esDueno)),
+        )
+      ),
+      (
+        'fulfillment',
+        _logistica,
+        _TarjetaProceso(
+          titulo: 'Logística',
+          indicadores: _logistica == null ? null : _indicadoresLogistica(_logistica!, widget.esDueno),
+          error: _error,
+          onTap: () => _entrar(_LogisticaScreen(esDueno: widget.esDueno)),
         )
       ),
       (
@@ -307,6 +319,37 @@ List<_Indicador> _indicadoresProduccion(Map<String, dynamic> p) {
         atencion: enCurso > 0),
     _Indicador(Icons.trending_down, mes['merma_pct'] != null ? '${mes['merma_pct']}%' : '—', 'Merma',
         tono: Colors.red, nota: '${_kg(mes['kg_verde'])} → ${_kg(mes['kg_tostado'])}'),
+  ];
+}
+
+/// Logística: siempre 4. Primero lo que hay que despachar y lo entregado en el mes (pedidos de la tienda);
+/// luego, dueños: gastos del mes y por pagar; equipo: en camino y cuántos gastos.
+List<_Indicador> _indicadoresLogistica(Map<String, dynamic> l, bool esDueno) {
+  int n(dynamic v) => (v as num?)?.toInt() ?? 0;
+  final despachar = n(l['por_despachar']);
+  final camino = n(l['en_camino']);
+  final mes = _mapa(l['gastos_mes']);
+  String pedidos(int k) => '$k ${k == 1 ? 'pedido' : 'pedidos'}';
+  final primeros = [
+    _Indicador(Icons.outbox, pedidos(despachar), 'Por despachar',
+        tono: Colors.orange, atencion: despachar > 0, nota: camino > 0 ? '$camino en camino' : 'de la tienda'),
+    _Indicador(Icons.local_shipping, pedidos(n(l['entregados_mes'])), 'Entregados',
+        tono: Colors.green, nota: _meses[DateTime.now().month - 1]),
+  ];
+  if (esDueno && mes['total'] != null) {
+    final porPagar = (_mapa(l['por_pagar'])['total'] as num?) ?? 0;
+    return [
+      ...primeros,
+      _Indicador(Icons.receipt_long, _soles(mes['total']), 'Gastos este mes',
+          tono: Colors.purple, nota: '${n(mes['n'])} ${n(mes['n']) == 1 ? 'gasto' : 'gastos'} · flete, empaque'),
+      _Indicador(Icons.account_balance_wallet, _soles(porPagar), 'Por pagar',
+          tono: Colors.blue, atencion: porPagar > 0, nota: porPagar > 0 ? 'gastos de logística' : 'todo pagado'),
+    ];
+  }
+  return [
+    ...primeros,
+    _Indicador(Icons.route, pedidos(camino), 'En camino', tono: Colors.blue, nota: 'enviados'),
+    _Indicador(Icons.receipt_long, '${n(mes['n'])}', 'Gastos este mes', tono: Colors.purple, nota: 'registrados'),
   ];
 }
 
@@ -782,6 +825,73 @@ mixin _ProveedoresDelProceso<T extends StatefulWidget> on State<T> {
         else if (_proveedores.isEmpty)
           _vacio(_busqueda.isEmpty ? vacioProveedores : 'Nadie con ese nombre.'),
       ];
+}
+
+// ─── Logística ───────────────────────────────────────────────────────────────
+
+class _LogisticaScreen extends StatefulWidget {
+  const _LogisticaScreen({required this.esDueno});
+  final bool esDueno;
+
+  @override
+  State<_LogisticaScreen> createState() => _LogisticaScreenState();
+}
+
+class _LogisticaScreenState extends _ProcesoState<_LogisticaScreen> with _ProveedoresDelProceso {
+  int _pestana = 0; // 0 Por despachar, 1 Proveedores
+
+  @override
+  String get clave => 'logistica';
+  @override
+  String? get areaProveedores => 'fulfillment';
+  @override
+  String get vacioProveedores => 'Todavía no hay proveedores de logística (empaque, transporte).';
+
+  static const _estados = {'pending': 'Pendiente', 'confirmed': 'Confirmado', 'preparing': 'Preparando', 'shipped': 'En camino'};
+
+  @override
+  Widget build(BuildContext context) {
+    return pantalla('Logística', alFinal: () {
+      if (_pestana == 1) masProveedores();
+    }, (d) {
+      final pedidos = _lista(d['pedidos']);
+      final abiertos = (d['abiertos'] as num?)?.toInt() ?? pedidos.length;
+      return [
+        _CuatroDatos(indicadores: _indicadoresLogistica(d, widget.esDueno), grande: true), // los mismos 4 de la tarjeta
+        const SizedBox(height: 16),
+        _Acciones(acciones: [
+          (
+            Icons.receipt_long,
+            'Registrar gasto de logística',
+            () => formulario('gasto', fijos: const {'area': 'fulfillment'}, subtitulo: 'Área: Logística')
+          ),
+        ]),
+        _Pestanas(
+          nombres: const ['Por despachar', 'Proveedores'],
+          elegida: _pestana,
+          onElegir: (i) {
+            setState(() => _pestana = i);
+            if (i == 1) abrirProveedores();
+          },
+        ),
+        if (_pestana == 1)
+          ..._listaProveedores()
+        else ...[
+          // Los más antiguos primero: son los siguientes por despachar. A lo más 30; el total a la derecha.
+          _encabezado('Pedidos abiertos', '$abiertos ${abiertos == 1 ? 'pedido' : 'pedidos'}'),
+          if (pedidos.isEmpty) _vacio('No hay pedidos por despachar.'),
+          for (final p in pedidos)
+            _Ficha(
+              inicio: _Insignia(_fechaCorta(p['fecha']), tono: p['estado'] == 'shipped' ? Colors.blue : Colors.orange),
+              titulo: '${p['cliente'] ?? 'Sin nombre'}',
+              detalle: 'Pedido ${p['numero'] ?? ''}',
+              fin: _Pildora(_estados[p['estado']] ?? '${p['estado']}', p['estado'] == 'shipped' ? Colors.blue : Colors.orange),
+            ),
+          if (abiertos > pedidos.length) _vacio('Se ven los ${pedidos.length} más antiguos; el resto está en Pedidos.'),
+        ],
+      ];
+    });
+  }
 }
 
 // ─── Finca ───────────────────────────────────────────────────────────────────
