@@ -204,6 +204,9 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('agricultorId', 'Agricultor', _Tipo.persona, rol: 'agricultor'),
     // "Recogido por (comprador)" se quitó: no hace falta (General Manager, 1 nov 2026; no hay acopiadores).
     const _Campo('estado', 'Café', _Tipo.opcion, opciones: {'parchment': 'Pergamino', 'cherry': 'Cereza', 'green': 'Verde'}, porDefecto: 'parchment'),
+    // Para qué producto es el café (General Manager, 3 nov 2026); las opciones son los productos del negocio,
+    // el Blend marcado al abrir. Tocarlo otra vez lo deja sin producto.
+    const _Campo('productoId', 'Producto vinculado', _Tipo.opcion, requerido: false),
     const _Campo('kg', 'Kilos', _Tipo.numero),
     const _Campo('precioKg', 'Precio por kilo (si ya se sabe)', _Tipo.monto, requerido: false, ayuda: 'Con precio queda en "Por pagar" para Administración'),
     const _Campo('humedad', 'Humedad %', _Tipo.numero, requerido: false, avanzado: true),
@@ -241,7 +244,7 @@ bool _esDevolucion(Map<String, dynamic> v) => v['tipo'] == 'advance_return';
 // Nombres de acción (verbo + cosa), iguales en el botón y en el título del formulario.
 const _titulos = {
   'gasto': 'Registrar gasto', 'pagoGasto': 'Pagar gasto', 'adelanto': 'Solicitar adelanto', 'aprobarAdelanto': 'Aprobar adelanto',
-  'rechazarAdelanto': 'Rechazar adelanto', 'proveedor': 'Registrar proveedor', 'entrega': 'Registrar café recibido',
+  'rechazarAdelanto': 'Rechazar adelanto', 'proveedor': 'Registrar proveedor', 'entrega': 'Registrar compra',
   'precio': 'Poner precio al café recibido', 'pago': 'Pagar compra', 'ingreso': 'Registrar ingreso', 'retiro': 'Registrar retiro de efectivo',
 };
 
@@ -249,7 +252,7 @@ const _titulos = {
 const _hecho = {
   'gasto': 'Gasto registrado ✓ Administración lo pagará', 'pagoGasto': 'Gasto pagado ✓',
   'adelanto': 'Adelanto solicitado ✓ Administración lo revisará', 'aprobarAdelanto': 'Adelanto aprobado y entregado ✓',
-  'rechazarAdelanto': 'Adelanto rechazado', 'proveedor': 'Proveedor registrado ✓', 'entrega': 'Café recibido registrado ✓',
+  'rechazarAdelanto': 'Adelanto rechazado', 'proveedor': 'Proveedor registrado ✓', 'entrega': 'Compra registrada ✓',
   'precio': 'Precio puesto ✓ Lo que falta queda por pagar', 'pago': 'Compra pagada ✓', 'retiro': 'Retiro de efectivo registrado ✓ Ya está en caja',
 };
 
@@ -298,6 +301,7 @@ class _FormularioSheetState extends State<_FormularioSheet> {
       if (c.porDefecto != null) _valores[c.clave] = c.porDefecto;
       if (c.tipo == _Tipo.fecha) _valores[c.clave] = DateTime.now();
     }
+    if (widget.formulario == 'entrega') _cargarProductos();
     if (widget.formulario == 'gasto') {
       final inicial = _guia[_categoriaInicial];
       if (inicial != null) {
@@ -435,6 +439,27 @@ class _FormularioSheetState extends State<_FormularioSheet> {
       }).join(' · ');
 
   Map<String, String> _opcionesDe(_Campo c) => _opciones[c.clave] ?? c.opciones;
+
+  /// Producto vinculado: los productos activos del negocio, el café primero; marca el Blend si existe.
+  Future<void> _cargarProductos() async {
+    final r = await ApiService.getProductos(limite: 50);
+    if (!mounted) return;
+    final lista = (r.data?.productos ?? const <Map<String, dynamic>>[])
+        .where((p) => '${p['codigo'] ?? ''}'.isNotEmpty && '${p['estado'] ?? 'ACTIVO'}'.toUpperCase() != 'INACTIVO')
+        .toList()
+      ..sort((a, b) {
+        int orden(Map p) => '${p['categoria'] ?? ''}'.toLowerCase().contains('caf') ? 0 : 1;
+        return orden(a).compareTo(orden(b));
+      });
+    final blend = lista.where((p) {
+      final n = '${p['nombre']}'.toLowerCase();
+      return n.contains('blend') && !n.contains('pack');
+    }).firstOrNull;
+    setState(() {
+      _opciones['productoId'] = {for (final p in lista) '${p['codigo']}': '${p['nombre']}'};
+      if (blend != null && !_valores.containsKey('productoId')) _valores['productoId'] = '${blend['codigo']}';
+    });
+  }
 
   /// Al elegir la categoría, se sugieren el área y el centro de costo (se pueden cambiar en Más opciones).
   void _sugerirPorCategoria(String? categoria) {
@@ -603,34 +628,6 @@ class _FormularioSheetState extends State<_FormularioSheet> {
 // ─── Registrar ───────────────────────────────────────────────────────────────
 
 // _Registrar (tarjetas Compras y Producción) está en administracion_procesos.dart.
-
-class _BotonGrande extends StatelessWidget {
-  const _BotonGrande({required this.icono, required this.texto, required this.onTap, this.habilitado = true});
-  final IconData icono;
-  final String texto;
-  final VoidCallback onTap;
-  final bool habilitado;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: habilitado ? Colors.blue.shade50 : Colors.grey.shade200,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: habilitado ? onTap : null,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icono, size: 30, color: habilitado ? Colors.blue.shade700 : Colors.grey),
-            const SizedBox(height: 6),
-            Text(texto, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w600, color: habilitado ? Colors.black87 : Colors.grey)),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 // ─── Pendientes ──────────────────────────────────────────────────────────────
 

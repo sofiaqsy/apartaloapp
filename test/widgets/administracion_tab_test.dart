@@ -95,6 +95,13 @@ void main() {
     if (p.endsWith('/sugerencia')) {
       return http.Response(jsonEncode({'sugeridas': [{'area': 'sourcing', 'name': 'Compras', 'records': 4}, {'area': 'farm', 'name': 'Finca', 'records': 2}]}), 200);
     }
+    if (p.endsWith('/api/productos/BIZ-002')) {
+      return http.Response(jsonEncode({'productos': [
+        {'codigo': 'prod-pack', 'nombre': 'Pack x3: Blend, Obata y Geisha', 'estado': 'ACTIVO'},
+        {'codigo': 'prod-geisha', 'nombre': 'Geisha', 'categoria': 'Café', 'estado': 'ACTIVO'},
+        {'codigo': 'prod-blend', 'nombre': 'Blend de Caturra, Pache, typica', 'categoria': 'Café', 'estado': 'ACTIVO'},
+      ], 'total': 3}), 200);
+    }
     if (p.endsWith('/procesos')) {
       final dueno = true;
       return http.Response(jsonEncode({
@@ -190,7 +197,7 @@ void main() {
       await tester.tap(find.text('Compras'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    for (final t in ['Registrar café recibido', 'Solicitar adelanto', 'Registrar proveedor', 'Registrar gasto', 'Recibidos', 'Pedro Ramírez Ñique']) {
+    for (final t in ['Registrar compra', 'Solicitar adelanto', 'Registrar proveedor', 'Registrar gasto', 'Recibidos', 'Pedro Ramírez Ñique']) {
       expect(find.text(t), findsOneWidget);
     }
     expect(find.text('Pagar compras'), findsNothing);
@@ -428,7 +435,7 @@ void main() {
     await http.runWithClient(() async {
       await tester.tap(find.text('Compras'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Registrar café recibido'));
+      await tester.tap(find.text('Registrar compra'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Agricultor'));
       await tester.pumpAndSettle();
@@ -447,7 +454,7 @@ void main() {
     await http.runWithClient(() async {
       await tester.tap(find.text('Compras'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Registrar café recibido'));
+      await tester.tap(find.text('Registrar compra'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Agricultor'));
       await tester.pumpAndSettle();
@@ -464,18 +471,18 @@ void main() {
     await http.runWithClient(() async {
       await tester.tap(find.text('Compras'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Registrar café recibido'));
+      await tester.tap(find.text('Registrar compra'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    expect(find.text('Registrar café recibido'), findsOneWidget); // the form title repeats the button
+    expect(find.text('Registrar compra'), findsOneWidget); // the form title repeats the button
   });
 
-  testWidgets('Registrar café recibido does not ask who collected it', (tester) async {
+  testWidgets('Registrar compra does not ask who collected it', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
       await tester.tap(find.text('Compras'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Registrar café recibido'));
+      await tester.tap(find.text('Registrar compra'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     expect(find.textContaining('Recogido por'), findsNothing);
@@ -487,7 +494,7 @@ void main() {
     await http.runWithClient(() async {
       await tester.tap(find.text('Compras'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Registrar café recibido'));
+      await tester.tap(find.text('Registrar compra'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Agricultor'));
       await tester.pumpAndSettle();
@@ -907,7 +914,7 @@ void main() {
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     final tamanos = {
-      for (final t in ['Registrar café recibido', 'Solicitar adelanto', 'Registrar proveedor', 'Registrar gasto', 'Pagar compras', 'Registrar retiro de efectivo'])
+      for (final t in ['Registrar compra', 'Solicitar adelanto', 'Registrar proveedor', 'Registrar gasto', 'Pagar compras', 'Registrar retiro de efectivo'])
         tester.getSize(find.ancestor(of: find.text(t), matching: find.byType(InkWell)).first),
     };
     expect(tamanos, hasLength(1));
@@ -932,5 +939,30 @@ void main() {
     }, () => MockClient((req) async => responder(req)));
     final req = pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/gasto'));
     expect(jsonDecode(req.body)['area'], 'fulfillment');
+  });
+
+  testWidgets('Registrar compra links a product: the Blend ticked by default, coffee first, and it is sent', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Registrar compra'));
+      await tester.pumpAndSettle();
+      expect(find.text('Producto vinculado (opcional)'), findsOneWidget);
+      final blend = tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Blend de Caturra, Pache, typica'));
+      expect(blend.selected, isTrue);
+      expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Geisha')).selected, isFalse);
+      // coffee products first, the pack after them
+      expect(tester.getTopLeft(find.text('Geisha')).dy, lessThanOrEqualTo(tester.getTopLeft(find.text('Pack x3: Blend, Obata y Geisha')).dy));
+      await tester.tap(find.text('Agricultor'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pedro Ramírez Ñique'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Kilos'), '40');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final req = pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/entrega'));
+    expect(jsonDecode(req.body)['productoId'], 'prod-blend');
   });
 }
