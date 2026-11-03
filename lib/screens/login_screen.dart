@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../theme/fincas_theme.dart';
 import '../theme/fincas_tokens.dart';
 import '../widgets/fincas_widgets.dart';
+import '../services/invite_link.dart';
 import 'businesses_screen.dart';
 import 'main_screen.dart';
 
@@ -35,11 +36,23 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     _loadPending();
+    InviteLink.codigo.addListener(_usarInvitacion);
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkExistingLogin());
+  }
+
+  /// Un enlace de invitación llena el código; si ya ingresó y aún no tiene negocio, lo lleva a ese paso.
+  void _usarInvitacion() {
+    final code = InviteLink.codigo.value;
+    if (code == null || !mounted) return;
+    _codeController.text = code;
+    if (_step == _Step.onboarding || _step == _Step.enterCode) {
+      setState(() { _step = _Step.enterCode; _errorMessage = null; });
+    }
   }
 
   @override
   void dispose() {
+    InviteLink.codigo.removeListener(_usarInvitacion);
     _codeController.dispose();
     _bizNameController.dispose();
     _bizCityController.dispose();
@@ -167,6 +180,7 @@ class _LoginScreenState extends State<LoginScreen> {
       default:
         setState(() => _step = _Step.onboarding);
     }
+      _usarInvitacion();
   }
 
   Future<void> _submitCode() async {
@@ -177,12 +191,18 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     setState(() { _isLoading = true; _errorMessage = null; });
     try {
-      final error = await AuthService.submitJoinCode(code);
-      if (error != null) {
-        setState(() => _errorMessage = error);
+      final r = await AuthService.joinWithCode(code);
+      if (r.error != null) {
+        setState(() => _errorMessage = r.error);
         return;
       }
       _codeController.clear();
+      InviteLink.codigo.value = null;
+      if (r.status == 'joined' || r.status == 'already_member') {
+        _snack(r.businessName.isEmpty ? 'Listo: ya eres parte del equipo.' : 'Listo: ya eres parte de ${r.businessName}.');
+        await _continueWithSession(); // abre el negocio
+        return;
+      }
       _session = AuthSession(status: 'join_pending');
       await _rememberPending('join', '');
       setState(() => _step = _Step.joinPending);
@@ -446,7 +466,7 @@ class _LoginScreenState extends State<LoginScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _formHeader('Código de invitación', 'Pídeselo al dueño del negocio. El dueño debe aprobar tu solicitud.'),
+            _formHeader('Código de invitación', 'Pídeselo al dueño del negocio, o abre el enlace que te envió.'),
             Padding(
               padding: const EdgeInsets.only(bottom: FincasSpacing.field),
               child: TextField(
@@ -458,7 +478,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             _errorText(),
-            FincasPrimaryButton(label: 'Enviar solicitud', onPressed: _submitCode, loading: _isLoading),
+            FincasPrimaryButton(label: 'Unirme', onPressed: _submitCode, loading: _isLoading),
             FincasTextButton(
               label: 'Volver',
               onPressed: _isLoading ? null : () => setState(() { _step = _Step.onboarding; _errorMessage = null; }),

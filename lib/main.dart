@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'services/invite_link.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
@@ -77,6 +78,9 @@ Future<void> _appMain() async {
 
     // Configurar estilo de la barra de estado
     SystemChrome.setSystemUIOverlayStyle(FincasTheme.statusBarOnLight);
+
+    // Enlaces de invitación (fincas://unirse?codigo=...); no bloquea el inicio.
+    InviteLink.escuchar();
 
     runApp(const FincaRosalApp());
   } catch (e, stackTrace) {

@@ -44,6 +44,13 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Enlaces de invitación fincas://unirse?codigo=... -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="fincas" android:host="unirse"/>
+            </intent-filter>
             <!-- Intent filter para recibir datos del escáner Sunmi -->
             <intent-filter>
                 <action

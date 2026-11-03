@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/auth_service.dart';
+import '../services/invite_link.dart';
 
 /// Owner-only: invite team members with a temporary code and approve join requests.
 class TeamScreen extends StatefulWidget {
@@ -60,15 +62,21 @@ class _TeamScreenState extends State<TeamScreen> {
               Text('Úsalo una sola vez. Vence ${expires != null ? _fmt(expires) : 'en 48 horas'}. '
                   'Solo se muestra ahora; si lo pierdes, genera otro.'),
               const SizedBox(height: 8),
-              const Text('Quien lo ingrese quedará pendiente hasta que lo apruebes aquí.'),
+              const Text('Envíalo solo por chat privado: quien lo use entra a tu equipo.'),
             ],
           ),
+          actionsAlignment: MainAxisAlignment.spaceBetween,
           actions: [
             TextButton(
               onPressed: () => Clipboard.setData(ClipboardData(text: code)),
               child: const Text('Copiar'),
             ),
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar')),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.share),
+              label: const Text('Compartir invitación'),
+              onPressed: () => _compartir(code),
+            ),
           ],
         ),
       );
@@ -76,6 +84,18 @@ class _TeamScreenState extends State<TeamScreen> {
       _snack(e.message);
     } catch (_) {
       _snack('Error de conexión.');
+    }
+  }
+
+  /// Abre WhatsApp con el mensaje listo; la persona elige el contacto. Sin WhatsApp, copia el mensaje.
+  Future<void> _compartir(String code) async {
+    final texto = 'Te invito al equipo de ${widget.businessName} en la app Fincas. '
+        'Abre este enlace: ${InviteLink.paginaWeb(code)} · Código: $code (sirve una vez, vence en 48 horas).';
+    final wa = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(texto)}');
+    final abierto = await launchUrl(wa, mode: LaunchMode.externalApplication).catchError((_) => false);
+    if (!abierto) {
+      await Clipboard.setData(ClipboardData(text: texto));
+      _snack('Mensaje copiado. Pégalo en el chat de la persona.');
     }
   }
 
@@ -110,15 +130,14 @@ class _TeamScreenState extends State<TeamScreen> {
           children: [
             ElevatedButton(onPressed: _createCode, child: const Text('Generar código de invitación')),
             const SizedBox(height: 24),
-            const Text('Solicitudes pendientes', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
+            // Con la invitación que da acceso al momento no hay solicitudes: la sección sólo aparece si hay alguna.
             if (_loading)
               const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
             else if (_error != null)
               Text(_error!, style: const TextStyle(color: Colors.red))
-            else if (_requests.isEmpty)
-              Text('No hay solicitudes.', style: TextStyle(color: Colors.grey.shade600))
-            else
+            else if (_requests.isNotEmpty) ...[
+              const Text('Solicitudes pendientes', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
               ..._requests.map((r) => Card(
                     child: Padding(
                       padding: const EdgeInsets.all(12),
@@ -142,6 +161,7 @@ class _TeamScreenState extends State<TeamScreen> {
                       ),
                     ),
                   )),
+            ],
           ],
         ),
       ),

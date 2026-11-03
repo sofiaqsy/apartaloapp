@@ -155,12 +155,18 @@ class AuthService {
   }
 
   /// Sends the invitation code. Returns null on success or an error message.
-  static Future<String?> submitJoinCode(String code) async {
+  static Future<String?> submitJoinCode(String code) async => (await joinWithCode(code)).error;
+
+  /// Sends an invitation code. status: joined (in at once), join_pending (an owner approves) or already_member.
+  static Future<({String? error, String status, String businessName})> joinWithCode(String code) async {
     final res = await http
         .post(Uri.parse('${ApiService.baseUrl}/api/auth/join'), headers: _json, body: jsonEncode({'code': code}))
         .timeout(const Duration(seconds: 15));
-    if (res.statusCode == 200) return null;
-    return (_decode(res)['error'] ?? 'No se pudo enviar el código.').toString();
+    final body = _decode(res);
+    if (res.statusCode != 200) {
+      return (error: (body['error'] ?? 'No se pudo enviar el código.').toString(), status: '', businessName: '');
+    }
+    return (error: null, status: (body['status'] ?? '').toString(), businessName: (body['businessName'] ?? '').toString());
   }
 
   /// Owner: creates a temporary invitation code. Returns {code, expiresAt, role, maxUses}.
