@@ -370,21 +370,27 @@ class _CuatroDatos extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // En la tarjeta los datos no van en cajas (General Manager, 3 nov 2026: parecían botones): sólo líneas finas
-    // entre ellos. Toda la tarjeta es el único botón.
-    final linea = Colors.blue.shade100;
+    // La información se ve como información, no como botones (General Manager, 3 nov 2026): nada de cajas
+    // por dato, sólo líneas finas entre ellos. En la tarjeta, toda la tarjeta es el único botón; en la pantalla
+    // del proceso, los 4 van en un solo panel gris que no se toca.
+    final linea = grande ? Colors.grey.shade300 : Colors.blue.shade100;
     final filas = <Widget>[];
     for (var i = 0; i < indicadores.length; i += 2) {
-      if (i > 0) filas.add(grande ? const SizedBox(height: 10) : Divider(height: 1, thickness: 1, color: linea));
+      if (i > 0) filas.add(Divider(height: 1, thickness: 1, color: linea));
       filas.add(IntrinsicHeight(
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Expanded(child: _DatoCaja(indicadores[i], grande: grande)),
-          grande ? const SizedBox(width: 10) : VerticalDivider(width: 17, thickness: 1, color: linea),
+          VerticalDivider(width: 17, thickness: 1, color: linea),
           Expanded(child: i + 1 < indicadores.length ? _DatoCaja(indicadores[i + 1], grande: grande) : const SizedBox()),
         ]),
       ));
     }
-    return Column(children: filas);
+    if (!grande) return Column(children: filas);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(16)),
+      child: Column(children: filas),
+    );
   }
 }
 
@@ -397,18 +403,12 @@ class _DatoCaja extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = grande ? d.tono.shade700 : (d.atencion ? Colors.orange.shade800 : Colors.blue.shade700);
     final valorColor = d.atencion ? Colors.orange.shade800 : Colors.black87;
-    return Container(
-      padding: grande ? const EdgeInsets.all(12) : const EdgeInsets.symmetric(vertical: 8),
-      decoration: grande ? BoxDecoration(color: d.tono.shade50, borderRadius: BorderRadius.circular(16)) : null,
-      child: Row(crossAxisAlignment: grande ? CrossAxisAlignment.center : CrossAxisAlignment.start, children: [
-        grande
-            ? Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-                child: Icon(d.icono, size: 24, color: color),
-              )
-            : Padding(padding: const EdgeInsets.only(top: 2), child: Icon(d.icono, size: 20, color: color)),
-        SizedBox(width: grande ? 10 : 8),
+    // Sin caja ni sombra: el ícono lleva el color propio del dato y nada invita a tocarlo.
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: grande ? 10 : 8),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(padding: const EdgeInsets.only(top: 2), child: Icon(d.icono, size: grande ? 22 : 20, color: color)),
+        const SizedBox(width: 8),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             FittedBox(
@@ -510,11 +510,17 @@ abstract class _ProcesoState<T extends StatefulWidget> extends State<T> {
     if (await _abrirFormulario(context, form, fijos: fijos, subtitulo: subtitulo)) cargar();
   }
 
-  Widget pantalla(String titulo, List<Widget> Function(Map<String, dynamic> d) contenido) {
+  Widget pantalla(String titulo, List<Widget> Function(Map<String, dynamic> d) contenido, {VoidCallback? alFinal}) {
     final d = datos;
     return Scaffold(
       appBar: AppBar(title: Text(titulo)),
-      body: RefreshIndicator(
+      body: NotificationListener<ScrollNotification>(
+        // Cerca del final de la lista se pide la página siguiente (listas largas, como los proveedores).
+        onNotification: (n) {
+          if (alFinal != null && n.metrics.extentAfter < 300) alFinal();
+          return false;
+        },
+        child: RefreshIndicator(
         onRefresh: cargar,
         child: d == null
             ? ListView(children: [
@@ -524,6 +530,7 @@ abstract class _ProcesoState<T extends StatefulWidget> extends State<T> {
                 ),
               ])
             : ListView(padding: const EdgeInsets.all(16), children: contenido(d)),
+        ),
       ),
     );
   }
@@ -719,7 +726,98 @@ class _ComprasScreen extends StatefulWidget {
 }
 
 class _ComprasScreenState extends _ProcesoState<_ComprasScreen> {
-  int _pestana = 0; // 0 Recibidos, 1 En almacén
+  int _pestana = 0; // 0 Recibidos, 1 En almacén, 2 Proveedores
+
+  // Proveedores: de 20 en 20 desde el servidor, con búsqueda por nombre o apodo (como el buscador de personas).
+  static const _porPagina = 20;
+  final List<Map<String, dynamic>> _proveedores = [];
+  String _busqueda = '';
+  bool _cargandoProv = false;
+  bool _hayMasProv = true;
+  int? _totalProv;
+  String? _errorProv;
+  int _pedidoProv = 0; // descarta respuestas viejas si la búsqueda cambió
+  Timer? _espera;
+
+  @override
+  void dispose() {
+    _espera?.cancel();
+    super.dispose();
+  }
+
+  void _buscarProveedor(String texto) {
+    _espera?.cancel();
+    _espera = Timer(const Duration(milliseconds: 300), () {
+      setState(() {
+        _busqueda = texto.trim();
+        _proveedores.clear();
+        _hayMasProv = true;
+        _totalProv = null;
+        _errorProv = null;
+        _cargandoProv = false;
+        _pedidoProv++;
+      });
+      _masProveedores();
+    });
+  }
+
+  Future<void> _masProveedores() async {
+    if (_cargandoProv || !_hayMasProv) return;
+    final pedido = _pedidoProv;
+    setState(() => _cargandoProv = true);
+    final r = await AdministracionService.buscarPersonas(q: _busqueda, offset: _proveedores.length, limit: _porPagina);
+    if (!mounted || pedido != _pedidoProv) return;
+    setState(() {
+      _cargandoProv = false;
+      if (r.isSuccess) {
+        _proveedores.addAll(((r.data!['personas'] as List?) ?? []).map(_mapa));
+        _hayMasProv = r.data!['hayMas'] == true;
+        _totalProv = (r.data!['total'] as num?)?.toInt();
+      } else {
+        _errorProv = r.error;
+        _hayMasProv = false;
+      }
+    });
+  }
+
+  String _queEs(Map<String, dynamic> p) {
+    const vende = {'cherry': 'vende cereza', 'parchment': 'vende pergamino', 'both': 'vende cereza y pergamino'};
+    final partes = [
+      if (p['agricultor'] == true) 'Agricultor${p['vende'] != null ? ' · ${vende[p['vende']] ?? p['vende']}' : ''}',
+      if (p['comprador'] == true) 'Comprador',
+      if (p['agricultor'] != true && p['comprador'] != true) 'Proveedor',
+      if (p['recogidoPorNombre'] != null) 'lo recoge ${p['recogidoPorNombre']}',
+      if ((p['detalle'] ?? '').toString().isNotEmpty) '${p['detalle']}',
+    ];
+    return partes.join(' · ');
+  }
+
+  String _iniciales(String nombre) =>
+      nombre.trim().split(RegExp(r'\s+')).where((x) => x.isNotEmpty).take(2).map((x) => x[0].toUpperCase()).join();
+
+  List<Widget> _listaProveedores() => [
+        Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: TextField(
+            decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Buscar por nombre o apodo', border: OutlineInputBorder()),
+            textInputAction: TextInputAction.search,
+            onChanged: _buscarProveedor,
+          ),
+        ),
+        _encabezado('Proveedores', _totalProv == null ? '' : '$_totalProv en total'),
+        for (final p in _proveedores)
+          _Ficha(
+            inicio: _Insignia(_iniciales('${p['nombre'] ?? ''}'), tono: p['agricultor'] == true ? Colors.green : Colors.blue),
+            titulo: '${p['nombre'] ?? 'Sin nombre'}',
+            detalle: _queEs(p),
+          ),
+        if (_errorProv != null)
+          Padding(padding: const EdgeInsets.all(16), child: Text(_errorProv!, textAlign: TextAlign.center))
+        else if (_cargandoProv || _hayMasProv)
+          const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
+        else if (_proveedores.isEmpty)
+          _vacio(_busqueda.isEmpty ? 'Todavía no hay proveedores.' : 'Nadie con ese nombre.'),
+      ];
 
   @override
   String get clave => 'compras';
@@ -750,8 +848,17 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> {
             (Icons.account_balance_wallet, _titulos['retiro']!, () => formulario('retiro')),
           ]),
         ],
-        _Pestanas(nombres: const ['Recibidos', 'En almacén'], elegida: _pestana, onElegir: (i) => setState(() => _pestana = i)),
-        if (_pestana == 0) ...[
+        _Pestanas(
+          nombres: const ['Recibidos', 'En almacén', 'Proveedores'],
+          elegida: _pestana,
+          onElegir: (i) {
+            setState(() => _pestana = i);
+            if (i == 2 && _proveedores.isEmpty) _masProveedores();
+          },
+        ),
+        if (_pestana == 2)
+          ..._listaProveedores()
+        else if (_pestana == 0) ...[
           _encabezado('Últimos recibidos', '${recientes.length} ${recientes.length == 1 ? 'entrega' : 'entregas'}'),
           if (recientes.isEmpty) _vacio('Todavía no hay café recibido.'),
           for (final r in recientes)
@@ -775,7 +882,7 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> {
             ),
         ],
       ];
-    });
+    }, alFinal: _pestana == 2 ? _masProveedores : null);
   }
 }
 

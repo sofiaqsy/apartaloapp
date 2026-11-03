@@ -843,4 +843,29 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Café recibido'), findsWidgets);
   });
+
+  testWidgets('Compras lists the providers in pages of 20, searchable, without actions', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Proveedores'));
+      await tester.pumpAndSettle();
+      expect(find.text('31 en total'), findsOneWidget);
+      expect(pedidos.where((r) => r.url.path.endsWith('/personas/buscar')).length, 1); // only the first page
+      await tester.enterText(find.widgetWithText(TextField, 'Buscar por nombre o apodo'), 'chato');
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(find.text('Pedro Ramírez Ñique'), findsOneWidget); // found by nickname
+      expect(find.text('1 en total'), findsOneWidget);
+      expect(find.byIcon(Icons.chevron_right), findsNothing); // information, not buttons
+      await tester.enterText(find.widgetWithText(TextField, 'Buscar por nombre o apodo'), '');
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      final antes = pedidos.where((r) => r.url.path.endsWith('/personas/buscar')).length;
+      await tester.drag(find.text('31 en total'), const Offset(0, -3000));
+      await tester.pumpAndSettle();
+      expect(pedidos.where((r) => r.url.path.endsWith('/personas/buscar')).length, greaterThan(antes)); // next page
+    }, () => MockClient((req) async => responder(req)));
+  });
 }
