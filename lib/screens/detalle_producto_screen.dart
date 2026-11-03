@@ -2543,6 +2543,23 @@ class _RoastTimerDisplayState extends State<_RoastTimerDisplay> {
   }
 }
 
+/// Abre "Nuevo evento de tueste" para un producto. Lo usa también Administración → Producción → Tostar café.
+Future<void> abrirProgramarTueste(BuildContext context, Map<String, dynamic> producto, {VoidCallback? onCreado}) async {
+  final productId = producto['codigo']?.toString() ?? '';
+  if (productId.isEmpty) return;
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (_) => _CrearEventoSheet(
+      productId: productId,
+      defaultLoteId: producto['green_lot_id'] as String?,
+      onCreado: onCreado ?? () {},
+    ),
+  );
+}
+
 // ── Bottom sheet: crear evento de tueste ──────────────────────────────────────
 class _CrearEventoSheet extends StatefulWidget {
   final String productId;

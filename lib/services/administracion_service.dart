@@ -42,6 +42,9 @@ class AdministracionService {
 
   static Future<ApiResponse<Map<String, dynamic>>> resumen() => _get('resumen');
 
+  /// Tarjetas Compras y Producción: {compras: {...}, produccion: {...}} (el dinero sólo para dueños).
+  static Future<ApiResponse<Map<String, dynamic>>> procesos() => _get('procesos');
+
   /// Mis solicitudes: lo que la persona pidió y en qué quedó (Administración ve todas).
   static Future<ApiResponse<Map<String, dynamic>>> solicitudes() => _get('solicitudes');
 

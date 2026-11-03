@@ -3,7 +3,11 @@ import 'package:flutter/cupertino.dart' show CupertinoPageRoute;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/administracion_service.dart';
+import '../../services/api_service.dart';
+import '../detalle_producto_screen.dart' show abrirProgramarTueste;
 import 'reportes_tab.dart';
+
+part 'administracion_procesos.dart';
 
 /// Pestaña Administración (antes Reportes): Registrar, Pendientes y Resumen.
 /// Los formularios guardan en la base de operaciones (fincas) con el login de la persona.
@@ -297,6 +301,8 @@ class _FormularioSheetState extends State<_FormularioSheet> {
         _valores['centro'] = inicial.centro;
         _pedirSugerencia(); // la base dice el área (compra del día, el área de la persona)
       }
+      // Desde una tarjeta (Compras, Producción) el área ya se sabe: va siempre esa.
+      if (_areaFija != null) { _valores['area'] = _areaFija; _areaTocada = true; }
       AdministracionService.categorias().then((r) {
         if (!mounted || !r.isSuccess) return;
         final cats = (r.data!['categorias'] as List? ?? []).cast<Map>();
@@ -429,7 +435,7 @@ class _FormularioSheetState extends State<_FormularioSheet> {
   void _sugerirPorCategoria(String? categoria) {
     final g = _guia[categoria];
     setState(() {
-      _valores['area'] = g?.area ?? 'shared';
+      _valores['area'] = _areaFija ?? g?.area ?? 'shared';
       _valores['centro'] = g?.centro ?? 'coffee';
     });
   }
@@ -447,6 +453,9 @@ class _FormularioSheetState extends State<_FormularioSheet> {
   }
 
   bool get _areaAutomatica => widget.formulario == 'gasto' && _valores['categoria'] == 'Combustible' && !_areaTocada;
+
+  /// Área que manda la tarjeta desde donde se abrió el gasto (por ejemplo Producción).
+  String? get _areaFija => widget.fijos['area'] as String?;
 
   /// Las categorías principales primero; el resto con "Ver más categorías". La elegida siempre se ve.
   Widget _categorias(_Campo c) {
@@ -470,7 +479,7 @@ class _FormularioSheetState extends State<_FormularioSheet> {
                 selected: elegida == k,
                 onSelected: (_) {
                   FocusScope.of(context).unfocus();
-                  setState(() { _valores[c.clave] = k; _areaTocada = false; });
+                  setState(() { _valores[c.clave] = k; _areaTocada = _areaFija != null; });
                   _sugerirPorCategoria(k);
                   if (k == 'Combustible') _pedirSugerencia();
                 },
@@ -588,45 +597,7 @@ class _FormularioSheetState extends State<_FormularioSheet> {
 
 // ─── Registrar ───────────────────────────────────────────────────────────────
 
-class _Registrar extends StatelessWidget {
-  const _Registrar({required this.esDueno});
-  final bool esDueno;
-
-  @override
-  Widget build(BuildContext context) {
-    // Todos registran y piden; sólo Administración mueve dinero (Pagar compra, Retiro a caja).
-    final botones = <(String, IconData, String)>[
-      ('gasto', Icons.receipt_long, _titulos['gasto']!),
-      ('entrega', Icons.move_to_inbox, _titulos['entrega']!), // café que llega a nosotros
-      ('adelanto', Icons.handshake, _titulos['adelanto']!),
-      ('proveedor', Icons.person_add_alt_1, _titulos['proveedor']!),
-      if (esDueno) ('pago', Icons.payments, 'Pagar compras'),
-      if (esDueno) ('retiro', Icons.account_balance_wallet, _titulos['retiro']!),
-    ];
-    return GridView.count(
-      crossAxisCount: 2,
-      padding: const EdgeInsets.all(16),
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      childAspectRatio: 1.6,
-      children: [
-        for (final (form, icono, texto) in botones)
-          _BotonGrande(
-            icono: icono,
-            texto: texto,
-            onTap: () async {
-              if (form == 'pago') {
-                DefaultTabController.of(context).animateTo(1); // se paga desde "Por pagar"
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Elige la compra en "Compras por pagar"')));
-                return;
-              }
-              await _abrirFormulario(context, form);
-            },
-          ),
-      ],
-    );
-  }
-}
+// _Registrar (tarjetas Compras y Producción) está en administracion_procesos.dart.
 
 class _BotonGrande extends StatelessWidget {
   const _BotonGrande({required this.icono, required this.texto, required this.onTap, this.habilitado = true});

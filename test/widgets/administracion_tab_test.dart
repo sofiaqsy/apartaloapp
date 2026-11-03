@@ -83,6 +83,28 @@ void main() {
     if (p.endsWith('/sugerencia')) {
       return http.Response(jsonEncode({'sugeridas': [{'area': 'sourcing', 'name': 'Compras', 'records': 4}, {'area': 'farm', 'name': 'Finca', 'records': 2}]}), 200);
     }
+    if (p.endsWith('/procesos')) {
+      final dueno = true;
+      return http.Response(jsonEncode({
+        'compras': {
+          'mes': {'recibidos': 2, 'kg': 130}, 'ultimo': '2026-11-03', 'sin_precio': {'n': 1, 'kg': 100},
+          'por_pagar': dueno ? {'n': 1, 'total': 300} : null, 'adelantos': {'n': 1, 'saldo': 1500},
+          'almacen': [{'estado': 'parchment', 'lotes': 2, 'kg': 130}],
+          'recientes': [{'id': 'DL-0001', 'fecha': '2026-11-03', 'agricultor': 'Pedro Ramírez Ñique', 'estado': 'parchment', 'kg': 100, 'precio': null}],
+        },
+        'produccion': {
+          'lotes_verdes': [{'id': 'g1', 'codigo': 'L-1', 'kg_ahora': 760, 'kg_inicial': 1000, 'cosecha': 2026, 'variedad': 'Catimor'}],
+          'verde_kg': 760,
+          'tuestes': [
+            {'id': 'e1', 'estado': 'in_progress', 'fecha': '2026-11-03T15:00:00Z', 'kg_verde': 20, 'lote': 'L-1', 'producto': 'Omagua 250 g'},
+            {'id': 'e2', 'estado': 'planned', 'fecha': '2026-11-04T15:00:00Z', 'kg_verde': 30, 'lote': 'L-1', 'producto': 'Omagua 1 kg'},
+          ],
+          'mes': {'tuestes': 5, 'kg_verde': 820, 'kg_tostado': 683, 'merma_pct': 16.7},
+          'tostado_kg': 203.6, 'por_procesar': [],
+        },
+      }), 200);
+    }
+    if (p.contains('/tostador/events/')) return http.Response(jsonEncode({'ok': true}), 200);
     if (p.endsWith('/resumen')) return http.Response(jsonEncode({'rol': 'owner', 'meses': []}), 200);
     if (p.contains('/registrar/')) return http.Response(jsonEncode({'ok': true, 'result': {'expense_id': 'EX-0001'}}), 200);
     return http.Response(jsonEncode({'pedidos': [], 'total': 0}), 200);
@@ -113,10 +135,18 @@ void main() {
       expect(find.text(t), findsOneWidget);
     }
     expect(find.text('Solicitudes'), findsNothing);
-    for (final t in ['Registrar gasto', 'Registrar café recibido', 'Solicitar adelanto', 'Registrar proveedor']) {
+    // Registrar: one card per process, with its summary, and Registrar gasto below.
+    for (final t in ['Compras', 'Producción', 'Registrar gasto', 'Este mes: 2 recibidos · 130 kg', 'Café verde: 760 kg en 1 lote']) {
       expect(find.text(t), findsOneWidget);
     }
     expect(find.text('Pasar dinero a caja'), findsNothing);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    for (final t in ['Registrar café recibido', 'Solicitar adelanto', 'Registrar proveedor', 'Registrar gasto de compras']) {
+      expect(find.text(t), findsOneWidget);
+    }
     expect(find.text('Pagar compras'), findsNothing);
     expect(find.text('Ingreso de dinero'), findsNothing);
   });
@@ -124,12 +154,18 @@ void main() {
   testWidgets('the owner also sees Pagar compra and Retiro a caja', (tester) async {
     await abrir(tester, rol: 'owner');
     expect(find.text('Pasar dinero a caja'), findsOneWidget);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
     expect(find.text('Pagar compras'), findsOneWidget);
   });
 
   testWidgets('an advance is a request: no payment fields', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Solicitar adelanto'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
@@ -197,6 +233,8 @@ void main() {
   testWidgets('Proveedor asks what a farmer sells only for a farmer', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Registrar proveedor'));
       await tester.pumpAndSettle();
       expect(find.text('Vende'), findsNothing);
@@ -337,6 +375,8 @@ void main() {
   testWidgets('choosing a farmer: a search screen in pages, closed with the X, nothing chosen', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Registrar café recibido'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Agricultor'));
@@ -354,6 +394,8 @@ void main() {
   testWidgets('scrolling down loads the next page of people', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Registrar café recibido'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Agricultor'));
@@ -369,6 +411,8 @@ void main() {
     await abrir(tester, rol: 'staff');
     expect(find.text('Registrar entrega'), findsNothing);
     await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Registrar café recibido'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
@@ -378,6 +422,8 @@ void main() {
   testWidgets('Registrar café recibido does not ask who collected it', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Registrar café recibido'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
@@ -388,6 +434,8 @@ void main() {
   testWidgets('choosing a farmer by nickname fills the field', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Registrar café recibido'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Agricultor'));
@@ -610,5 +658,52 @@ void main() {
     final req = pedidos.single;
     expect(req.url.toString(), 'https://api.test/api/administracion/BIZ-002/registrar/gasto');
     expect(jsonDecode(req.body), {'monto': 80, 'clientRef': 'gasto-123-abcdefgh'});
+  });
+
+  testWidgets('Producción shows the green lots and the roasts, with Iniciar and Finalizar', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Producción'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    for (final t in ['Tostar café', 'Registrar gasto de producción', 'Omagua 250 g', 'Omagua 1 kg', 'L-1', '760 kg de 1,000 kg', '16.7%']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    expect(find.text('Finalizar'), findsOneWidget); // the roast in progress
+    expect(find.text('Iniciar'), findsOneWidget); // the planned one
+  });
+
+  testWidgets('Finalizar asks the roasted kilos and never more than the green coffee', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Producción'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Finalizar'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Kilos de café tostado'), '25');
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Finalizar tueste'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('No puede salir más que el café verde'), findsOneWidget);
+      await tester.enterText(find.widgetWithText(TextField, 'Kilos de café tostado'), '16,8');
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Finalizar tueste'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final req = pedidos.lastWhere((r) => r.url.path.contains('/complete-admin'));
+    expect(jsonDecode(req.body)['outKg'], 16.8);
+  });
+
+  testWidgets('a gasto from Producción always goes to the Producción area', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Producción'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Registrar gasto de producción'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Monto (S/)'), '45');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final req = pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/gasto'));
+    expect(jsonDecode(req.body)['area'], 'production');
   });
 }
