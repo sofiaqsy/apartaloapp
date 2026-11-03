@@ -102,6 +102,12 @@ void main() {
           'mes': {'tuestes': 5, 'kg_verde': 820, 'kg_tostado': 683, 'merma_pct': 16.7},
           'tostado_kg': 203.6, 'por_procesar': [],
         },
+        'finca': {
+          'gastos_mes': {'n': 2, 'total': dueno ? 180 : null}, 'gastos_anio': {'n': 5, 'total': 900},
+          'por_pagar': {'total': 120}, 'parcelas': {'n': 3, 'hectareas': 6.5}, 'actividades_mes': 4,
+          'cosecha': {'anio': 2026, 'kg': 0},
+          'recientes': [{'id': 'EX-0009', 'fecha': '2026-11-02', 'categoria': 'Mano de obra', 'descripcion': 'Jornal deshierbo', 'estado': 'Pendiente de pago', 'monto': 120}],
+        },
         'comercial': {'meses': [
           {'month': '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-01', 'orders': 3, 'total': 3000, 'unpaid': 3000},
         ]},
@@ -118,6 +124,12 @@ void main() {
     sugerencia = {'area': 'fulfillment', 'cost_centre': 'coffee', 'source': 'to_review'};
     dotenv.testLoad(fileInput: 'API_BASE_URL=https://api.test\nBUSINESS_ID=BIZ-002');
   });
+
+  // Registrar gasto sin área fija ya no tiene botón (cada proceso tiene el suyo); el formulario se abre directo.
+  Future<void> abrirGasto(WidgetTester tester) async {
+    abrirFormularioParaPruebas(tester.element(find.byType(AdministracionTab)), 'gasto');
+    await tester.pumpAndSettle();
+  }
 
   Future<void> abrir(WidgetTester tester, {required String rol}) async {
     // An iPhone-sized screen (390 x 844 points).
@@ -139,18 +151,20 @@ void main() {
     }
     expect(find.text('Solicitudes'), findsNothing);
     // Registrar: one card per process, with its summary, and Registrar gasto below.
-    for (final t in ['Compras', 'Producción', 'Registrar gasto', 'Café verde', '760 kg', 'Sin precio', 'En almacén', 'Último recibido']) {
+    for (final t in ['Finca', 'Compras', 'Producción', 'Café verde', '760 kg', 'Sin precio', 'En almacén', 'Último recibido', 'Parcelas']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
+    // Registrar gasto and the cash withdrawal live inside the processes (3 Nov 2026).
+    expect(find.text('Registrar gasto'), findsNothing);
     // Always 4 data per process; staff never see money.
     expect(find.text('Por pagar'), findsNothing);
     expect(find.text('Adelantos abiertos'), findsNothing);
-    expect(find.text('Pasar dinero a caja'), findsNothing);
+    expect(find.text('Registrar retiro de efectivo'), findsNothing);
     await http.runWithClient(() async {
       await tester.tap(find.text('Compras'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    for (final t in ['Registrar café recibido', 'Solicitar adelanto', 'Registrar proveedor', 'Recibidos', 'Pedro Ramírez Ñique']) {
+    for (final t in ['Registrar café recibido', 'Solicitar adelanto', 'Registrar proveedor', 'Registrar gasto', 'Recibidos', 'Pedro Ramírez Ñique']) {
       expect(find.text(t), findsOneWidget);
     }
     expect(find.text('Pagar compras'), findsNothing);
@@ -159,8 +173,7 @@ void main() {
 
   testWidgets('the owner also sees Pagar compra and Retiro a caja', (tester) async {
     await abrir(tester, rol: 'owner');
-    expect(find.text('Pasar dinero a caja'), findsOneWidget);
-    for (final t in ['Por pagar', 'S/ 300', 'Adelantos abiertos', 'S/ 1,500', 'Sin precio']) {
+    for (final t in ['S/ 300', 'Adelantos abiertos', 'S/ 1,500', 'Sin precio', 'Gastos este mes', 'S/ 180']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     await http.runWithClient(() async {
@@ -168,6 +181,7 @@ void main() {
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     expect(find.text('Pagar compras'), findsOneWidget);
+    expect(find.text('Registrar retiro de efectivo'), findsOneWidget);
   });
 
   testWidgets('an advance is a request: no payment fields', (tester) async {
@@ -257,7 +271,7 @@ void main() {
   testWidgets('the expense form asks for what is missing before sending anything', (tester) async {
     await abrir(tester, rol: 'owner');
     await http.runWithClient(() async {
-      await tester.tap(find.text('Registrar gasto'));
+      await abrirGasto(tester);
       await tester.pumpAndSettle();
       expect(find.text('Guardar'), findsOneWidget);
       await tester.tap(find.text('Guardar'));
@@ -269,7 +283,7 @@ void main() {
 
   testWidgets('the expense form is a request: category, amount, description; no payment fields', (tester) async {
     await abrir(tester, rol: 'staff');
-    await tester.tap(find.text('Registrar gasto'));
+    await abrirGasto(tester);
     await tester.pumpAndSettle();
     // 16 categories as chips: the description may sit below the first screen.
     await tester.drag(find.text('Monto (S/)'), const Offset(0, -300));
@@ -289,7 +303,7 @@ void main() {
   testWidgets('choosing a category fills the area from the database', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
-      await tester.tap(find.text('Registrar gasto'));
+      await abrirGasto(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Combustible'));
       await tester.pumpAndSettle();
@@ -300,7 +314,7 @@ void main() {
   testWidgets('Personal is under Ver más categorías even if the database marks it main', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
-      await tester.tap(find.text('Registrar gasto'));
+      await abrirGasto(tester);
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     expect(find.text('Personal'), findsNothing);
@@ -312,7 +326,7 @@ void main() {
   testWidgets('Registrar gasto opens with Combustible first and already chosen', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
-      await tester.tap(find.text('Registrar gasto'));
+      await abrirGasto(tester);
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     final chips = tester.widgetList<ChoiceChip>(find.byType(ChoiceChip)).toList();
@@ -324,7 +338,7 @@ void main() {
   testWidgets('main categories first, the rest behind "Ver más", and what goes in the chosen one', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
-      await tester.tap(find.text('Registrar gasto'));
+      await abrirGasto(tester);
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     expect(find.text('Transporte'), findsOneWidget);
@@ -343,7 +357,7 @@ void main() {
   testWidgets('fuel: no "Para qué" question; the area is left to the database', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
-      await tester.tap(find.text('Registrar gasto'));
+      await abrirGasto(tester);
       await tester.pumpAndSettle();
       expect(find.textContaining('Para qué fue'), findsNothing);
       expect(find.textContaining('(automático)'), findsOneWidget);
@@ -362,7 +376,7 @@ void main() {
     sugerencia = {'area': 'sourcing', 'cost_centre': 'coffee', 'source': 'same_day', 'delivery_id': 'DL-0009'};
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
-      await tester.tap(find.text('Registrar gasto'));
+      await abrirGasto(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Combustible'));
       await tester.pumpAndSettle();
@@ -465,7 +479,7 @@ void main() {
   testWidgets('Otro asks what it was before sending', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
-      await tester.tap(find.text('Registrar gasto'));
+      await abrirGasto(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Ver más categorías'));
       await tester.pumpAndSettle();
@@ -589,7 +603,7 @@ void main() {
 
   testWidgets('tapping outside a field hides the keyboard', (tester) async {
     await abrir(tester, rol: 'owner');
-    await tester.tap(find.text('Registrar gasto'));
+    await abrirGasto(tester);
     await tester.pumpAndSettle();
     await tester.tap(find.byType(EditableText).first); // the amount field
     await tester.pumpAndSettle();
@@ -602,7 +616,7 @@ void main() {
 
   testWidgets('the X closes the form without saving', (tester) async {
     await abrir(tester, rol: 'owner');
-    await tester.tap(find.text('Registrar gasto'));
+    await abrirGasto(tester);
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Cancelar'));
     await tester.pumpAndSettle();
@@ -723,12 +737,31 @@ void main() {
     expect(jsonDecode(req.body)['area'], 'production');
   });
 
-  testWidgets('the everyday buttons are on top and the first card is fully visible on an iPhone', (tester) async {
+  testWidgets('the cards follow the coffee and the first two are in sight on an iPhone', (tester) async {
     await abrir(tester, rol: 'owner');
+    final arriba = [for (final t in ['Finca', 'Compras', 'Producción']) tester.getTopLeft(find.text(t)).dy];
+    expect(arriba, orderedEquals([...arriba]..sort()));
     // On the phone the app bar and the bottom tabs take about 190 points of the 844.
-    expect(tester.getTopLeft(find.text('Registrar gasto')).dy, lessThan(tester.getTopLeft(find.text('Compras')).dy));
     final abajo = tester.getBottomLeft(find.text('Adelantos abiertos')).dy;
     expect(abajo, lessThan(844 - 190), reason: 'bottom of the Compras card at $abajo');
+  });
+
+  testWidgets('Finca: its 4 indicators, Registrar gasto de finca with the Finca area, and its last expenses', (tester) async {
+    await abrir(tester, rol: 'staff');
+    expect(find.text('3'), findsOneWidget); // parcelas, staff see no money
+    expect(find.text('S/ 180'), findsNothing);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Finca'));
+      await tester.pumpAndSettle();
+      expect(find.text('Jornal deshierbo · Pendiente de pago'), findsOneWidget);
+      await tester.tap(find.text('Registrar gasto de finca'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Monto (S/)'), '60');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final req = pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/gasto'));
+    expect(jsonDecode(req.body)['area'], 'farm');
   });
 
   testWidgets('Comercialización is the third card, with the sales report inside; Resumen no longer has it', (tester) async {

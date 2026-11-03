@@ -242,7 +242,7 @@ bool _esDevolucion(Map<String, dynamic> v) => v['tipo'] == 'advance_return';
 const _titulos = {
   'gasto': 'Registrar gasto', 'pagoGasto': 'Pagar gasto', 'adelanto': 'Solicitar adelanto', 'aprobarAdelanto': 'Aprobar adelanto',
   'rechazarAdelanto': 'Rechazar adelanto', 'proveedor': 'Registrar proveedor', 'entrega': 'Registrar café recibido',
-  'precio': 'Poner precio al café recibido', 'pago': 'Pagar compra', 'ingreso': 'Registrar ingreso', 'retiro': 'Pasar dinero a caja',
+  'precio': 'Poner precio al café recibido', 'pago': 'Pagar compra', 'ingreso': 'Registrar ingreso', 'retiro': 'Registrar retiro de efectivo',
 };
 
 // Lo que pasó y lo que sigue, después de guardar.
@@ -250,11 +250,16 @@ const _hecho = {
   'gasto': 'Gasto registrado ✓ Administración lo pagará', 'pagoGasto': 'Gasto pagado ✓',
   'adelanto': 'Adelanto solicitado ✓ Administración lo revisará', 'aprobarAdelanto': 'Adelanto aprobado y entregado ✓',
   'rechazarAdelanto': 'Adelanto rechazado', 'proveedor': 'Proveedor registrado ✓', 'entrega': 'Café recibido registrado ✓',
-  'precio': 'Precio puesto ✓ Lo que falta queda por pagar', 'pago': 'Compra pagada ✓', 'retiro': 'Dinero pasado a caja ✓',
+  'precio': 'Precio puesto ✓ Lo que falta queda por pagar', 'pago': 'Compra pagada ✓', 'retiro': 'Retiro de efectivo registrado ✓ Ya está en caja',
 };
 
 /// Abre un formulario a pantalla completa. Se cierra con la X o deslizando hacia la derecha (como
 /// cualquier pantalla de iPhone). [fijos] van siempre (por ejemplo entregaId o compraId desde Pendientes).
+/// Sólo para las pruebas: el gasto sin área fija (por categoría, combustible automático) ya no tiene botón
+/// propio desde el 3 nov 2026, pero el formulario lo sigue permitiendo.
+@visibleForTesting
+Future<bool> abrirFormularioParaPruebas(BuildContext context, String formulario) => _abrirFormulario(context, formulario);
+
 Future<bool> _abrirFormulario(BuildContext context, String formulario, {Map<String, dynamic> fijos = const {}, String? subtitulo}) async {
   final guardado = await Navigator.of(context).push<bool>(
     CupertinoPageRoute(builder: (_) => _FormularioSheet(formulario: formulario, fijos: fijos, subtitulo: subtitulo)),

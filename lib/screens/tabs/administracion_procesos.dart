@@ -41,6 +41,7 @@ class _Registrar extends StatefulWidget {
 }
 
 class _RegistrarState extends State<_Registrar> {
+  Map<String, dynamic>? _finca;
   Map<String, dynamic>? _compras;
   Map<String, dynamic>? _produccion;
   Map<String, dynamic>? _comercial;
@@ -58,6 +59,7 @@ class _RegistrarState extends State<_Registrar> {
     setState(() {
       _error = r.isSuccess ? null : r.error;
       if (r.isSuccess) {
+        _finca = _mapa(r.data!['finca']);
         _compras = _mapa(r.data!['compras']);
         _produccion = _mapa(r.data!['produccion']);
         _comercial = _mapa(r.data!['comercial']);
@@ -82,19 +84,15 @@ class _RegistrarState extends State<_Registrar> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Con tres tarjetas no cabe todo: los botones de todos los días van arriba, siempre a la vista.
-          _Acciones(compactas: true, acciones: [
-            (
-              Icons.receipt_long,
-              _titulos['gasto']!,
-              () async {
-                if (await _abrirFormulario(context, 'gasto')) _cargar();
-              }
-            ),
-            if (widget.esDueno) (Icons.account_balance_wallet, _titulos['retiro']!, () => _abrirFormulario(context, 'retiro')),
-          ]),
-          const SizedBox(height: 12),
-          // Una tarjeta por proceso, en el orden del café: se compra, se produce, se vende.
+          // Una tarjeta por proceso, en el orden del café: se cultiva, se compra, se produce, se vende.
+          // Registrar gasto y el retiro de efectivo están dentro de cada proceso (General Manager, 3 nov 2026).
+          _TarjetaProceso(
+            titulo: 'Finca',
+            indicadores: _finca == null ? null : _indicadoresFinca(_finca!, widget.esDueno),
+            error: _error,
+            onTap: () => _entrar(_FincaScreen(esDueno: widget.esDueno)),
+          ),
+          const SizedBox(height: 10),
           _TarjetaProceso(
             titulo: 'Compras',
             indicadores: _compras == null ? null : _indicadoresCompras(_compras!, widget.esDueno),
@@ -148,6 +146,39 @@ const _meses = [
   'noviembre',
   'diciembre'
 ];
+
+/// Finca: siempre 4. Dueños: gastos del mes, por pagar, gastos del año y cosecha del año.
+/// El equipo no ve dinero: cuántos gastos, parcelas, actividades del mes y cosecha.
+List<_Indicador> _indicadoresFinca(Map<String, dynamic> f, bool esDueno) {
+  final mes = _mapa(f['gastos_mes']);
+  final anio = _mapa(f['gastos_anio']);
+  final cosecha = _mapa(f['cosecha']);
+  final nMes = (mes['n'] as num?)?.toInt() ?? 0;
+  final gastos = (int n) => '$n ${n == 1 ? 'gasto' : 'gastos'}';
+  final cosechaInd = _Indicador(Icons.agriculture, _kg(cosecha['kg']), 'Cosecha', tono: Colors.green,
+      nota: 'cereza · ${cosecha['anio'] ?? DateTime.now().year}');
+  if (esDueno && mes['total'] != null) {
+    final porPagar = (_mapa(f['por_pagar'])['total'] as num?) ?? 0;
+    return [
+      _Indicador(Icons.receipt_long, _soles(mes['total']), 'Gastos este mes', tono: Colors.orange,
+          nota: '${_meses[DateTime.now().month - 1]} · ${gastos(nMes)}'),
+      _Indicador(Icons.account_balance_wallet, _soles(porPagar), 'Por pagar', tono: Colors.blue, atencion: porPagar > 0,
+          nota: porPagar > 0 ? 'gastos de finca' : 'todo pagado'),
+      _Indicador(Icons.calendar_month, _soles(anio['total']), 'Gastos en el año', tono: Colors.purple,
+          nota: '${DateTime.now().year} · ${gastos((anio['n'] as num?)?.toInt() ?? 0)}'),
+      cosechaInd,
+    ];
+  }
+  final parcelas = _mapa(f['parcelas']);
+  final nAct = (f['actividades_mes'] as num?)?.toInt() ?? 0;
+  return [
+    _Indicador(Icons.receipt_long, '$nMes', 'Gastos este mes', tono: Colors.orange, nota: 'registrados'),
+    _Indicador(Icons.landscape, '${parcelas['n'] ?? 0}', 'Parcelas', tono: Colors.brown,
+        nota: '${parcelas['hectareas'] ?? 0} ha'),
+    _Indicador(Icons.event_note, '$nAct', 'Labores del mes', tono: Colors.blue, nota: 'en las parcelas'),
+    cosechaInd,
+  ];
+}
 
 /// Compras: siempre 4. Dueños: lo recibido, lo que falta precio, lo que se debe y los adelantos.
 /// El equipo no ve dinero: en su lugar, el café en almacén y el último recibido.
@@ -580,6 +611,47 @@ class _Ficha extends StatelessWidget {
   }
 }
 
+// ─── Finca ───────────────────────────────────────────────────────────────────
+
+class _FincaScreen extends StatefulWidget {
+  const _FincaScreen({required this.esDueno});
+  final bool esDueno;
+
+  @override
+  State<_FincaScreen> createState() => _FincaScreenState();
+}
+
+class _FincaScreenState extends _ProcesoState<_FincaScreen> {
+  @override
+  String get clave => 'finca';
+
+  @override
+  Widget build(BuildContext context) {
+    return pantalla('Finca', (d) {
+      final recientes = _lista(d['recientes']);
+      return [
+        _CuatroDatos(indicadores: _indicadoresFinca(d, widget.esDueno), grande: true), // los mismos 4 de la tarjeta
+        const SizedBox(height: 16),
+        _Acciones(acciones: [
+          (Icons.receipt_long, 'Registrar gasto de finca', () => formulario('gasto', fijos: const {'area': 'farm'}, subtitulo: 'Área: Finca')),
+        ]),
+        _encabezado('Últimos gastos de la finca', '${recientes.length}'),
+        if (recientes.isEmpty) _vacio('Todavía no hay gastos de la finca.'),
+        for (final g in recientes)
+          _Ficha(
+            inicio: _Insignia(_fechaCorta(g['fecha']), tono: Colors.green),
+            titulo: '${g['categoria'] ?? 'Gasto'}',
+            detalle: [if ((g['descripcion'] ?? '').toString().isNotEmpty) '${g['descripcion']}', '${g['estado'] ?? ''}']
+                .where((t) => t.isNotEmpty)
+                .join(' · '),
+            // La base ya dice el estado en español ("Pendiente de pago", "Pagado").
+            fin: g['monto'] != null ? _Pildora(_soles(g['monto']), '${g['estado']}'.startsWith('Pagado') ? Colors.green : Colors.orange) : null,
+          ),
+      ];
+    });
+  }
+}
+
 // ─── Compras ─────────────────────────────────────────────────────────────────
 
 class _ComprasScreen extends StatefulWidget {
@@ -611,10 +683,17 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> {
         ]),
         const SizedBox(height: 10),
         _Acciones(compactas: true, acciones: [
-          if (widget.esDueno) (Icons.payments, 'Pagar compras', () => Navigator.of(context).pop('pendientes')),
           (Icons.person_add_alt_1, _titulos['proveedor']!, () => formulario('proveedor')),
           (Icons.receipt_long, _titulos['gasto']!, () => formulario('gasto', fijos: const {'area': 'sourcing'}, subtitulo: 'Área: Compras')),
         ]),
+        // Sólo dueños mueven dinero.
+        if (widget.esDueno) ...[
+          const SizedBox(height: 10),
+          _Acciones(compactas: true, acciones: [
+            (Icons.payments, 'Pagar compras', () => Navigator.of(context).pop('pendientes')),
+            (Icons.account_balance_wallet, _titulos['retiro']!, () => formulario('retiro')),
+          ]),
+        ],
         _Pestanas(nombres: const ['Recibidos', 'En almacén'], elegida: _pestana, onElegir: (i) => setState(() => _pestana = i)),
         if (_pestana == 0) ...[
           _encabezado('Últimos recibidos', '${recientes.length} ${recientes.length == 1 ? 'entrega' : 'entregas'}'),
@@ -680,7 +759,17 @@ class _ComercialScreenState extends State<_ComercialScreen> {
       appBar: AppBar(title: const Text('Comercialización')),
       body: ReportesTab(
         encabezado: d != null
-            ? _CuatroDatos(indicadores: _indicadoresComercial(d), grande: true)
+            ? Column(children: [
+                _CuatroDatos(indicadores: _indicadoresComercial(d), grande: true),
+                const SizedBox(height: 16),
+                _Acciones(compactas: true, acciones: [
+                  (
+                    Icons.receipt_long,
+                    'Registrar gasto de comercialización',
+                    () => _abrirFormulario(context, 'gasto', fijos: const {'area': 'commercial'}, subtitulo: 'Área: Comercial'),
+                  ),
+                ]),
+              ])
             : Padding(
                 padding: const EdgeInsets.all(16),
                 child: _error != null ? Text(_error!) : const Center(child: CircularProgressIndicator()),
