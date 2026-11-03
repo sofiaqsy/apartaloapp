@@ -1,6 +1,6 @@
 part of 'administracion_tab.dart';
 
-// ─── Registrar: tarjetas por proceso ─────────────────────────────────────────
+// ─── Procesos (antes Registrar): tarjetas por proceso ───────────────────────
 // General Manager, 3 nov 2026: Registrar se ordena por proceso. Cada tarjeta muestra un resumen
 // (lotes y café de hoy) y al entrar tiene sus acciones: Compras (café recibido, adelantos, pagar
 // compras) y Producción (tostar café). Los datos vienen de la base: purchasing_summary y
@@ -271,7 +271,7 @@ List<_Indicador> _indicadoresCompras(Map<String, dynamic> c, bool esDueno) {
   ];
 }
 
-/// Producción: siempre 4. Café verde, café tostado, tuestes del mes y merma.
+/// Producción: siempre 4. Café tostado, café verde, tuestes del mes y merma.
 List<_Indicador> _indicadoresProduccion(Map<String, dynamic> p) {
   final lotes = _lista(p['lotes_verdes']);
   final tuestes = _lista(p['tuestes']);
@@ -279,9 +279,10 @@ List<_Indicador> _indicadoresProduccion(Map<String, dynamic> p) {
   final enCurso = tuestes.where((t) => t['estado'] == 'in_progress').length;
   final programados = tuestes.length - enCurso;
   return [
+    // Primero el tostado, luego el verde (General Manager, 3 nov 2026).
+    _Indicador(Icons.coffee, _kg(p['tostado_kg']), 'Café tostado', tono: Colors.orange, nota: 'disponible'),
     _Indicador(Icons.eco, _kg(p['verde_kg']), 'Café verde',
         tono: Colors.green, nota: '${lotes.length} ${lotes.length == 1 ? 'lote' : 'lotes'}'),
-    _Indicador(Icons.coffee, _kg(p['tostado_kg']), 'Café tostado', tono: Colors.orange, nota: 'disponible'),
     _Indicador(Icons.local_fire_department, '${mes['tuestes'] ?? 0}', 'Tuestes este mes',
         tono: Colors.blue,
         nota: enCurso > 0 ? '$enCurso tostando ahora' : (programados > 0 ? '$programados programados' : 'ninguno programado'),

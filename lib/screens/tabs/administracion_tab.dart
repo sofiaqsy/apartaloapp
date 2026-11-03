@@ -52,7 +52,7 @@ class _AdministracionTabState extends State<AdministracionTab> {
             labelPadding: const EdgeInsets.symmetric(horizontal: 2),
             labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             unselectedLabelStyle: const TextStyle(fontSize: 13),
-            tabs: const [Tab(text: 'Registrar'), Tab(text: 'Pendientes'), Tab(text: 'Resumen')],
+            tabs: const [Tab(text: 'Procesos'), Tab(text: 'Pendientes'), Tab(text: 'Resumen')], // Procesos: antes Registrar (3 nov 2026)
           ),
           Expanded(
             child: TabBarView(
@@ -1088,10 +1088,10 @@ class _ResumenState extends State<_Resumen> {
 
   @override
   Widget build(BuildContext context) {
-    // El reporte de ventas se mudó a Registrar → Comercialización (General Manager, 3 nov 2026).
+    // El reporte de ventas se mudó a Procesos → Comercialización (General Manager, 3 nov 2026).
     if (!widget.esDueno) {
       return const Center(
-        child: Padding(padding: EdgeInsets.all(24), child: Text('El reporte de ventas está en Registrar → Comercialización.', textAlign: TextAlign.center)),
+        child: Padding(padding: EdgeInsets.all(24), child: Text('El reporte de ventas está en Procesos → Comercialización.', textAlign: TextAlign.center)),
       );
     }
     return RefreshIndicator(

@@ -160,7 +160,7 @@ void main() {
   testWidgets('three parts (Solicitudes is inside Pendientes); staff ask, only the owner sees money buttons', (tester) async {
     await abrir(tester, rol: 'staff');
     expect(find.text('Administración'), findsOneWidget);
-    for (final t in ['Registrar', 'Pendientes', 'Resumen']) {
+    for (final t in ['Procesos', 'Pendientes', 'Resumen']) {
       expect(find.text(t), findsOneWidget);
     }
     expect(find.text('Solicitudes'), findsNothing);
@@ -641,7 +641,7 @@ void main() {
     await tester.tap(find.byTooltip('Cancelar'));
     await tester.pumpAndSettle();
     expect(find.text('Guardar'), findsNothing);
-    expect(find.text('Registrar'), findsOneWidget);
+    expect(find.text('Procesos'), findsOneWidget);
     expect(pedidos.where((r) => r.url.path.contains('/registrar/')), isEmpty);
   });
 
@@ -803,7 +803,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Resumen'));
     await tester.pumpAndSettle();
-    expect(find.text('El reporte de ventas está en Registrar → Comercialización.'), findsOneWidget);
+    expect(find.text('El reporte de ventas está en Procesos → Comercialización.'), findsOneWidget);
   });
 
   testWidgets('Registrar shows only the cards of the areas ticked in Perfil', (tester) async {

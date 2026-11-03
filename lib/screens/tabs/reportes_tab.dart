@@ -3,7 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/api_service.dart';
 import 'pedidos/helpers/estado_pago_helper.dart';
 
-/// Reporte de ventas (pedidos de la tienda). Vive en Administración → Registrar → Comercialización, que pone
+/// Reporte de ventas (pedidos de la tienda). Vive en Administración → Procesos → Comercialización, que pone
 /// arriba sus 4 datos en [encabezado]; con encabezado no se repiten las tarjetas de semana, mes y mes anterior.
 class ReportesTab extends StatefulWidget {
   const ReportesTab({super.key, this.encabezado});
