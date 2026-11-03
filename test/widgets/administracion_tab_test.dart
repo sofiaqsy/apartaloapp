@@ -114,6 +114,13 @@ void main() {
       final pagina = todas.skip(offset).take(20).toList();
       return http.Response(jsonEncode({'compras': pagina, 'total': todas.length, 'hayMas': offset + 20 < todas.length}), 200);
     }
+    if (p.endsWith('/compras/DL-0002')) {
+      return http.Response(jsonEncode({'compra': {
+        'id': 'DL-0002', 'fecha': '2026-11-02', 'agricultor': 'Agricultor Parte', 'estado': 'parchment', 'kg': 50,
+        'situacion': 'Pagado en parte', 'compra_id': 'PU-0002', 'debe': 500, 'solicitado': null,
+        'adelantos': [{'id': 'ADV-007', 'saldo': 200, 'fecha': '2026-11-01'}], 'compra': null, 'pagos': [],
+      }}), 200);
+    }
     if (p.contains('/compras/')) {
       return http.Response(jsonEncode({'compra': {
         'id': 'DL-0001', 'fecha': '2026-11-03', 'agricultor': 'Pedro Ramírez Ñique', 'estado': 'parchment', 'kg': 100,
@@ -149,7 +156,12 @@ void main() {
         'finanzas': dueno
             ? {
                 'compras': {'n': 1, 'total': 300}, 'gastos': {'n': 1, 'total': 120}, 'adelantos': {'n': 1, 'total': 1500},
-                'compras_por_pagar': [{'id': 'PU-0001', 'entrega': 'DL-0001', 'fecha': '2026-11-04', 'agricultor': 'Pedro Ramírez Ñique', 'kg': 100, 'total': 1800, 'pagado': 1500, 'debe': 300}],
+                'compras_por_pagar': [
+                  {'id': 'PU-0001', 'entrega': 'DL-0001', 'fecha': '2026-11-04', 'agricultor': 'Pedro Ramírez Ñique', 'kg': 100, 'total': 1800, 'pagado': 1500, 'debe': 300,
+                   'monto': 300, 'metodo': 'transfer', 'solicitud': 8},
+                  {'id': 'PU-0002', 'entrega': 'DL-0002', 'fecha': '2026-11-02', 'agricultor': 'Agricultor Parte', 'kg': 50, 'total': 1000, 'pagado': 500, 'debe': 500,
+                   'monto': 200, 'metodo': 'advance', 'adelanto': 'ADV-007', 'solicitud': 9},
+                ],
                 'gastos_por_pagar': [{'id': 'EX-0001', 'fecha': '2026-11-01', 'categoria': 'Gas', 'descripcion': 'Gasolina', 'area': 'fulfillment', 'monto': 120, 'por': 'staff@x'}],
                 'adelantos_por_aprobar': [{'id': 'SOL-0001', 'fecha': '2026-11-02', 'para': 'Misael Cusi', 'monto': 1500, 'motivo': 'Compras', 'por': 'misael@x'}],
               }
@@ -1060,5 +1072,48 @@ void main() {
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     expect(find.text('Pagar compra'), findsNothing);
+  });
+
+  testWidgets('Solicitar pago asks the amount and how; with an advance it sends which one', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Agricultor Parte'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Solicitar pago'));
+      await tester.pumpAndSettle();
+      expect(find.text('Monto a pagar (S/) (opcional)'), findsOneWidget);
+      expect(find.text('500'), findsOneWidget); // filled with what is owed
+      await tester.tap(find.text('Con un adelanto'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ADV-007 · queda S/ 200'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextFormField, 'Monto a pagar (S/) (opcional)'), '200');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final r = pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/solicitarPago'));
+    final body = jsonDecode(r.body) as Map;
+    expect(body['compraId'], 'PU-0002');
+    expect(body['monto'], 200);
+    expect(body['metodo'], 'advance');
+    expect(body['adelantoId'], 'ADV-007');
+  });
+
+  testWidgets('Finanzas confirms a payment with an advance with one tap', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await entrarFinanzas(tester);
+    await http.runWithClient(() async {
+      expect(find.textContaining('con el adelanto ADV-007'), findsOneWidget);
+      await tester.tap(find.text('Agricultor Parte'));
+      await tester.pumpAndSettle();
+      expect(find.text('¿Pagar con el adelanto?'), findsOneWidget);
+      await tester.tap(find.text('Confirmar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final r = pedidos.lastWhere((r) => r.url.path.contains('/registrar/'));
+    expect(r.url.path, endsWith('/registrar/pagoConAdelanto'));
+    expect(jsonDecode(r.body)['solicitudId'], 9);
   });
 }

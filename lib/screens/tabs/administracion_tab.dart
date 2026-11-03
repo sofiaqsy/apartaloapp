@@ -232,6 +232,14 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('descripcion', 'Descripción', _Tipo.texto, requerido: false),
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
+  // Solicitar pago (General Manager, 3 nov 2026): a demanda, con el monto y cómo: transferencia (Finanzas paga)
+  // o con un adelanto abierto del mismo agricultor (Finanzas lo confirma). Las opciones de adelanto llegan del detalle.
+  'solicitarPago': [
+    const _Campo('monto', 'Monto a pagar (S/)', _Tipo.monto, requerido: false, ayuda: 'Vacío = todo lo que se debe'),
+    const _Campo('metodo', 'Cómo se paga', _Tipo.opcion, opciones: {'transfer': 'Transferencia', 'advance': 'Con un adelanto'}, porDefecto: 'transfer'),
+    _Campo('adelantoId', 'Adelanto', _Tipo.opcion, visibleSi: (v) => v['metodo'] == 'advance'),
+    const _Campo('nota', 'Nota para Finanzas', _Tipo.texto, requerido: false),
+  ],
   'retiro': [
     const _Campo('monto', 'Monto (S/)', _Tipo.monto),
     const _Campo('notas', 'Para qué', _Tipo.texto, requerido: false),
@@ -246,6 +254,7 @@ const _titulos = {
   'gasto': 'Registrar gasto', 'pagoGasto': 'Pagar gasto', 'adelanto': 'Solicitar adelanto', 'aprobarAdelanto': 'Aprobar adelanto',
   'rechazarAdelanto': 'Rechazar adelanto', 'proveedor': 'Registrar proveedor', 'entrega': 'Registrar compra',
   'precio': 'Poner precio a la compra', 'pago': 'Pagar compra', 'ingreso': 'Registrar ingreso', 'retiro': 'Registrar retiro de efectivo',
+  'solicitarPago': 'Solicitar pago',
 };
 
 // Lo que pasó y lo que sigue, después de guardar.
@@ -254,6 +263,7 @@ const _hecho = {
   'adelanto': 'Adelanto solicitado ✓ Administración lo revisará', 'aprobarAdelanto': 'Adelanto aprobado y entregado ✓',
   'rechazarAdelanto': 'Adelanto rechazado', 'proveedor': 'Proveedor registrado ✓', 'entrega': 'Compra registrada ✓',
   'precio': 'Precio puesto ✓ Lo que falta queda por pagar', 'pago': 'Compra pagada ✓', 'retiro': 'Retiro de efectivo registrado ✓ Ya está en caja',
+  'solicitarPago': 'Pago solicitado ✓ Finanzas lo pagará',
 };
 
 /// Abre un formulario a pantalla completa. Se cierra con la X o deslizando hacia la derecha (como
@@ -263,18 +273,24 @@ const _hecho = {
 @visibleForTesting
 Future<bool> abrirFormularioParaPruebas(BuildContext context, String formulario) => _abrirFormulario(context, formulario);
 
-Future<bool> _abrirFormulario(BuildContext context, String formulario, {Map<String, dynamic> fijos = const {}, String? subtitulo}) async {
+/// [iniciales] llenan campos al abrir (por ejemplo el monto que se pidió); [opciones] dan las opciones de un campo
+/// que vienen de la base (por ejemplo los adelantos abiertos del agricultor).
+Future<bool> _abrirFormulario(BuildContext context, String formulario,
+    {Map<String, dynamic> fijos = const {}, String? subtitulo, Map<String, dynamic> iniciales = const {}, Map<String, Map<String, String>> opciones = const {}}) async {
   final guardado = await Navigator.of(context).push<bool>(
-    CupertinoPageRoute(builder: (_) => _FormularioSheet(formulario: formulario, fijos: fijos, subtitulo: subtitulo)),
+    CupertinoPageRoute(
+        builder: (_) => _FormularioSheet(formulario: formulario, fijos: fijos, subtitulo: subtitulo, iniciales: iniciales, opciones: opciones)),
   );
   return guardado == true;
 }
 
 class _FormularioSheet extends StatefulWidget {
-  const _FormularioSheet({required this.formulario, required this.fijos, this.subtitulo});
+  const _FormularioSheet({required this.formulario, required this.fijos, this.subtitulo, this.iniciales = const {}, this.opciones = const {}});
   final String formulario;
   final Map<String, dynamic> fijos;
   final String? subtitulo;
+  final Map<String, dynamic> iniciales;
+  final Map<String, Map<String, String>> opciones;
 
   @override
   State<_FormularioSheet> createState() => _FormularioSheetState();
@@ -301,6 +317,8 @@ class _FormularioSheetState extends State<_FormularioSheet> {
       if (c.porDefecto != null) _valores[c.clave] = c.porDefecto;
       if (c.tipo == _Tipo.fecha) _valores[c.clave] = DateTime.now();
     }
+    _valores.addAll(widget.iniciales);
+    _opciones.addAll(widget.opciones);
     if (widget.formulario == 'entrega') _cargarProductos();
     if (widget.formulario == 'gasto') {
       final inicial = _guia[_categoriaInicial];
@@ -602,8 +620,10 @@ class _FormularioSheetState extends State<_FormularioSheet> {
       case _Tipo.monto:
       case _Tipo.numero:
         final primero = _visibles.isNotEmpty && identical(_visibles.first, c);
+        final inicial = _valores[c.clave];
         return TextFormField(
           decoration: deco,
+          initialValue: inicial is num ? (inicial == inicial.roundToDouble() ? inicial.toStringAsFixed(0) : inicial.toStringAsFixed(2)) : null,
           autofocus: primero && c.tipo == _Tipo.monto, // el monto primero, con el teclado de números abierto
           style: primero ? const TextStyle(fontSize: 22, fontWeight: FontWeight.w600) : null,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -758,7 +778,7 @@ class _PendientesState extends State<_Pendientes> {
       // Si ya se pagó algo (de un adelanto o un pago), es "Pagado en parte".
       final pagadoAlgo = (num.tryParse('${p['paid'] ?? 0}') ?? 0) + (num.tryParse('${p['from_advances'] ?? 0}') ?? 0) > 0;
       // Se paga en Procesos → Finanzas (General Manager, 3 nov 2026); aquí sólo se ve que espera el pago.
-      fila(id, () => _Fila(id: id, tipo: 'Compra', icono: Icons.shopping_bag, fecha: '${p['purchase_date']}', estado: pagadoAlgo ? 'Pagado en parte' : 'Por pagar', areas: _areasCafe,
+      fila(id, () => _Fila(id: id, tipo: 'Compra', icono: Icons.shopping_bag, fecha: '${p['purchase_date']}', estado: pagadoAlgo ? 'Pagado en parte' : (p['pago_solicitado'] == true ? 'Pago solicitado' : 'Por pagar'), areas: _areasCafe,
           monto: num.tryParse('${p['still_owed']}'), lineas: ['${p['id']} · ${p['farmer_id']}', 'Falta ${_soles(p['still_owed'])}']));
     }
     if (dueno) {

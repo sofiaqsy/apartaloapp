@@ -10,6 +10,7 @@ part of 'administracion_tab.dart';
 const _coloresCompra = {
   'Sin precio': Colors.orange,
   'Por pagar': Colors.blue,
+  'Pago solicitado': Colors.indigo, // Compras tocó "Solicitar pago": espera a Finanzas
   'Pagado en parte': Colors.teal,
   'Pagado': Colors.green,
   'Rechazado': Colors.red,
@@ -403,7 +404,9 @@ List<_Indicador> _indicadoresFinanzas(Map<String, dynamic> f) {
     _Indicador(Icons.handshake, _soles(v(adelantos)), 'Adelantos por aprobar',
         tono: Colors.purple, atencion: n(adelantos) > 0, nota: cuantos(n(adelantos), 'solicitud', 'solicitudes')),
     _Indicador(Icons.shopping_bag, _soles(v(compras)), 'Compras por pagar',
-        tono: Colors.green, nota: cuantos(n(compras), 'compra', 'compras')),
+        tono: Colors.green,
+        nota: '${cuantos(n(compras), 'solicitada', 'solicitadas')}'
+            '${((f['sin_solicitar'] as num?) ?? 0) > 0 ? ' · ${f['sin_solicitar']} sin solicitar' : ''}'),
     _Indicador(Icons.receipt_long, _soles(v(gastos)), 'Gastos por pagar', tono: Colors.orange, nota: cuantos(n(gastos), 'gasto', 'gastos')),
   ];
 }
@@ -607,8 +610,9 @@ abstract class _ProcesoState<T extends StatefulWidget> extends State<T> {
   }
 
   /// Abre un formulario; al guardar, el resumen se vuelve a cargar.
-  Future<void> formulario(String form, {Map<String, dynamic> fijos = const {}, String? subtitulo}) async {
-    if (await _abrirFormulario(context, form, fijos: fijos, subtitulo: subtitulo)) cargar();
+  Future<void> formulario(String form,
+      {Map<String, dynamic> fijos = const {}, String? subtitulo, Map<String, dynamic> iniciales = const {}}) async {
+    if (await _abrirFormulario(context, form, fijos: fijos, subtitulo: subtitulo, iniciales: iniciales)) cargar();
   }
 
   Widget pantalla(String titulo, List<Widget> Function(Map<String, dynamic> d) contenido, {VoidCallback? alFinal}) {
@@ -1011,6 +1015,31 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
     if (elegido != null && mounted) await formulario(elegido, fijos: {'solicitudId': a['id']}, subtitulo: sub);
   }
 
+  /// Pagar con adelanto no mueve dinero: Finanzas confirma y la base descuenta el adelanto (revisando el saldo otra vez).
+  Future<void> _confirmarConAdelanto(Map<String, dynamic> c) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Pagar con el adelanto?'),
+        content: Text('${c['agricultor'] ?? ''}: ${_soles(c['monto'])} del adelanto ${c['adelanto']}. No sale dinero del banco.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Confirmar')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final r = await AdministracionService.registrar('pagoConAdelanto', {'solicitudId': c['solicitud']},
+        clave: AdministracionService.nuevaClave('pagoConAdelanto'));
+    if (!mounted) return;
+    final res = r.data ?? const {};
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(r.isSuccess
+            ? 'Pagado con el adelanto ✓ ${_soles(res['amount'])} · al adelanto le queda ${_soles(res['advance_left'])}'
+            : (r.error ?? 'No se guardó'))));
+    if (r.isSuccess) cargar();
+  }
+
   Widget _masAntiguos(int total, int vistos) =>
       total > vistos ? _vacio('Se ven los $vistos más antiguos; paga estos primero y aparecerán los demás.') : const SizedBox.shrink();
 
@@ -1040,15 +1069,26 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
         ),
         const SizedBox(height: 12),
         if (_pestana == 0) ...[
-          if (compras.isEmpty) _vacio('No hay compras por pagar.'),
+          // Sólo las compras con "Solicitar pago"; las demás esperan en Compras.
+          if (compras.isEmpty) _vacio('Ninguna compra pidió pago todavía.'),
           for (final c in compras)
             _Ficha(
               inicio: _Insignia(_fechaCorta(c['fecha']), tono: Colors.green),
               titulo: '${c['agricultor'] ?? 'Sin nombre'}',
-              detalle: '${c['id']} · ${_kg(c['kg'])}${((c['pagado'] as num?) ?? 0) > 0 ? ' · pagado ${_soles(c['pagado'])}' : ''}',
-              fin: _Pildora(_soles(c['debe']), Colors.blue),
-              onTap: () =>
-                  formulario('pago', fijos: {'compraId': c['id']}, subtitulo: '${c['agricultor'] ?? c['id']} · debe ${_soles(c['debe'])}'),
+              detalle: [
+                '${c['id']} · ${_kg(c['kg'])}',
+                c['metodo'] == 'advance' ? 'con el adelanto ${c['adelanto']}' : 'por transferencia',
+                if (((c['pagado'] as num?) ?? 0) > 0) 'pagado ${_soles(c['pagado'])}',
+                if ((c['nota'] ?? '').toString().isNotEmpty) '${c['nota']}',
+              ].join(' · '),
+              // Lo que pidió Compras (puede ser una parte de lo que se debe).
+              fin: _Pildora(_soles(c['monto'] ?? c['debe']), c['metodo'] == 'advance' ? Colors.purple : Colors.blue),
+              onTap: () => c['metodo'] == 'advance'
+                  ? _confirmarConAdelanto(c)
+                  : formulario('pago',
+                      fijos: {'compraId': c['id']},
+                      subtitulo: '${c['agricultor'] ?? c['id']} · pidieron ${_soles(c['monto'] ?? c['debe'])}',
+                      iniciales: {if (c['monto'] != null) 'monto': c['monto']}),
             ),
           _masAntiguos(n('compras'), compras.length),
         ] else if (_pestana == 1) ...[
@@ -1211,8 +1251,9 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
   }
 
   @override
-  Future<void> formulario(String form, {Map<String, dynamic> fijos = const {}, String? subtitulo}) async {
-    if (await _abrirFormulario(context, form, fijos: fijos, subtitulo: subtitulo)) {
+  Future<void> formulario(String form,
+      {Map<String, dynamic> fijos = const {}, String? subtitulo, Map<String, dynamic> iniciales = const {}}) async {
+    if (await _abrirFormulario(context, form, fijos: fijos, subtitulo: subtitulo, iniciales: iniciales)) {
       cargar();
       if (form == 'entrega') _recargarCompras();
     }
@@ -1338,6 +1379,32 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
     }
   }
 
+  /// Solicitar pago: el monto (por defecto todo lo que se debe) y cómo se paga. "Con un adelanto" sólo aparece si
+  /// el agricultor tiene un adelanto abierto; Finanzas lo confirma.
+  Future<void> _solicitarPago(Map<String, dynamic> c) async {
+    final adelantos = _lista(c['adelantos']);
+    final debe = (c['debe'] as num?) ?? num.tryParse('${c['debe'] ?? ''}');
+    await _abrirFormularioYRecargar('solicitarPago',
+        fijos: {'compraId': c['compra_id']},
+        subtitulo: '${c['agricultor'] ?? ''}${debe != null ? ' · falta ${_soles(debe)}' : ''}',
+        iniciales: {if (debe != null) 'monto': debe},
+        opciones: {
+          if (adelantos.isEmpty) 'metodo': const {'transfer': 'Transferencia'},
+          'adelantoId': {for (final a in adelantos) '${a['id']}': '${a['id']} · queda ${_soles(a['saldo'])}'},
+        });
+  }
+
+  Future<void> _abrirFormularioYRecargar(String form,
+      {required Map<String, dynamic> fijos,
+      required String subtitulo,
+      Map<String, dynamic> iniciales = const {},
+      Map<String, Map<String, String>> opciones = const {}}) async {
+    if (await _abrirFormulario(context, form, fijos: fijos, subtitulo: subtitulo, iniciales: iniciales, opciones: opciones)) {
+      widget.onCambio();
+      _cargar();
+    }
+  }
+
   Widget _dato(String nombre, String? valor) => valor == null || valor.isEmpty || valor == 'null'
       ? const SizedBox.shrink()
       : Container(
@@ -1432,18 +1499,23 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
                       () => _formulario('precio', {'entregaId': c['id']}, '${c['id']} · ${_kg(c['kg'])}')
                     ),
                   ])
-                else if (situacion == 'Por pagar' || situacion == 'Pagado en parte')
-                  // Compras no paga: con precio, el pago queda solicitado y lo hace Finanzas (General Manager, 3 nov 2026).
+                else if (c['solicitado'] != null && (situacion == 'Pago solicitado' || situacion == 'Pagado en parte'))
+                  // Ya se pidió: Finanzas lo paga (General Manager, 3 nov 2026). Sólo información, no un botón.
                   Row(children: [
-                    Icon(Icons.schedule_send, color: Colors.blue.shade700),
+                    Icon(Icons.schedule_send, color: Colors.indigo.shade700),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Pago solicitado a Finanzas${compra?['debe'] != null ? ' · falta ${_soles(compra!['debe'])}' : ''}',
-                        style: TextStyle(color: Colors.blue.shade800, fontWeight: FontWeight.w600),
+                        'Pago solicitado a Finanzas el ${_fechaCorta(_mapa(c['solicitado'])['fecha'])}: '
+                        '${_soles(_mapa(c['solicitado'])['monto'])} '
+                        '${_mapa(c['solicitado'])['metodo'] == 'advance' ? 'con el adelanto ${_mapa(c['solicitado'])['adelanto']}' : 'por transferencia'}',
+                        style: TextStyle(color: Colors.indigo.shade800, fontWeight: FontWeight.w600),
                       ),
                     ),
-                  ]),
+                  ])
+                else if ((situacion == 'Por pagar' || situacion == 'Pagado en parte') && c['compra_id'] != null)
+                  // Compras no paga: pide el pago con este botón y Finanzas lo hace. No es automático.
+                  _Acciones(acciones: [(Icons.schedule_send, 'Solicitar pago', () => _solicitarPago(c))]),
               ]),
       ),
     );
