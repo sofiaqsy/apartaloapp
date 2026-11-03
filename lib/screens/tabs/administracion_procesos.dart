@@ -65,8 +65,7 @@ Future<Set<String>?> _areasMarcadas() async {
   return elegidas;
 }
 
-Future<T?> _abrirPantalla<T>(BuildContext context, Widget pantalla) =>
-    Navigator.of(context).push<T>(CupertinoPageRoute(builder: (_) => pantalla));
+Future<T?> _abrirPantalla<T>(BuildContext context, Widget pantalla) => Navigator.of(context).push<T>(CupertinoPageRoute(builder: (_) => pantalla));
 
 class _Registrar extends StatefulWidget {
   const _Registrar({required this.esDueno});
@@ -249,20 +248,7 @@ class _Indicador {
   final bool atencion;
 }
 
-const _meses = [
-  'enero',
-  'febrero',
-  'marzo',
-  'abril',
-  'mayo',
-  'junio',
-  'julio',
-  'agosto',
-  'septiembre',
-  'octubre',
-  'noviembre',
-  'diciembre'
-];
+const _meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
 /// Finca: siempre 4. Dueños: gastos del mes, por pagar, gastos del año y cosecha del año.
 /// El equipo no ve dinero: cuántos gastos, parcelas, actividades del mes y cosecha.
@@ -272,8 +258,8 @@ List<_Indicador> _indicadoresFinca(Map<String, dynamic> f, bool esDueno) {
   final cosecha = _mapa(f['cosecha']);
   final nMes = (mes['n'] as num?)?.toInt() ?? 0;
   final gastos = (int n) => '$n ${n == 1 ? 'gasto' : 'gastos'}';
-  final cosechaInd = _Indicador(Icons.agriculture, _kg(cosecha['kg']), 'Cosecha',
-      tono: Colors.green, nota: 'cereza · ${cosecha['anio'] ?? DateTime.now().year}');
+  final cosechaInd =
+      _Indicador(Icons.agriculture, _kg(cosecha['kg']), 'Cosecha', tono: Colors.green, nota: 'cereza · ${cosecha['anio'] ?? DateTime.now().year}');
   if (esDueno && mes['total'] != null) {
     final porPagar = (_mapa(f['por_pagar'])['total'] as num?) ?? 0;
     return [
@@ -345,8 +331,7 @@ List<_Indicador> _indicadoresProduccion(Map<String, dynamic> p) {
   return [
     // Primero el tostado, luego el verde (General Manager, 3 nov 2026).
     _Indicador(Icons.coffee, _kg(p['tostado_kg']), 'Café tostado', tono: Colors.orange, nota: 'disponible'),
-    _Indicador(Icons.eco, _kg(p['verde_kg']), 'Café verde',
-        tono: Colors.green, nota: '${lotes.length} ${lotes.length == 1 ? 'lote' : 'lotes'}'),
+    _Indicador(Icons.eco, _kg(p['verde_kg']), 'Café verde', tono: Colors.green, nota: '${lotes.length} ${lotes.length == 1 ? 'lote' : 'lotes'}'),
     _Indicador(Icons.local_fire_department, '${mes['tuestes'] ?? 0}', 'Tuestes este mes',
         tono: Colors.blue,
         nota: enCurso > 0 ? '$enCurso tostando ahora' : (programados > 0 ? '$programados programados' : 'ninguno programado'),
@@ -367,8 +352,7 @@ List<_Indicador> _indicadoresLogistica(Map<String, dynamic> l, bool esDueno) {
   final primeros = [
     _Indicador(Icons.outbox, pedidos(despachar), 'Por despachar',
         tono: Colors.orange, atencion: despachar > 0, nota: camino > 0 ? '$camino en camino' : 'de la tienda'),
-    _Indicador(Icons.local_shipping, pedidos(n(l['entregados_mes'])), 'Entregados',
-        tono: Colors.green, nota: _meses[DateTime.now().month - 1]),
+    _Indicador(Icons.local_shipping, pedidos(n(l['entregados_mes'])), 'Entregados', tono: Colors.green, nota: _meses[DateTime.now().month - 1]),
   ];
   if (esDueno && mes['total'] != null) {
     final porPagar = (_mapa(l['por_pagar'])['total'] as num?) ?? 0;
@@ -398,9 +382,7 @@ List<_Indicador> _indicadoresFinanzas(Map<String, dynamic> f) {
   final porPagar = v(compras) + v(gastos);
   return [
     _Indicador(Icons.payments, _soles(porPagar), 'Por pagar',
-        tono: Colors.blue,
-        atencion: porPagar > 0,
-        nota: '${cuantos(n(compras), 'compra', 'compras')} · ${cuantos(n(gastos), 'gasto', 'gastos')}'),
+        tono: Colors.blue, atencion: porPagar > 0, nota: '${cuantos(n(compras), 'compra', 'compras')} · ${cuantos(n(gastos), 'gasto', 'gastos')}'),
     _Indicador(Icons.handshake, _soles(v(adelantos)), 'Adelantos por aprobar',
         tono: Colors.purple, atencion: n(adelantos) > 0, nota: cuantos(n(adelantos), 'solicitud', 'solicitudes')),
     _Indicador(Icons.shopping_bag, _soles(v(compras)), 'Compras por pagar',
@@ -532,14 +514,11 @@ class _DatoCaja extends StatelessWidget {
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
-              child:
-                  Text(d.valor, style: TextStyle(fontSize: grande ? 21 : 18, height: 1.15, fontWeight: FontWeight.bold, color: valorColor)),
+              child: Text(d.valor, style: TextStyle(fontSize: grande ? 21 : 18, height: 1.15, fontWeight: FontWeight.bold, color: valorColor)),
             ),
-            Text(d.nombre,
-                style: TextStyle(fontSize: 13, height: 1.2, color: Colors.grey.shade800), maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text(d.nombre, style: TextStyle(fontSize: 13, height: 1.2, color: Colors.grey.shade800), maxLines: 1, overflow: TextOverflow.ellipsis),
             if (d.nota != null && d.nota!.isNotEmpty)
-              Text(d.nota!,
-                  style: TextStyle(fontSize: 12, height: 1.2, color: Colors.grey.shade600), maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text(d.nota!, style: TextStyle(fontSize: 12, height: 1.2, color: Colors.grey.shade600), maxLines: 1, overflow: TextOverflow.ellipsis),
           ]),
         ),
       ]),
@@ -575,8 +554,8 @@ class _Acciones extends StatelessWidget {
                   Icon(icono, size: 24, color: Colors.blue.shade700),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(texto,
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    child:
+                        Text(texto, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
                   ),
                 ]),
               ),
@@ -600,7 +579,7 @@ abstract class _ProcesoState<T extends StatefulWidget> extends State<T> {
   }
 
   Future<void> cargar() async {
-    final r = await AdministracionService.procesos();
+    final r = await AdministracionService.procesos(solo: clave);
     if (!mounted) return;
     setState(() {
       error = r.isSuccess ? null : r.error;
@@ -610,8 +589,7 @@ abstract class _ProcesoState<T extends StatefulWidget> extends State<T> {
   }
 
   /// Abre un formulario; al guardar, el resumen se vuelve a cargar.
-  Future<void> formulario(String form,
-      {Map<String, dynamic> fijos = const {}, String? subtitulo, Map<String, dynamic> iniciales = const {}}) async {
+  Future<void> formulario(String form, {Map<String, dynamic> fijos = const {}, String? subtitulo, Map<String, dynamic> iniciales = const {}}) async {
     if (await _abrirFormulario(context, form, fijos: fijos, subtitulo: subtitulo, iniciales: iniciales)) cargar();
   }
 
@@ -888,8 +866,7 @@ mixin _ProveedoresDelProceso<T extends StatefulWidget> on State<T> {
         Padding(
           padding: const EdgeInsets.only(top: 12),
           child: TextField(
-            decoration:
-                const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Buscar por nombre o apodo', border: OutlineInputBorder()),
+            decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Buscar por nombre o apodo', border: OutlineInputBorder()),
             textInputAction: TextInputAction.search,
             onChanged: _buscarProveedor,
           ),
@@ -1007,10 +984,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
               leading: const Icon(Icons.check_circle_outline),
               title: const Text('Aprobar y entregar'),
               onTap: () => Navigator.pop(ctx, 'aprobarAdelanto')),
-          ListTile(
-              leading: const Icon(Icons.cancel_outlined),
-              title: const Text('Rechazar'),
-              onTap: () => Navigator.pop(ctx, 'rechazarAdelanto')),
+          ListTile(leading: const Icon(Icons.cancel_outlined), title: const Text('Rechazar'), onTap: () => Navigator.pop(ctx, 'rechazarAdelanto')),
         ]),
       ),
     );
@@ -1055,11 +1029,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
         const SizedBox(height: 16),
         _Acciones(acciones: [
           (Icons.account_balance_wallet, _titulos['retiro']!, () => formulario('retiro')),
-          (
-            Icons.receipt_long,
-            _titulos['gasto']!,
-            () => formulario('gasto', fijos: const {'area': 'finance'}, subtitulo: 'Área: Finanzas')
-          ),
+          (Icons.receipt_long, _titulos['gasto']!, () => formulario('gasto', fijos: const {'area': 'finance'}, subtitulo: 'Área: Finanzas')),
         ]),
         _Pestanas(
           nombres: ['Compras (${n('compras')})', 'Gastos (${n('gastos')})', 'Adelantos (${n('adelantos')})'],
@@ -1109,8 +1079,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
             _Ficha(
               inicio: _Insignia(_fechaCorta(a['fecha']), tono: Colors.purple),
               titulo: '${a['para'] ?? 'Sin nombre'}',
-              detalle:
-                  [if ((a['motivo'] ?? '').toString().isNotEmpty) '${a['motivo']}', if (a['por'] != null) 'pidió ${a['por']}'].join(' · '),
+              detalle: [if ((a['motivo'] ?? '').toString().isNotEmpty) '${a['motivo']}', if (a['por'] != null) 'pidió ${a['por']}'].join(' · '),
               fin: _Pildora(_soles(a['monto']), Colors.purple),
               onTap: () => _adelanto(a),
             ),
@@ -1174,9 +1143,7 @@ class _FincaScreenState extends _ProcesoState<_FincaScreen> with _ProveedoresDel
                   .where((t) => t.isNotEmpty)
                   .join(' · '),
               // La base ya dice el estado en español ("Pendiente de pago", "Pagado").
-              fin: g['monto'] != null
-                  ? _Pildora(_soles(g['monto']), '${g['estado']}'.startsWith('Pagado') ? Colors.green : Colors.orange)
-                  : null,
+              fin: g['monto'] != null ? _Pildora(_soles(g['monto']), '${g['estado']}'.startsWith('Pagado') ? Colors.green : Colors.orange) : null,
             ),
       ];
     });
@@ -1245,8 +1212,7 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
   }
 
   @override
-  Future<void> formulario(String form,
-      {Map<String, dynamic> fijos = const {}, String? subtitulo, Map<String, dynamic> iniciales = const {}}) async {
+  Future<void> formulario(String form, {Map<String, dynamic> fijos = const {}, String? subtitulo, Map<String, dynamic> iniciales = const {}}) async {
     if (await _abrirFormulario(context, form, fijos: fijos, subtitulo: subtitulo, iniciales: iniciales)) {
       cargar();
       if (form == 'entrega') _recargarCompras();
@@ -1359,11 +1325,7 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
           (Icons.move_to_inbox, _titulos['entrega']!, () => formulario('entrega')),
           (Icons.handshake, _titulos['adelanto']!, () => formulario('adelanto')),
           (Icons.person_add_alt_1, _titulos['proveedor']!, () => formulario('proveedor')),
-          (
-            Icons.receipt_long,
-            _titulos['gasto']!,
-            () => formulario('gasto', fijos: const {'area': 'sourcing'}, subtitulo: 'Área: Compras')
-          ),
+          (Icons.receipt_long, _titulos['gasto']!, () => formulario('gasto', fijos: const {'area': 'sourcing'}, subtitulo: 'Área: Compras')),
         ]),
         _Pestanas(
           // Adelantos en lugar de En almacén (General Manager, 3 nov 2026).
@@ -1410,8 +1372,93 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
     });
   }
 
+  bool _generando = false;
+
+  Future<void> _formulario(String form, {Map<String, dynamic> fijos = const {}, Map<String, dynamic> iniciales = const {}, String? subtitulo}) async {
+    if (await _abrirFormulario(context, form, fijos: {'proveedorId': widget.id, ...fijos}, iniciales: iniciales, subtitulo: subtitulo)) _cargar();
+  }
+
+  void _editarDatos(Map<String, dynamic> p) => _formulario('editarProveedor',
+      iniciales: {
+        for (final (k, v) in [
+          ('nombre', p['nombre']),
+          ('documento', p['documento']),
+          ('telefono', p['telefono']),
+          ('comunidad', p['comunidad']),
+          ('notas', p['notas'])
+        ])
+          if (v != null) k: '$v',
+      },
+      subtitulo: '${p['nombre'] ?? ''}');
+
+  /// Una cuenta: editarla (la anterior queda archivada) o quitarla (se archiva, nunca se borra).
+  Future<void> _cuenta(Map<String, dynamic> c) async {
+    final eleccion = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Editar cuenta'), onTap: () => Navigator.pop(ctx, 'editar')),
+          ListTile(
+              leading: Icon(Icons.remove_circle_outline, color: Colors.red.shade700),
+              title: Text('Quitar cuenta', style: TextStyle(color: Colors.red.shade700)),
+              onTap: () => Navigator.pop(ctx, 'quitar')),
+        ]),
+      ),
+    );
+    if (!mounted || eleccion == null) return;
+    if (eleccion == 'editar') {
+      await _formulario('cuentaProveedor',
+          fijos: {'reemplazaId': c['id']},
+          iniciales: {
+            for (final (k, v) in [('tipo', c['tipo']), ('banco', c['banco']), ('numero', c['numero']), ('titular', c['titular'])])
+              if (v != null) k: '$v',
+          },
+          subtitulo: 'La cuenta anterior queda guardada como archivada');
+      return;
+    }
+    final si = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Quitar cuenta'),
+        content: Text('${c['numero'] ?? ''} dejará de aparecer. Queda guardada como archivada.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Quitar cuenta')),
+        ],
+      ),
+    );
+    if (si != true || !mounted) return;
+    final r = await AdministracionService.registrar('quitarCuenta', {'cuentaId': c['id']}, clave: AdministracionService.nuevaClave('quitarCuenta'));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.isSuccess ? 'Cuenta quitada ✓' : (r.error ?? 'No se pudo quitar'))));
+    if (r.isSuccess) _cargar();
+  }
+
+  /// Generar reporte: el reporte se pide recién ahora (no al abrir el detalle) y se muestra el PDF para compartir.
+  Future<void> _generarReporte() async {
+    if (_generando) return;
+    setState(() => _generando = true);
+    final r = await AdministracionService.reporteProveedor(widget.id);
+    if (!mounted) return;
+    if (!r.isSuccess) {
+      setState(() => _generando = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.error ?? 'No se pudo generar el reporte')));
+      return;
+    }
+    try {
+      final bytes = await ProveedorPdfService.generarBytes(_mapa(r.data!['reporte']));
+      if (!mounted) return;
+      await _abrirPantalla<void>(context, _ReportePdfScreen(bytes: bytes, archivo: 'proveedor_${widget.id}.pdf'));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo generar el PDF: revisa la señal.')));
+      }
+    } finally {
+      if (mounted) setState(() => _generando = false);
+    }
+  }
+
   static const _vende = {'cherry': 'Cereza', 'parchment': 'Pergamino', 'both': 'Cereza y pergamino'};
-  static const _tiposCuenta = {'bank_account': 'Cuenta', 'cci': 'CCI', 'phone_wallet': 'Yape o Plin', 'service_number': 'Nº de servicio'};
 
   Widget _dato(String nombre, String? valor) => valor == null || valor.isEmpty || valor == 'null'
       ? const SizedBox.shrink()
@@ -1429,8 +1476,7 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
     if (visibles.isEmpty) return const SizedBox.shrink();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
-          padding: const EdgeInsets.fromLTRB(4, 16, 4, 6),
-          child: Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+          padding: const EdgeInsets.fromLTRB(4, 16, 4, 6), child: Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(16)),
@@ -1447,6 +1493,8 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
     final adelantos = p == null || p['adelantos'] == null ? null : _mapa(p['adelantos']);
     final cuentas = p == null ? const <Map<String, dynamic>>[] : _lista(p['cuentas']);
     final recientes = p == null ? const <Map<String, dynamic>>[] : _lista(p['recientes']);
+    final listaAdelantos = p == null ? const <Map<String, dynamic>>[] : _lista(p['adelantos_lista']);
+    final puedeEditar = p != null && p['puede_editar'] == true;
     final procesos = p == null ? const <String>[] : [for (final a in (p['procesos'] as List? ?? const [])) _areas['$a'] ?? '$a'];
     final es = p == null
         ? ''
@@ -1472,6 +1520,13 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
                   _Pildora(es, p['agricultor'] == true ? Colors.green : Colors.blue),
                 ]),
                 Text('${p['id']}${p['tipo'] == 'business' ? ' · Empresa' : ' · Persona'}', style: TextStyle(color: Colors.grey.shade700)),
+                const SizedBox(height: 12),
+                _Acciones(acciones: [
+                  (Icons.picture_as_pdf_outlined, _generando ? 'Generando…' : 'Generar reporte', _generarReporte),
+                  if (puedeEditar) (Icons.edit_outlined, 'Editar datos', () => _editarDatos(p)),
+                  if (puedeEditar)
+                    (Icons.add_card_outlined, 'Agregar cuenta', () => _formulario('cuentaProveedor', subtitulo: '${p['nombre'] ?? ''}')),
+                ]),
                 _panel('Datos', [
                   _dato('Vende', _vende[p['vende']] ?? p['vende']?.toString()),
                   _dato('Lo recoge', p['recoge']?.toString()),
@@ -1481,14 +1536,22 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
                   _dato('Teléfono', p['telefono']?.toString()),
                   _dato('Notas', p['notas']?.toString()),
                 ]),
-                if (cuentas.isNotEmpty)
-                  _panel('Cuentas para pagarle', [
-                    for (final c in cuentas)
-                      _dato(
-                          _tiposCuenta[c['tipo']] ?? '${c['tipo']}',
-                          [if (c['banco'] != null) '${c['banco']}', '${c['numero'] ?? ''}', if (c['titular'] != null) '${c['titular']}']
-                              .join(' · ')),
-                  ]),
+                // Dueños: cada cuenta se toca para editarla o quitarla; sin dueño no llegan cuentas.
+                if (puedeEditar) ...[
+                  _encabezado('Cuentas para pagarle', ''),
+                  for (final c in cuentas)
+                    _Ficha(
+                      inicio: const _InsigniaIcono(Icons.account_balance_outlined, tono: Colors.blue),
+                      titulo: '${c['numero'] ?? ''}',
+                      detalle: [
+                        _tiposCuenta[c['tipo']] ?? '${c['tipo']}',
+                        if (c['banco'] != null) '${c['banco']}',
+                        if (c['titular'] != null) '${c['titular']}'
+                      ].join(' · '),
+                      onTap: () => _cuenta(c),
+                    ),
+                  if (cuentas.isEmpty) _vacio('Sin cuentas todavía.'),
+                ],
                 _panel('Lo que le compramos', [
                   _dato('Compras', '${compras['n'] ?? 0}'),
                   _dato('Kilos', _kg(compras['kg'])),
@@ -1498,6 +1561,18 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
                   _dato('Adelantos abiertos',
                       adelantos == null || (adelantos['n'] ?? 0) == 0 ? null : '${_soles(adelantos['saldo'])} (${adelantos['n']})'),
                 ]),
+                if (listaAdelantos.isNotEmpty) ...[
+                  _encabezado('Adelantos', ''),
+                  for (final a in listaAdelantos)
+                    _Ficha(
+                      inicio: _Insignia(_fechaCorta(a['fecha']), tono: Colors.orange),
+                      titulo: '${_soles(a['monto'])} · ${a['id']}',
+                      detalle:
+                          'Usado en café ${_soles(a['usado'])}${((a['devuelto'] as num?) ?? 0) > 0 ? ' · Devuelto ${_soles(a['devuelto'])}' : ''}',
+                      fin: Text(((a['saldo'] as num?) ?? num.tryParse('${a['saldo']}') ?? 0) > 0 ? 'Saldo ${_soles(a['saldo'])}' : 'Cerrado',
+                          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey.shade800)),
+                    ),
+                ],
                 if (recientes.isNotEmpty) ...[
                   _encabezado('Últimas compras', ''),
                   for (final c in recientes)
@@ -1509,6 +1584,38 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
                     ),
                 ],
               ]),
+      ),
+    );
+  }
+}
+
+/// El reporte de un proveedor en PDF, con el botón de compartir (como el PDF del detalle de pedido).
+class _ReportePdfScreen extends StatelessWidget {
+  const _ReportePdfScreen({required this.bytes, required this.archivo});
+  final Uint8List bytes;
+  final String archivo;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.grey.shade100,
+      appBar: AppBar(
+        title: const Text('Reporte del proveedor'),
+        actions: [
+          IconButton(
+            tooltip: 'Compartir',
+            icon: const Icon(Icons.share_rounded),
+            onPressed: () => Printing.sharePdf(bytes: bytes, filename: archivo),
+          ),
+        ],
+      ),
+      body: PdfPreview(
+        build: (_) => Future.value(bytes),
+        allowSharing: false,
+        allowPrinting: false,
+        canChangeOrientation: false,
+        canChangePageFormat: false,
+        canDebug: false,
       ),
     );
   }
@@ -1594,8 +1701,7 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
     if (visibles.isEmpty) return const SizedBox.shrink();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
-          padding: const EdgeInsets.fromLTRB(4, 16, 4, 6),
-          child: Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+          padding: const EdgeInsets.fromLTRB(4, 16, 4, 6), child: Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(16)),
@@ -1625,8 +1731,7 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
               ])
             : ListView(padding: const EdgeInsets.all(16), children: [
                 Row(children: [
-                  Expanded(
-                      child: Text('${c['agricultor'] ?? 'Sin nombre'}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
+                  Expanded(child: Text('${c['agricultor'] ?? 'Sin nombre'}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
                   _Pildora(situacion, _coloresCompra[situacion] ?? Colors.grey),
                 ]),
                 Text('${c['id']} · ${_fechaCorta(c['fecha'])}', style: TextStyle(color: Colors.grey.shade700)),
@@ -1634,8 +1739,7 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
                   _dato('Café', _estadosCafe[c['estado']] ?? '${c['estado']}'),
                   _dato('Kilos', _kg(c['kg'])),
                   _dato('Producto vinculado', c['producto']?.toString()),
-                  _dato('Lote',
-                      lote == null ? null : '${lote['id']} · calidad ${lote['calidad'] == 'pending' ? 'por revisar' : lote['calidad']}'),
+                  _dato('Lote', lote == null ? null : '${lote['id']} · calidad ${lote['calidad'] == 'pending' ? 'por revisar' : lote['calidad']}'),
                   _dato('Notas', c['notas']?.toString()),
                   _dato('Registrado por', c['registrado_por']?.toString()),
                 ]),
@@ -1660,17 +1764,12 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
                     _dato('Falta pagar', compra['debe'] == null ? null : _soles(compra['debe'])),
                     _dato('Adelanto usado', c['adelanto']?.toString()),
                   ]),
-                if (pagos.isNotEmpty)
-                  _panel('Pagos', [for (final p in pagos) _dato(_fechaCorta(p['fecha']), '${_soles(p['monto'])} · ${p['de']}')]),
+                if (pagos.isNotEmpty) _panel('Pagos', [for (final p in pagos) _dato(_fechaCorta(p['fecha']), '${_soles(p['monto'])} · ${p['de']}')]),
                 const SizedBox(height: 20),
                 // Lo que se puede hacer con esta compra (botones de verdad).
                 if (situacion == 'Sin precio')
                   _Acciones(acciones: [
-                    (
-                      Icons.sell_outlined,
-                      'Poner precio',
-                      () => _formulario('precio', {'entregaId': c['id']}, '${c['id']} · ${_kg(c['kg'])}')
-                    ),
+                    (Icons.sell_outlined, 'Poner precio', () => _formulario('precio', {'entregaId': c['id']}, '${c['id']} · ${_kg(c['kg'])}')),
                   ])
                 else if (c['solicitado'] != null && (situacion == 'Pago solicitado' || situacion == 'Pagado en parte'))
                   // Ya se pidió: Finanzas lo paga (General Manager, 3 nov 2026). Sólo información, no un botón.
@@ -1716,7 +1815,7 @@ class _ComercialScreenState extends State<_ComercialScreen> {
   }
 
   Future<void> _cargar() async {
-    final r = await AdministracionService.procesos();
+    final r = await AdministracionService.procesos(solo: 'comercial');
     if (!mounted) return;
     setState(() {
       _error = r.isSuccess ? null : r.error;
@@ -1861,8 +1960,7 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
               _Ficha(
                 inicio: const _InsigniaIcono(Icons.inventory_2_outlined, tono: Colors.brown),
                 titulo: _estadosCafe[p['estado']] ?? '${p['estado']}',
-                detalle:
-                    '${p['lotes']} ${p['lotes'] == 1 ? 'lote' : 'lotes'} · calidad: ${p['calidad'] == 'pending' ? 'por revisar' : p['calidad']}',
+                detalle: '${p['lotes']} ${p['lotes'] == 1 ? 'lote' : 'lotes'} · calidad: ${p['calidad'] == 'pending' ? 'por revisar' : p['calidad']}',
                 fin: Text(_kg(p['kg']), style: const TextStyle(fontWeight: FontWeight.w600)),
               ),
           ],
@@ -1964,8 +2062,7 @@ class _FinalizarTuesteState extends State<_FinalizarTueste> {
         ),
         const SizedBox(height: 12),
         TextField(controller: _notasCtrl, decoration: const InputDecoration(labelText: 'Notas (opcional)', border: OutlineInputBorder())),
-        if (_error != null)
-          Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!, style: const TextStyle(color: Colors.red))),
+        if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!, style: const TextStyle(color: Colors.red))),
       ]),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
@@ -2084,8 +2181,7 @@ class _ElegirProductoState extends State<_ElegirProducto> {
               itemBuilder: (context, i) {
                 if (i == _productos.length) {
                   if (_error != null) return Padding(padding: const EdgeInsets.all(24), child: Text(_error!, textAlign: TextAlign.center));
-                  if (_cargando || _hayMas)
-                    return const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()));
+                  if (_cargando || _hayMas) return const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()));
                   return Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(_productos.isEmpty ? 'Ningún producto con ese nombre' : '',

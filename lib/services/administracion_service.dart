@@ -43,7 +43,9 @@ class AdministracionService {
   static Future<ApiResponse<Map<String, dynamic>>> resumen() => _get('resumen');
 
   /// Tarjetas Compras y Producción: {compras: {...}, produccion: {...}} (el dinero sólo para dueños).
-  static Future<ApiResponse<Map<String, dynamic>>> procesos() => _get('procesos');
+  /// Con [solo] (p. ej. 'compras') el servidor calcula sólo ese proceso: la pantalla de un proceso no pide todos.
+  static Future<ApiResponse<Map<String, dynamic>>> procesos({String? solo}) =>
+      _get(solo == null ? 'procesos' : 'procesos?solo=${Uri.encodeComponent(solo)}');
 
   /// Pestaña Compras: compras de la más nueva a la más antigua, de [limit] en [limit] ({compras, total, hayMas}).
   static Future<ApiResponse<Map<String, dynamic>>> compras({int offset = 0, int limit = 20}) => _get('compras?offset=$offset&limit=$limit');
@@ -53,6 +55,9 @@ class AdministracionService {
 
   /// Detalle de un proveedor ({proveedor}); DNI o RUC, teléfono, cuentas y dinero sólo para dueños.
   static Future<ApiResponse<Map<String, dynamic>>> proveedor(String id) => _get('proveedores/${Uri.encodeComponent(id)}');
+
+  /// Reporte de un proveedor para el PDF ({reporte}): se pide sólo al tocar Generar reporte.
+  static Future<ApiResponse<Map<String, dynamic>>> reporteProveedor(String id) => _get('proveedores/${Uri.encodeComponent(id)}/reporte');
 
   /// Detalle de una compra ({compra}); el precio y los pagos sólo para dueños.
   static Future<ApiResponse<Map<String, dynamic>>> compra(String id) => _get('compras/${Uri.encodeComponent(id)}');
@@ -64,8 +69,8 @@ class AdministracionService {
   static Future<ApiResponse<Map<String, dynamic>>> categorias() => _get('categorias');
 
   /// Qué área pondría la base a un gasto (para Combustible: compra o entrega del mismo día, o la de la persona).
-  static Future<ApiResponse<Map<String, dynamic>>> sugerirArea(String categoria, [String? fecha]) => _get(
-      'sugerir-area?categoria=${Uri.encodeQueryComponent(categoria)}${fecha == null ? '' : '&fecha=$fecha'}');
+  static Future<ApiResponse<Map<String, dynamic>>> sugerirArea(String categoria, [String? fecha]) =>
+      _get('sugerir-area?categoria=${Uri.encodeQueryComponent(categoria)}${fecha == null ? '' : '&fecha=$fecha'}');
 
   /// Mi área: las áreas de la persona y, de la elegida, sus gastos por mes y los últimos.
   static Future<ApiResponse<Map<String, dynamic>>> miArea([String? area]) =>
@@ -75,8 +80,7 @@ class AdministracionService {
   static Future<ApiResponse<Map<String, dynamic>>> equipo() => _get('equipo');
 
   /// Áreas sugeridas para una persona según lo que registró en 60 días (sólo dueños).
-  static Future<ApiResponse<Map<String, dynamic>>> sugerenciaAreas(String perfilId) =>
-      _get('equipo/${Uri.encodeComponent(perfilId)}/sugerencia');
+  static Future<ApiResponse<Map<String, dynamic>>> sugerenciaAreas(String perfilId) => _get('equipo/${Uri.encodeComponent(perfilId)}/sugerencia');
 
   /// Busca personas por nombre o apodo, de a una página: {personas, total, hayMas}.
   /// [area]: sólo los proveedores de ese proceso (los asignados o los que le vendieron un gasto).

@@ -1,0 +1,307 @@
+import 'dart:typed_data';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'api_service.dart';
+
+/// Reporte de un proveedor en PDF, con el mismo diseño del detalle de pedido (PedidoPdfService): cabecera con el
+/// negocio y el N°, franja de datos, cajas con encabezado café y tablas. [reporte] es lo que da
+/// /proveedores/:id/reporte; el dinero, las cuentas y los adelantos sólo vienen para dueños.
+class ProveedorPdfService {
+  static const _brown = PdfColor.fromInt(0xFF5C3317);
+  static const _warmBg = PdfColor.fromInt(0xFFF9F5F1);
+  static const _cardBorder = PdfColor.fromInt(0xFFE8DDD5);
+  static const _textDark = PdfColor.fromInt(0xFF2D1A0E);
+  static const _textGrey = PdfColor.fromInt(0xFF7A6A5E);
+
+  static const _vende = {'cherry': 'Cereza', 'parchment': 'Pergamino', 'both': 'Cereza y pergamino'};
+  static const _cafe = {'cherry': 'Cereza', 'parchment': 'Pergamino', 'green': 'Verde'};
+  static const _tiposCuenta = {'bank_account': 'Cuenta', 'cci': 'CCI', 'phone_wallet': 'Yape o Plin', 'service_number': 'N° de servicio'};
+
+  static String fecha(dynamic iso) {
+    final d = DateTime.tryParse('${iso ?? ''}')?.toLocal();
+    if (d == null) return '—';
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+  }
+
+  static String soles(dynamic v) {
+    final n = (v is num) ? v.toDouble() : double.tryParse('${v ?? ''}');
+    if (n == null) return '—';
+    final t = n.toStringAsFixed(2).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
+    return 'S/ $t';
+  }
+
+  static String kg(dynamic v) {
+    final n = (v is num) ? v.toDouble() : double.tryParse('${v ?? ''}') ?? 0;
+    return '${n.toStringAsFixed(n == n.roundToDouble() ? 0 : 1)} kg';
+  }
+
+  static List<Map<String, dynamic>> _lista(dynamic v) =>
+      v is List ? v.map((e) => e is Map ? Map<String, dynamic>.from(e) : <String, dynamic>{}).toList() : [];
+  static Map<String, dynamic> _mapa(dynamic v) => v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
+
+  static pw.Widget _sectionHeader(String label) => pw.Container(
+        width: double.infinity,
+        padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: const pw.BoxDecoration(color: _brown),
+        child: pw.Text(label, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.white, letterSpacing: 0.8)),
+      );
+
+  static pw.Widget _infoRow(String label, String value) => pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 5),
+        child: pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+          pw.SizedBox(width: 90, child: pw.Text(label, style: const pw.TextStyle(fontSize: 9, color: _textGrey))),
+          pw.Expanded(child: pw.Text(value, style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: _textDark))),
+        ]),
+      );
+
+  static pw.Widget _dividerLine() => pw.Divider(height: 1, thickness: 0.5, color: _cardBorder);
+
+  static pw.Widget _metaChip(String label, String value) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+        pw.Text(label, style: const pw.TextStyle(fontSize: 8, color: _textGrey)),
+        pw.SizedBox(height: 2),
+        pw.Text(value, style: pw.TextStyle(fontSize: 9.5, fontWeight: pw.FontWeight.bold, color: _textDark)),
+      ]);
+
+  static pw.Widget _cell(String text, {bool header = false, bool right = false}) => pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        child: pw.Text(text,
+            textAlign: right ? pw.TextAlign.right : pw.TextAlign.left,
+            style: header
+                ? pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _brown)
+                : const pw.TextStyle(fontSize: 8.5, color: _textDark)),
+      );
+
+  static pw.Widget _caja(String titulo, List<pw.Widget> filas) => pw.Container(
+        decoration: pw.BoxDecoration(border: pw.Border.all(color: _cardBorder), borderRadius: pw.BorderRadius.circular(6)),
+        child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+          _sectionHeader('  $titulo'),
+          pw.Padding(padding: const pw.EdgeInsets.all(10), child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: filas)),
+        ]),
+      );
+
+  /// Filas con línea entre ellas; las vacías no se muestran.
+  static List<pw.Widget> _filas(List<(String, String?)> datos) {
+    final out = <pw.Widget>[];
+    for (final (k, v) in datos) {
+      if (v == null || v.isEmpty || v == 'null') continue;
+      if (out.isNotEmpty) out.add(_dividerLine());
+      out.add(_infoRow(k, v));
+    }
+    if (out.isEmpty) out.add(pw.Text('Sin datos', style: const pw.TextStyle(fontSize: 9, color: _textGrey)));
+    return out;
+  }
+
+  /// A titled table that continues on the next page when it is long (MultiPage only splits a table placed
+  /// directly on the page, not inside a box).
+  static List<pw.Widget> _tabla(String titulo, List<String> columnas, List<List<String>> filas, Set<int> derecha) => [
+        _sectionHeader('  $titulo'),
+        pw.Table(
+          border: const pw.TableBorder(
+            left: pw.BorderSide(color: _cardBorder),
+            right: pw.BorderSide(color: _cardBorder),
+            bottom: pw.BorderSide(color: _cardBorder),
+            horizontalInside: pw.BorderSide(color: _cardBorder, width: 0.5),
+          ),
+          children: [
+            pw.TableRow(
+                decoration: const pw.BoxDecoration(color: _warmBg),
+                children: [for (var i = 0; i < columnas.length; i++) _cell(columnas[i], header: true, right: derecha.contains(i))]),
+            for (final f in filas) pw.TableRow(children: [for (var i = 0; i < f.length; i++) _cell(f[i], right: derecha.contains(i))]),
+          ],
+        ),
+      ];
+
+  /// [base] y [bold] sólo para las pruebas (sin internet); en la app se usa Noto Sans, como el PDF del pedido.
+  static Future<Uint8List> generarBytes(Map<String, dynamic> reporte, {String? businessName, pw.Font? base, pw.Font? bold}) async {
+    final doc = pw.Document();
+    final font = base ?? await PdfGoogleFonts.notoSansRegular();
+    final fontBold = bold ?? await PdfGoogleFonts.notoSansBold();
+
+    final negocio = businessName ?? ApiService.businessName;
+    final id = '${reporte['id'] ?? ''}';
+    final emitido = fecha(reporte['generado'] ?? DateTime.now().toIso8601String());
+    final esDueno = reporte['puede_editar'] == true;
+    final es = [
+      if (reporte['agricultor'] == true) 'Agricultor',
+      if (reporte['comprador'] == true) 'Comprador',
+      if (reporte['agricultor'] != true && reporte['comprador'] != true) 'Proveedor',
+    ].join(' y ');
+    final compras = _lista(reporte['compras_lista']);
+    final resumen = _mapa(reporte['compras']);
+    final dinero = reporte['dinero'] == null ? null : _mapa(reporte['dinero']);
+    final adelantos = _lista(reporte['adelantos_lista']);
+    final cuentas = _lista(reporte['cuentas']);
+    final abiertos = adelantos.fold<double>(0, (s, a) => s + ((a['saldo'] as num?)?.toDouble() ?? double.tryParse('${a['saldo']}') ?? 0));
+
+    doc.addPage(pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(28),
+      maxPages: 40, // the report brings at most 500 compras
+      theme: pw.ThemeData.withFont(base: font, bold: fontBold),
+      footer: (ctx) => pw.Column(children: [
+        pw.Divider(thickness: 0.5, color: _cardBorder),
+        pw.Row(children: [
+          pw.Expanded(
+              child: pw.Text(esDueno ? 'Documento interno: tiene datos privados del proveedor.' : 'Documento interno.',
+                  style: const pw.TextStyle(fontSize: 7.5, color: _textGrey))),
+          pw.Text('Página ${ctx.pageNumber} de ${ctx.pagesCount}', style: const pw.TextStyle(fontSize: 7.5, color: _textGrey)),
+        ]),
+      ]),
+      build: (ctx) => [
+        // ── CABECERA ──
+        pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+          pw.Expanded(
+            child: pw.Row(children: [
+              pw.Flexible(
+                  child: pw.Text(negocio.toUpperCase(),
+                      style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: _brown, letterSpacing: 1.5))),
+              pw.SizedBox(width: 10),
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: pw.BoxDecoration(border: pw.Border.all(color: _brown, width: 1), borderRadius: pw.BorderRadius.circular(3)),
+                child: pw.Text('PROVEEDOR', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: _brown, letterSpacing: 2)),
+              ),
+            ]),
+          ),
+          pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+            pw.Text('N° $id', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: _brown)),
+            pw.SizedBox(height: 6),
+            pw.Text('Fecha de emisión: $emitido', style: const pw.TextStyle(fontSize: 8.5, color: _textGrey)),
+          ]),
+        ]),
+        pw.SizedBox(height: 10),
+        pw.Divider(height: 1, thickness: 1.5, color: _brown),
+        pw.SizedBox(height: 12),
+
+        // ── FRANJA ──
+        pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: pw.BoxDecoration(color: _warmBg, borderRadius: pw.BorderRadius.circular(6), border: pw.Border.all(color: _cardBorder)),
+          child: pw.Row(children: [
+            pw.Expanded(child: _metaChip('Moneda', 'PEN - Soles')),
+            pw.Expanded(child: _metaChip('Es', es)),
+            pw.Expanded(child: _metaChip('Compras', '${resumen['n'] ?? compras.length} · ${kg(resumen['kg'])}')),
+            pw.Expanded(child: _metaChip('Última compra', fecha(resumen['ultima']))),
+          ]),
+        ),
+        pw.SizedBox(height: 12),
+
+        // ── DATOS / CUENTAS ──
+        pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+          pw.Expanded(
+            child: _caja(
+                'DATOS DEL PROVEEDOR',
+                _filas([
+                  ('Nombre:', '${reporte['nombre'] ?? ''}'),
+                  ('DNI o RUC:', reporte['documento']?.toString()),
+                  ('Teléfono:', reporte['telefono']?.toString()),
+                  ('Comunidad:', reporte['comunidad']?.toString()),
+                  ('Vende:', _vende[reporte['vende']] ?? reporte['vende']?.toString()),
+                  ('Lo recoge:', reporte['recoge']?.toString()),
+                  ('Notas:', reporte['notas']?.toString()),
+                ])),
+          ),
+          if (esDueno) ...[
+            pw.SizedBox(width: 10),
+            pw.Expanded(
+              child: _caja(
+                  'CUENTAS PARA PAGARLE',
+                  _filas([
+                    for (final c in cuentas)
+                      (
+                        '${_tiposCuenta[c['tipo']] ?? c['tipo']}:',
+                        [if (c['banco'] != null) '${c['banco']}', '${c['numero'] ?? ''}', if (c['titular'] != null) '${c['titular']}'].join(' · ')
+                      ),
+                  ])),
+            ),
+          ],
+        ]),
+        pw.SizedBox(height: 12),
+
+        // ── COMPRAS ──
+        if (compras.isNotEmpty)
+          ..._tabla(
+            'COMPRAS',
+            [
+              'N°',
+              'Fecha',
+              'Compra',
+              'Café',
+              'Kilos',
+              if (esDueno) ...['Precio/kg', 'Total'],
+              'Estado'
+            ],
+            [
+              for (var i = 0; i < compras.length; i++)
+                [
+                  '${i + 1}',
+                  fecha(compras[i]['fecha']),
+                  '${compras[i]['id']}',
+                  _cafe[compras[i]['estado']] ?? '${compras[i]['estado'] ?? ''}',
+                  kg(compras[i]['kg']),
+                  if (esDueno) ...[
+                    compras[i]['precio'] == null ? '—' : soles(compras[i]['precio']),
+                    compras[i]['total'] == null ? '—' : soles(compras[i]['total']),
+                  ],
+                  '${compras[i]['situacion'] ?? ''}',
+                ],
+            ],
+            esDueno ? {4, 5, 6} : {4},
+          ),
+
+        // ── ADELANTOS ──
+        if (adelantos.isNotEmpty) ...[
+          pw.SizedBox(height: 12),
+          ..._tabla(
+            'ADELANTOS',
+            ['Fecha', 'Adelanto', 'Monto', 'Usado en café', 'Devuelto', 'Saldo'],
+            [
+              for (final a in adelantos)
+                [fecha(a['fecha']), '${a['id']}', soles(a['monto']), soles(a['usado']), soles(a['devuelto']), soles(a['saldo'])],
+            ],
+            {2, 3, 4, 5},
+          ),
+        ],
+
+        // ── RESUMEN ──
+        if (dinero != null) ...[
+          pw.SizedBox(height: 12),
+          pw.Row(children: [
+            pw.Expanded(child: pw.SizedBox()),
+            pw.SizedBox(
+              width: 210,
+              child: pw.Container(
+                decoration: pw.BoxDecoration(border: pw.Border.all(color: _cardBorder), borderRadius: pw.BorderRadius.circular(6)),
+                child: pw.Column(children: [
+                  _lineaResumen('Comprado:', soles(dinero['comprado'])),
+                  pw.Divider(height: 1, thickness: 0.5, color: _cardBorder),
+                  _lineaResumen('Adelantos abiertos:', soles(abiertos)),
+                  pw.Container(
+                    padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: const pw.BoxDecoration(
+                        color: _brown, borderRadius: pw.BorderRadius.only(bottomLeft: pw.Radius.circular(5), bottomRight: pw.Radius.circular(5))),
+                    child: pw.Row(children: [
+                      pw.Expanded(
+                          child: pw.Text('LE DEBEMOS:', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.white))),
+                      pw.Text(soles(dinero['debe']), style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.white)),
+                    ]),
+                  ),
+                ]),
+              ),
+            ),
+          ]),
+        ],
+      ],
+    ));
+    return doc.save();
+  }
+
+  static pw.Widget _lineaResumen(String k, String v) => pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        child: pw.Row(children: [
+          pw.Expanded(child: pw.Text(k, style: const pw.TextStyle(fontSize: 9, color: _textGrey))),
+          pw.Text(v, style: const pw.TextStyle(fontSize: 9, color: _textDark)),
+        ]),
+      );
+}

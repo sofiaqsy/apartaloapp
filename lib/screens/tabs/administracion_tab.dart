@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/cupertino.dart' show CupertinoPageRoute;
 import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/administracion_service.dart';
 import '../../services/api_service.dart';
+import '../../services/proveedor_pdf_service.dart';
 import '../detalle_producto_screen.dart' show abrirProgramarTueste;
 import 'reportes_tab.dart';
 
@@ -76,6 +79,7 @@ enum _Tipo { texto, monto, numero, opcion, persona, fecha }
 class _Campo {
   const _Campo(this.clave, this.etiqueta, this.tipo,
       {this.opciones = const {}, this.requerido = true, this.rol, this.visibleSi, this.porDefecto, this.ayuda, this.avanzado = false});
+
   /// Campo poco usado: va dentro de "Más opciones" para que el formulario sea corto.
   final bool avanzado;
   final String clave;
@@ -83,6 +87,7 @@ class _Campo {
   final _Tipo tipo;
   final Map<String, String> opciones; // valor -> texto
   final bool requerido;
+
   /// Para un campo persona: a quién se puede elegir (agricultor, comprador o ambos); null = cualquiera.
   final String? rol;
   final bool Function(Map<String, dynamic> valores)? visibleSi;
@@ -91,9 +96,20 @@ class _Campo {
 }
 
 const _areas = {
-  'farm': 'Finca', 'sourcing': 'Compras', 'production': 'Producción', 'quality': 'Calidad', 'commercial': 'Comercial',
-  'marketing': 'Marketing', 'fulfillment': 'Logística', 'people': 'Personas', 'finance': 'Finanzas', 'compliance': 'Cumplimiento',
-  'risk': 'Riesgos', 'technology': 'Tecnología', 'strategy': 'Estrategia', 'shared': 'Compartido',
+  'farm': 'Finca',
+  'sourcing': 'Compras',
+  'production': 'Producción',
+  'quality': 'Calidad',
+  'commercial': 'Comercial',
+  'marketing': 'Marketing',
+  'fulfillment': 'Logística',
+  'people': 'Personas',
+  'finance': 'Finanzas',
+  'compliance': 'Cumplimiento',
+  'risk': 'Riesgos',
+  'technology': 'Tecnología',
+  'strategy': 'Estrategia',
+  'shared': 'Compartido',
 };
 
 /// Una categoría de gasto: qué entra, qué no, y lo que sugiere. La lista viva viene de la base
@@ -121,21 +137,32 @@ const _soloEnVerMas = {'Personal'};
 const _categoriaInicial = 'Combustible';
 
 const _guiaRespaldo = [
-  _Categoria('Combustible', 'Gasolina y petróleo de la camioneta, el carro o una máquina.', 'Gas GLP de la tostadora (Gas).', 'fulfillment', 'coffee', principal: true),
-  _Categoria('Transporte', 'Pasajes y movilidad de personas, y traslado del café comprado antes de venderlo.', 'Gasolina (Combustible). Envío al cliente (Flete).', 'sourcing', 'coffee', principal: true),
-  _Categoria('Mano de obra', 'Pago por día, por kilo o por lata: jornaleros, cosechadores, maquinista.', 'Sueldos mensuales (Personal).', 'farm', 'farm', principal: true),
+  _Categoria('Combustible', 'Gasolina y petróleo de la camioneta, el carro o una máquina.', 'Gas GLP de la tostadora (Gas).', 'fulfillment', 'coffee',
+      principal: true),
+  _Categoria('Transporte', 'Pasajes y movilidad de personas, y traslado del café comprado antes de venderlo.',
+      'Gasolina (Combustible). Envío al cliente (Flete).', 'sourcing', 'coffee',
+      principal: true),
+  _Categoria(
+      'Mano de obra', 'Pago por día, por kilo o por lata: jornaleros, cosechadores, maquinista.', 'Sueldos mensuales (Personal).', 'farm', 'farm',
+      principal: true),
   _Categoria('Personal', 'Sueldo fijo o mensual, ayuda médica a trabajadores, cursos.', 'Jornales (Mano de obra).', 'people', 'coffee'),
   _Categoria('Insumos', 'Abono, plantas, almácigo, fungicidas, herramientas de campo.', 'Bolsas de café (Empaque).', 'farm', 'farm', principal: true),
-  _Categoria('Construcción', 'Obras: local, cafetería, cocina, techo, piso, carretera. Escribe qué obra.', 'Reparaciones (Mantenimiento).', 'strategy', 'venue', principal: true, pideDescripcion: true),
-  _Categoria('Mantenimiento', 'Reparar máquinas y vehículos. Repara, no compra.', 'Máquina nueva (inversión).', 'production', 'coffee', principal: true),
-  _Categoria('Empaque', 'Bolsas, válvulas, etiquetas impresas, serigrafiado, costales, film, cajas.', 'Diseño de etiqueta (Marketing).', 'fulfillment', 'coffee', principal: true),
+  _Categoria('Construcción', 'Obras: local, cafetería, cocina, techo, piso, carretera. Escribe qué obra.', 'Reparaciones (Mantenimiento).',
+      'strategy', 'venue',
+      principal: true, pideDescripcion: true),
+  _Categoria('Mantenimiento', 'Reparar máquinas y vehículos. Repara, no compra.', 'Máquina nueva (inversión).', 'production', 'coffee',
+      principal: true),
+  _Categoria('Empaque', 'Bolsas, válvulas, etiquetas impresas, serigrafiado, costales, film, cajas.', 'Diseño de etiqueta (Marketing).',
+      'fulfillment', 'coffee',
+      principal: true),
   _Categoria('Flete', 'Envío de café ya vendido al cliente.', 'Café comprado en camino (Transporte).', 'fulfillment', 'coffee'),
   _Categoria('Gas', 'Gas GLP: tostadora, secadora, cocina del local.', 'Gasolina (Combustible).', 'production', 'coffee'),
   _Categoria('Finca', 'Otros gastos de la chacra: despulpadora, sus piezas, materiales.', 'Obras (Construcción). Luz (Servicios).', 'farm', 'farm'),
   _Categoria('Servicios', 'Luz, agua, alquiler, secado o pilado por terceros.', 'Internet y teléfono (Tecnología).', 'finance', 'coffee'),
   _Categoria('Tecnología', 'Teléfono, internet, programas, celular, computadora.', null, 'technology', 'coffee'),
   _Categoria('Calidad y laboratorio', 'Catación, laboratorio, medidor de humedad, bolsitas de muestra.', null, 'quality', 'coffee'),
-  _Categoria('Marketing', 'Diseño, fotos, publicidad, ferias y eventos, material de muestras.', 'Impresión de bolsas (Empaque).', 'marketing', 'coffee'),
+  _Categoria(
+      'Marketing', 'Diseño, fotos, publicidad, ferias y eventos, material de muestras.', 'Impresión de bolsas (Empaque).', 'marketing', 'coffee'),
   _Categoria('Impuestos y comisiones', 'SUNAT, ITF, comisiones del banco, multas y papeletas.', null, 'finance', 'coffee'),
   _Categoria('Permisos y licencias', 'DIGESA, registro sanitario, licencia municipal, trámites.', null, 'compliance', 'coffee'),
   _Categoria('Seguros', 'Primas de pólizas.', null, 'risk', 'coffee'),
@@ -166,7 +193,8 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('descripcion', 'Descripción', _Tipo.texto, requerido: false),
     // Quien registra elige el área que responde por el gasto; se llena sola según la categoría.
     const _Campo('area', 'Área', _Tipo.opcion, opciones: _areas, porDefecto: 'shared', avanzado: true),
-    const _Campo('centro', 'Centro de costo', _Tipo.opcion, opciones: {'coffee': 'Café', 'farm': 'Finca', 'venue': 'Local', 'property': 'Casa'}, porDefecto: 'coffee', avanzado: true),
+    const _Campo('centro', 'Centro de costo', _Tipo.opcion,
+        opciones: {'coffee': 'Café', 'farm': 'Finca', 'venue': 'Local', 'property': 'Casa'}, porDefecto: 'coffee', avanzado: true),
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
   'pagoGasto': [
@@ -178,7 +206,8 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('personaId', 'Para', _Tipo.persona, rol: 'ambos'),
     const _Campo('monto', 'Monto (S/)', _Tipo.monto, ayuda: 'Máximo S/ 2,000 y uno abierto por persona'),
     const _Campo('motivo', 'Para qué', _Tipo.texto, requerido: false),
-    const _Campo('devuelveEn', 'Se devuelve en', _Tipo.opcion, opciones: {'coffee': 'Café', 'money': 'Dinero', 'coffee_or_money': 'Café o dinero'}, porDefecto: 'coffee', avanzado: true),
+    const _Campo('devuelveEn', 'Se devuelve en', _Tipo.opcion,
+        opciones: {'coffee': 'Café', 'money': 'Dinero', 'coffee_or_money': 'Café o dinero'}, porDefecto: 'coffee', avanzado: true),
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
   'aprobarAdelanto': [
@@ -191,14 +220,16 @@ final Map<String, List<_Campo>> _formularios = {
   'proveedor': [
     const _Campo('nombre', 'Nombre', _Tipo.texto),
     const _Campo('rol', 'Es', _Tipo.opcion, opciones: {'farmer': 'Agricultor', 'buyer': 'Comprador', 'supplier': 'Proveedor de insumos'}),
-    _Campo('vende', 'Vende', _Tipo.opcion, opciones: const {'parchment': 'Pergamino', 'cherry': 'Cereza', 'both': 'Ambos'}, porDefecto: 'parchment',
+    _Campo('vende', 'Vende', _Tipo.opcion,
+        opciones: const {'parchment': 'Pergamino', 'cherry': 'Cereza', 'both': 'Ambos'},
+        porDefecto: 'parchment',
         visibleSi: (v) => v['rol'] == 'farmer'),
-    _Campo('recogidoPor', 'Lo recoge (comprador)', _Tipo.persona, requerido: false, rol: 'comprador',
-        visibleSi: (v) => v['rol'] == 'farmer'),
+    _Campo('recogidoPor', 'Lo recoge (comprador)', _Tipo.persona, requerido: false, rol: 'comprador', visibleSi: (v) => v['rol'] == 'farmer'),
     const _Campo('documento', 'DNI o RUC', _Tipo.texto, requerido: false),
     const _Campo('telefono', 'Teléfono', _Tipo.texto, requerido: false),
     const _Campo('comunidad', 'Comunidad o sector', _Tipo.texto, requerido: false, avanzado: true),
-    const _Campo('tipo', 'Persona o empresa', _Tipo.opcion, opciones: {'person': 'Persona', 'business': 'Empresa'}, porDefecto: 'person', avanzado: true),
+    const _Campo('tipo', 'Persona o empresa', _Tipo.opcion,
+        opciones: {'person': 'Persona', 'business': 'Empresa'}, porDefecto: 'person', avanzado: true),
   ],
   'entrega': [
     const _Campo('agricultorId', 'Agricultor', _Tipo.persona, rol: 'agricultor'),
@@ -208,7 +239,8 @@ final Map<String, List<_Campo>> _formularios = {
     // el Blend marcado al abrir. Tocarlo otra vez lo deja sin producto.
     const _Campo('productoId', 'Producto vinculado', _Tipo.opcion, requerido: false),
     const _Campo('kg', 'Kilos', _Tipo.numero),
-    const _Campo('precioKg', 'Precio por kilo (si ya se sabe)', _Tipo.monto, requerido: false, ayuda: 'Con precio queda en "Por pagar" para Administración'),
+    const _Campo('precioKg', 'Precio por kilo (si ya se sabe)', _Tipo.monto,
+        requerido: false, ayuda: 'Con precio queda en "Por pagar" para Administración'),
     const _Campo('humedad', 'Humedad %', _Tipo.numero, requerido: false, avanzado: true),
     const _Campo('rendimiento', 'Factor de rendimiento', _Tipo.numero, requerido: false, avanzado: true),
     const _Campo('notas', 'Notas', _Tipo.texto, requerido: false),
@@ -225,10 +257,12 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
   'ingreso': [
-    const _Campo('tipo', 'Qué es', _Tipo.opcion, opciones: {'sale': 'Venta fuera de la tienda', 'advance_return': 'Devolución de adelanto', 'loan': 'Préstamo', 'other': 'Otro'}),
+    const _Campo('tipo', 'Qué es', _Tipo.opcion,
+        opciones: {'sale': 'Venta fuera de la tienda', 'advance_return': 'Devolución de adelanto', 'loan': 'Préstamo', 'other': 'Otro'}),
     const _Campo('adelantoId', 'Adelanto que se devuelve (código ADV-)', _Tipo.texto, visibleSi: _esDevolucion),
     const _Campo('monto', 'Monto (S/)', _Tipo.monto),
-    const _Campo('metodo', 'Cómo entró', _Tipo.opcion, opciones: {'transfer': 'Transferencia', 'yape': 'Yape', 'plin': 'Plin', 'cash': 'Efectivo', 'deposit': 'Depósito'}, porDefecto: 'transfer'),
+    const _Campo('metodo', 'Cómo entró', _Tipo.opcion,
+        opciones: {'transfer': 'Transferencia', 'yape': 'Yape', 'plin': 'Plin', 'cash': 'Efectivo', 'deposit': 'Depósito'}, porDefecto: 'transfer'),
     const _Campo('descripcion', 'Descripción', _Tipo.texto, requerido: false),
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
@@ -236,9 +270,25 @@ final Map<String, List<_Campo>> _formularios = {
   // o con un adelanto abierto del mismo agricultor (Finanzas lo confirma). Las opciones de adelanto llegan del detalle.
   'solicitarPago': [
     const _Campo('monto', 'Monto a pagar (S/)', _Tipo.monto, requerido: false, ayuda: 'Vacío = todo lo que se debe'),
-    const _Campo('metodo', 'Cómo se paga', _Tipo.opcion, opciones: {'transfer': 'Transferencia', 'advance': 'Con un adelanto'}, porDefecto: 'transfer'),
+    const _Campo('metodo', 'Cómo se paga', _Tipo.opcion,
+        opciones: {'transfer': 'Transferencia', 'advance': 'Con un adelanto'}, porDefecto: 'transfer'),
     _Campo('adelantoId', 'Adelanto', _Tipo.opcion, visibleSi: (v) => v['metodo'] == 'advance'),
     const _Campo('nota', 'Nota para Finanzas', _Tipo.texto, requerido: false),
+  ],
+  // Editar proveedor y sus cuentas (General Manager, 3 nov 2026): sólo dueños, lo decide la base.
+  'editarProveedor': [
+    const _Campo('nombre', 'Nombre', _Tipo.texto),
+    const _Campo('documento', 'DNI o RUC', _Tipo.texto, requerido: false),
+    const _Campo('telefono', 'Teléfono', _Tipo.texto, requerido: false),
+    const _Campo('comunidad', 'Comunidad o sector', _Tipo.texto, requerido: false),
+    const _Campo('notas', 'Notas (apodo, qué vende)', _Tipo.texto, requerido: false),
+  ],
+  // Al editar una cuenta, la anterior queda archivada (nunca se borra) y se guarda la nueva.
+  'cuentaProveedor': [
+    const _Campo('tipo', 'Tipo', _Tipo.opcion, opciones: _tiposCuenta, porDefecto: 'bank_account'),
+    _Campo('banco', 'Banco', _Tipo.texto, requerido: false, visibleSi: (v) => v['tipo'] != 'phone_wallet'),
+    const _Campo('numero', 'Número', _Tipo.texto),
+    const _Campo('titular', 'Titular', _Tipo.texto, requerido: false),
   ],
   'retiro': [
     const _Campo('monto', 'Monto (S/)', _Tipo.monto),
@@ -249,21 +299,41 @@ final Map<String, List<_Campo>> _formularios = {
 
 bool _esDevolucion(Map<String, dynamic> v) => v['tipo'] == 'advance_return';
 
+const _tiposCuenta = {'bank_account': 'Cuenta', 'cci': 'CCI', 'phone_wallet': 'Yape o Plin', 'service_number': 'Nº de servicio'};
+
 // Nombres de acción (verbo + cosa), iguales en el botón y en el título del formulario.
 const _titulos = {
-  'gasto': 'Registrar gasto', 'pagoGasto': 'Pagar gasto', 'adelanto': 'Solicitar adelanto', 'aprobarAdelanto': 'Aprobar adelanto',
-  'rechazarAdelanto': 'Rechazar adelanto', 'proveedor': 'Registrar proveedor', 'entrega': 'Registrar compra',
-  'precio': 'Poner precio a la compra', 'pago': 'Pagar compra', 'ingreso': 'Registrar ingreso', 'retiro': 'Registrar retiro de efectivo',
+  'gasto': 'Registrar gasto',
+  'pagoGasto': 'Pagar gasto',
+  'adelanto': 'Solicitar adelanto',
+  'aprobarAdelanto': 'Aprobar adelanto',
+  'rechazarAdelanto': 'Rechazar adelanto',
+  'proveedor': 'Registrar proveedor',
+  'entrega': 'Registrar compra',
+  'precio': 'Poner precio a la compra',
+  'pago': 'Pagar compra',
+  'ingreso': 'Registrar ingreso',
+  'retiro': 'Registrar retiro de efectivo',
   'solicitarPago': 'Solicitar pago',
+  'editarProveedor': 'Editar proveedor',
+  'cuentaProveedor': 'Guardar cuenta',
 };
 
 // Lo que pasó y lo que sigue, después de guardar.
 const _hecho = {
-  'gasto': 'Gasto registrado ✓ Administración lo pagará', 'pagoGasto': 'Gasto pagado ✓',
-  'adelanto': 'Adelanto solicitado ✓ Administración lo revisará', 'aprobarAdelanto': 'Adelanto aprobado y entregado ✓',
-  'rechazarAdelanto': 'Adelanto rechazado', 'proveedor': 'Proveedor registrado ✓', 'entrega': 'Compra registrada ✓',
-  'precio': 'Precio puesto ✓ Lo que falta queda por pagar', 'pago': 'Compra pagada ✓', 'retiro': 'Retiro de efectivo registrado ✓ Ya está en caja',
+  'gasto': 'Gasto registrado ✓ Administración lo pagará',
+  'pagoGasto': 'Gasto pagado ✓',
+  'adelanto': 'Adelanto solicitado ✓ Administración lo revisará',
+  'aprobarAdelanto': 'Adelanto aprobado y entregado ✓',
+  'rechazarAdelanto': 'Adelanto rechazado',
+  'proveedor': 'Proveedor registrado ✓',
+  'entrega': 'Compra registrada ✓',
+  'precio': 'Precio puesto ✓ Lo que falta queda por pagar',
+  'pago': 'Compra pagada ✓',
+  'retiro': 'Retiro de efectivo registrado ✓ Ya está en caja',
   'solicitarPago': 'Pago solicitado ✓ Finanzas lo pagará',
+  'editarProveedor': 'Proveedor actualizado ✓',
+  'cuentaProveedor': 'Cuenta guardada ✓',
 };
 
 /// Abre un formulario a pantalla completa. Se cierra con la X o deslizando hacia la derecha (como
@@ -276,7 +346,10 @@ Future<bool> abrirFormularioParaPruebas(BuildContext context, String formulario)
 /// [iniciales] llenan campos al abrir (por ejemplo el monto que se pidió); [opciones] dan las opciones de un campo
 /// que vienen de la base (por ejemplo los adelantos abiertos del agricultor).
 Future<bool> _abrirFormulario(BuildContext context, String formulario,
-    {Map<String, dynamic> fijos = const {}, String? subtitulo, Map<String, dynamic> iniciales = const {}, Map<String, Map<String, String>> opciones = const {}}) async {
+    {Map<String, dynamic> fijos = const {},
+    String? subtitulo,
+    Map<String, dynamic> iniciales = const {},
+    Map<String, Map<String, String>> opciones = const {}}) async {
   final guardado = await Navigator.of(context).push<bool>(
     CupertinoPageRoute(
         builder: (_) => _FormularioSheet(formulario: formulario, fijos: fijos, subtitulo: subtitulo, iniciales: iniciales, opciones: opciones)),
@@ -329,7 +402,10 @@ class _FormularioSheetState extends State<_FormularioSheet> {
         _pedirSugerencia(); // la base dice el área (compra del día, el área de la persona)
       }
       // Desde una tarjeta (Compras, Producción) el área ya se sabe: va siempre esa.
-      if (_areaFija != null) { _valores['area'] = _areaFija; _areaTocada = true; }
+      if (_areaFija != null) {
+        _valores['area'] = _areaFija;
+        _areaTocada = true;
+      }
       AdministracionService.categorias().then((r) {
         if (!mounted || !r.isSuccess) return;
         final cats = (r.data!['categorias'] as List? ?? []).cast<Map>();
@@ -340,7 +416,8 @@ class _FormularioSheetState extends State<_FormularioSheet> {
             // Combustible primero; las demás en el orden de la base.
             _guia = {
               if (guia.containsKey(_categoriaInicial)) _categoriaInicial: guia[_categoriaInicial]!,
-              for (final e in guia.entries) if (e.key != _categoriaInicial) e.key: e.value,
+              for (final e in guia.entries)
+                if (e.key != _categoriaInicial) e.key: e.value,
             };
           }
           if (areas.isNotEmpty) _opciones['area'] = {for (final a in areas) '${a['id']}': '${a['name']}'};
@@ -373,7 +450,10 @@ class _FormularioSheetState extends State<_FormularioSheet> {
       datos.remove('area');
       datos.remove('centro');
     }
-    setState(() { _guardando = true; _error = null; });
+    setState(() {
+      _guardando = true;
+      _error = null;
+    });
     final r = await AdministracionService.registrar(widget.formulario, datos, clave: _clave);
     if (!mounted) return;
     if (r.isSuccess) {
@@ -385,7 +465,10 @@ class _FormularioSheetState extends State<_FormularioSheet> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(texto)));
       Navigator.of(context).pop(true);
     } else {
-      setState(() { _guardando = false; _error = r.error; });
+      setState(() {
+        _guardando = false;
+        _error = r.error;
+      });
     }
   }
 
@@ -527,7 +610,10 @@ class _FormularioSheetState extends State<_FormularioSheet> {
                 selected: elegida == k,
                 onSelected: (_) {
                   FocusScope.of(context).unfocus();
-                  setState(() { _valores[c.clave] = k; _areaTocada = _areaFija != null; });
+                  setState(() {
+                    _valores[c.clave] = k;
+                    _areaTocada = _areaFija != null;
+                  });
                   _sugerirPorCategoria(k);
                   if (k == 'Combustible') _pedirSugerencia();
                 },
@@ -543,17 +629,20 @@ class _FormularioSheetState extends State<_FormularioSheet> {
         if (g != null && g.queEntra.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Text.rich(TextSpan(children: [
-              TextSpan(text: g.queEntra),
-              if (g.noVa != null) TextSpan(text: '\nNo va aquí: ${g.noVa}', style: TextStyle(color: Colors.grey.shade600)),
-            ]), style: const TextStyle(fontSize: 13)),
+            child: Text.rich(
+                TextSpan(children: [
+                  TextSpan(text: g.queEntra),
+                  if (g.noVa != null) TextSpan(text: '\nNo va aquí: ${g.noVa}', style: TextStyle(color: Colors.grey.shade600)),
+                ]),
+                style: const TextStyle(fontSize: 13)),
           ),
       ],
     );
   }
 
   Widget _campo(_Campo c) {
-    final deco = InputDecoration(labelText: c.requerido ? c.etiqueta : '${c.etiqueta} (opcional)', helperText: c.ayuda, border: const OutlineInputBorder());
+    final deco =
+        InputDecoration(labelText: c.requerido ? c.etiqueta : '${c.etiqueta} (opcional)', helperText: c.ayuda, border: const OutlineInputBorder());
     void poner(dynamic v) => setState(() => _valores[c.clave] = v);
     switch (c.tipo) {
       case _Tipo.opcion:
@@ -581,7 +670,8 @@ class _FormularioSheetState extends State<_FormularioSheet> {
                   ),
               ],
             ),
-            if (c.ayuda != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(c.ayuda!, style: TextStyle(fontSize: 12, color: Colors.grey.shade600))),
+            if (c.ayuda != null)
+              Padding(padding: const EdgeInsets.only(top: 4), child: Text(c.ayuda!, style: TextStyle(fontSize: 12, color: Colors.grey.shade600))),
           ],
         );
       case _Tipo.persona:
@@ -631,7 +721,12 @@ class _FormularioSheetState extends State<_FormularioSheet> {
           onChanged: (t) => poner(_numero(t)),
         );
       case _Tipo.texto:
-        return TextFormField(decoration: deco, onChanged: (t) => poner(t.trim().isEmpty ? null : t.trim()));
+        // Al editar (Editar proveedor, Editar cuenta) el campo abre con el dato de hoy.
+        final inicialTexto = _valores[c.clave];
+        return TextFormField(
+            decoration: deco,
+            initialValue: inicialTexto is String ? inicialTexto : null,
+            onChanged: (t) => poner(t.trim().isEmpty ? null : t.trim()));
     }
   }
 
@@ -661,8 +756,15 @@ class _Pendientes extends StatefulWidget {
 
 /// Una fila de Pendientes: qué es, cuánto, detalles, estado y lo que Administración puede hacer con ella.
 class _Fila {
-  _Fila({required this.id, required this.tipo, required this.icono, required this.lineas, required this.fecha,
-      required this.estado, this.monto, this.areas = const {}});
+  _Fila(
+      {required this.id,
+      required this.tipo,
+      required this.icono,
+      required this.lineas,
+      required this.fecha,
+      required this.estado,
+      this.monto,
+      this.areas = const {}});
   final String id;
   final String tipo;
   final IconData icono;
@@ -671,6 +773,7 @@ class _Fila {
   String estado;
   final num? monto;
   final List<(String, Future<void> Function())> acciones = [];
+
   /// Áreas a las que toca la fila; se ve si alguna está marcada en Perfil. Vacío = se ve siempre.
   final Set<String> areas;
 }
@@ -724,7 +827,9 @@ class _PendientesState extends State<_Pendientes> {
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(title: Text('${g['category']} · ${_soles(g['amount'])}', style: const TextStyle(fontWeight: FontWeight.w600)), subtitle: const Text('¿Para qué fue?')),
+          ListTile(
+              title: Text('${g['category']} · ${_soles(g['amount'])}', style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: const Text('¿Para qué fue?')),
           for (final e in _paraQueCombustible.entries.where((e) => e.key != 'otro'))
             ListTile(title: Text(e.value.$1), subtitle: Text(_areas[e.value.$2] ?? e.value.$2), onTap: () => Navigator.pop(ctx, e.key)),
         ]),
@@ -735,7 +840,8 @@ class _PendientesState extends State<_Pendientes> {
     final r = await AdministracionService.registrar('corregirArea', {'gastoId': g['id'], 'area': p.$2, 'centro': p.$3, 'motivo': p.$1},
         clave: AdministracionService.nuevaClave('corregirArea'));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.isSuccess ? 'Área corregida ✓ ${_areas[p.$2]}' : (r.error ?? 'No se guardó'))));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(r.isSuccess ? 'Área corregida ✓ ${_areas[p.$2]}' : (r.error ?? 'No se guardó'))));
     if (r.isSuccess) _cargar();
   }
 
@@ -755,9 +861,13 @@ class _PendientesState extends State<_Pendientes> {
     for (final s in (_solicitudes ?? []).cast<Map>()) {
       final id = '${s['id']}';
       filas[id] = _Fila(
-        id: id, tipo: _nombres[s['kind']] ?? '${s['kind']}', icono: _iconos[s['kind']] ?? Icons.description,
+        id: id,
+        tipo: _nombres[s['kind']] ?? '${s['kind']}',
+        icono: _iconos[s['kind']] ?? Icons.description,
         areas: s['kind'] == 'gasto' ? _areasGasto(s['area']) : _areasCafe,
-        monto: num.tryParse('${s['amount'] ?? ''}'), fecha: '${s['request_date'] ?? ''}', estado: '${s['status']}',
+        monto: num.tryParse('${s['amount'] ?? ''}'),
+        fecha: '${s['request_date'] ?? ''}',
+        estado: '${s['status']}',
         lineas: [
           '${s['description'] ?? ''}',
           '${s['request_date']}${dueno ? ' · ${s['created_by']}' : ''}',
@@ -769,35 +879,86 @@ class _PendientesState extends State<_Pendientes> {
 
     for (final d in lista('sinPrecio')) {
       final id = '${d['id']}';
-      fila(id, () => _Fila(id: id, tipo: 'Compra', icono: Icons.move_to_inbox, fecha: '${d['delivery_date']}', estado: 'Sin precio', areas: _areasCafe,
-              lineas: ['${d['kg']} kg · ${d['farmer_id']}', '${d['delivery_date']}']))
-          .acciones.add(('Poner precio', () => _formulario('precio', {'entregaId': d['id']}, '$id · ${d['kg']} kg')));
+      fila(
+              id,
+              () => _Fila(
+                  id: id,
+                  tipo: 'Compra',
+                  icono: Icons.move_to_inbox,
+                  fecha: '${d['delivery_date']}',
+                  estado: 'Sin precio',
+                  areas: _areasCafe,
+                  lineas: ['${d['kg']} kg · ${d['farmer_id']}', '${d['delivery_date']}']))
+          .acciones
+          .add(('Poner precio', () => _formulario('precio', {'entregaId': d['id']}, '$id · ${d['kg']} kg')));
     }
     for (final p in lista('porPagar')) {
       final id = '${p['delivery_id'] ?? p['id']}'; // la compra va en la fila de su entrega
       // Si ya se pagó algo (de un adelanto o un pago), es "Pagado en parte".
       final pagadoAlgo = (num.tryParse('${p['paid'] ?? 0}') ?? 0) + (num.tryParse('${p['from_advances'] ?? 0}') ?? 0) > 0;
       // Se paga en Procesos → Finanzas (General Manager, 3 nov 2026); aquí sólo se ve que espera el pago.
-      fila(id, () => _Fila(id: id, tipo: 'Compra', icono: Icons.shopping_bag, fecha: '${p['purchase_date']}', estado: pagadoAlgo ? 'Pagado en parte' : (p['pago_solicitado'] == true ? 'Pago solicitado' : 'Por pagar'), areas: _areasCafe,
-          monto: num.tryParse('${p['still_owed']}'), lineas: ['${p['id']} · ${p['farmer_id']}', 'Falta ${_soles(p['still_owed'])}']));
+      fila(
+          id,
+          () => _Fila(
+              id: id,
+              tipo: 'Compra',
+              icono: Icons.shopping_bag,
+              fecha: '${p['purchase_date']}',
+              estado: pagadoAlgo ? 'Pagado en parte' : (p['pago_solicitado'] == true ? 'Pago solicitado' : 'Por pagar'),
+              areas: _areasCafe,
+              monto: num.tryParse('${p['still_owed']}'),
+              lineas: ['${p['id']} · ${p['farmer_id']}', 'Falta ${_soles(p['still_owed'])}']));
     }
     if (dueno) {
       for (final q in lista('adelantosPorAprobar')) {
         final id = '${q['id']}';
         // Se aprueba o rechaza en Procesos → Finanzas (General Manager, 3 nov 2026).
-        fila(id, () => _Fila(id: id, tipo: 'Adelanto', icono: Icons.handshake, fecha: '${q['request_date']}', estado: 'Por aprobar', areas: _areasCafe,
-            monto: num.tryParse('${q['amount']}'), lineas: ['${q['party']}${q['reason'] != null ? ' · ${q['reason']}' : ''}', '${q['request_date']} · ${q['created_by']}']));
+        fila(
+            id,
+            () => _Fila(
+                id: id,
+                tipo: 'Adelanto',
+                icono: Icons.handshake,
+                fecha: '${q['request_date']}',
+                estado: 'Por aprobar',
+                areas: _areasCafe,
+                monto: num.tryParse('${q['amount']}'),
+                lineas: ['${q['party']}${q['reason'] != null ? ' · ${q['reason']}' : ''}', '${q['request_date']} · ${q['created_by']}']));
       }
       // Los gastos por pagar se ven con su estado, pero Pendientes no ofrece pagarlos (General Manager, 1 nov 2026).
       for (final g in lista('gastosPorPagar')) {
         final id = '${g['id']}';
-        fila(id, () => _Fila(id: id, tipo: 'Gasto', icono: Icons.receipt_long, fecha: '${g['expense_date']}', estado: 'Pendiente de pago', areas: _areasGasto(g['area']),
-            monto: num.tryParse('${g['amount']}'), lineas: ['${g['category']}${g['description'] != null ? ' · ${g['description']}' : ''}', '${g['expense_date']} · ${g['created_by']}']));
+        fila(
+            id,
+            () => _Fila(
+                    id: id,
+                    tipo: 'Gasto',
+                    icono: Icons.receipt_long,
+                    fecha: '${g['expense_date']}',
+                    estado: 'Pendiente de pago',
+                    areas: _areasGasto(g['area']),
+                    monto: num.tryParse('${g['amount']}'),
+                    lineas: [
+                      '${g['category']}${g['description'] != null ? ' · ${g['description']}' : ''}',
+                      '${g['expense_date']} · ${g['created_by']}'
+                    ]));
       }
       for (final g in lista('porRevisar')) {
         final id = '${g['id']}';
-        final f = fila(id, () => _Fila(id: id, tipo: 'Gasto', icono: Icons.receipt_long, fecha: '${g['expense_date']}', estado: 'Área por revisar', areas: _areasGasto(g['area']),
-            monto: num.tryParse('${g['amount']}'), lineas: ['${g['category']}${g['description'] != null ? ' · ${g['description']}' : ''}', '${g['expense_date']} · ${g['created_by']}']));
+        final f = fila(
+            id,
+            () => _Fila(
+                    id: id,
+                    tipo: 'Gasto',
+                    icono: Icons.receipt_long,
+                    fecha: '${g['expense_date']}',
+                    estado: 'Área por revisar',
+                    areas: _areasGasto(g['area']),
+                    monto: num.tryParse('${g['amount']}'),
+                    lineas: [
+                      '${g['category']}${g['description'] != null ? ' · ${g['description']}' : ''}',
+                      '${g['expense_date']} · ${g['created_by']}'
+                    ]));
         final sug = g['suggestion'];
         if (sug is Map && sug['source'] != 'to_review') f.lineas.add('Sugerido: ${_areas[sug['area']] ?? sug['area']}');
         f.acciones.add(('Elegir para qué fue', () => _revisarArea(Map<String, dynamic>.from(g))));
@@ -805,14 +966,32 @@ class _PendientesState extends State<_Pendientes> {
     }
     for (final a in lista('adelantos')) {
       final id = '${a['id']}';
-      fila(id, () => _Fila(id: id, tipo: 'Adelanto', icono: Icons.handshake, fecha: '${a['advance_date']}', estado: 'Abierto', areas: _areasCafe,
-          monto: num.tryParse('${a['open_balance']}'), lineas: ['$id · ${a['party_id']}', 'Desde ${a['advance_date']}']));
+      fila(
+          id,
+          () => _Fila(
+              id: id,
+              tipo: 'Adelanto',
+              icono: Icons.handshake,
+              fecha: '${a['advance_date']}',
+              estado: 'Abierto',
+              areas: _areasCafe,
+              monto: num.tryParse('${a['open_balance']}'),
+              lineas: ['$id · ${a['party_id']}', 'Desde ${a['advance_date']}']));
     }
     if (dueno) {
       for (final b in lista('banco')) {
         final id = 'banco-${b['id'] ?? b['operation_number'] ?? b['movement_date']}-${b['amount']}';
-        fila(id, () => _Fila(id: id, tipo: 'Banco', icono: Icons.account_balance, fecha: '${b['movement_date']}', estado: 'Por cruzar', areas: const {'finance'},
-            monto: num.tryParse('${b['amount']}'), lineas: ['${b['description']}', '${b['movement_date']} · op. ${b['operation_number'] ?? '—'}']));
+        fila(
+            id,
+            () => _Fila(
+                id: id,
+                tipo: 'Banco',
+                icono: Icons.account_balance,
+                fecha: '${b['movement_date']}',
+                estado: 'Por cruzar',
+                areas: const {'finance'},
+                monto: num.tryParse('${b['amount']}'),
+                lineas: ['${b['description']}', '${b['movement_date']} · op. ${b['operation_number'] ?? '—'}']));
       }
     }
     final todas = filas.values.toList()..sort((x, y) => y.fecha.compareTo(x.fecha));
@@ -916,7 +1095,8 @@ class _Seccion extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
             child: Text('$titulo (${items.length})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           ),
-          if (items.isEmpty) Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, 12), child: Text(vacio, style: TextStyle(color: Colors.grey.shade600))),
+          if (items.isEmpty)
+            Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, 12), child: Text(vacio, style: TextStyle(color: Colors.grey.shade600))),
           ...items,
         ],
       ),
@@ -962,8 +1142,7 @@ class MiAreaScreen extends StatelessWidget {
   final String? area;
 
   @override
-  Widget build(BuildContext context) =>
-      Scaffold(appBar: AppBar(title: const Text('Mi área')), body: _MiArea(inicial: area));
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Mi área')), body: _MiArea(inicial: area));
 }
 
 class _MiArea extends StatefulWidget {
@@ -988,7 +1167,10 @@ class _MiAreaState extends State<_MiArea> {
   Future<void> _cargar([String? area]) async {
     final r = await AdministracionService.miArea(area);
     if (!mounted) return;
-    setState(() { _datos = r.data; _error = r.isSuccess ? null : r.error; });
+    setState(() {
+      _datos = r.data;
+      _error = r.isSuccess ? null : r.error;
+    });
     // Las áreas marcadas aquí son las mismas que en Perfil.
     final elegidas = r.data?['elegidas'];
     if (r.isSuccess && elegidas is List && elegidas.isNotEmpty) {
@@ -1015,12 +1197,15 @@ class _MiAreaState extends State<_MiArea> {
     if (_datos == null) return const Center(child: CircularProgressIndicator());
     final areas = (_datos!['areas'] as List? ?? []).cast<Map>();
     if (areas.isEmpty) {
-      return const Center(child: Padding(
+      return const Center(
+          child: Padding(
         padding: EdgeInsets.all(24),
         child: Text('Todavía no estás en ningún área. Administración te asigna una.', textAlign: TextAlign.center),
       ));
     }
-    final elegidas = {...((_datos!['elegidas'] as List?) ?? [if (_datos!['area'] != null) _datos!['area']]).map((e) => '$e')};
+    final elegidas = {
+      ...((_datos!['elegidas'] as List?) ?? [if (_datos!['area'] != null) _datos!['area']]).map((e) => '$e')
+    };
     final todas = elegidas.length == areas.length;
     final nombres = {for (final a in areas) '${a['area']}': '${a['name']}'};
     final meses = (_datos!['meses'] as List? ?? []).cast<Map>();
@@ -1066,7 +1251,8 @@ class _MiAreaState extends State<_MiArea> {
                 title: Text('${g['category']} · ${_soles(g['amount'])}'),
                 subtitle: Text('${elegidas.length > 1 ? '${nombres['${g['area']}'] ?? g['area']} · ' : ''}'
                     '${g['description'] ?? ''}${g['description'] != null ? ' · ' : ''}${g['expense_date']} · ${g['created_by']}'),
-                trailing: Text('${g['status']}', style: TextStyle(fontSize: 12, color: g['status'] == 'Pagado' ? Colors.green.shade700 : Colors.orange.shade800)),
+                trailing: Text('${g['status']}',
+                    style: TextStyle(fontSize: 12, color: g['status'] == 'Pagado' ? Colors.green.shade700 : Colors.orange.shade800)),
               ),
           ]),
         ],
@@ -1098,7 +1284,10 @@ class _ResumenState extends State<_Resumen> {
   Future<void> _cargar() async {
     final r = await AdministracionService.resumen();
     if (!mounted) return;
-    setState(() { _meses = (r.data?['meses'] as List?) ?? []; _error = r.isSuccess ? null : r.error; });
+    setState(() {
+      _meses = (r.data?['meses'] as List?) ?? [];
+      _error = r.isSuccess ? null : r.error;
+    });
   }
 
   String _soles(dynamic v) => (num.tryParse('${v ?? 0}') ?? 0).toStringAsFixed(2);
@@ -1108,7 +1297,8 @@ class _ResumenState extends State<_Resumen> {
     // El reporte de ventas se mudó a Procesos → Comercialización (General Manager, 3 nov 2026).
     if (!widget.esDueno) {
       return const Center(
-        child: Padding(padding: EdgeInsets.all(24), child: Text('El reporte de ventas está en Procesos → Comercialización.', textAlign: TextAlign.center)),
+        child: Padding(
+            padding: EdgeInsets.all(24), child: Text('El reporte de ventas está en Procesos → Comercialización.', textAlign: TextAlign.center)),
       );
     }
     return RefreshIndicator(
@@ -1137,8 +1327,7 @@ class _ResumenState extends State<_Resumen> {
 
 /// Abre la búsqueda de personas a pantalla completa. Devuelve la persona elegida, {} si eligió "Ninguno",
 /// o null si cerró sin elegir (X o deslizar a la derecha).
-Future<Map<String, dynamic>?> _elegirPersona(BuildContext context,
-    {required String titulo, String? rol, bool opcional = false, String? elegido}) {
+Future<Map<String, dynamic>?> _elegirPersona(BuildContext context, {required String titulo, String? rol, bool opcional = false, String? elegido}) {
   return Navigator.of(context).push<Map<String, dynamic>>(CupertinoPageRoute(
     fullscreenDialog: false,
     builder: (_) => _ElegirPersona(titulo: titulo, rol: rol, opcional: opcional, elegido: elegido),
@@ -1186,7 +1375,14 @@ class _ElegirPersonaState extends State<_ElegirPersona> {
   void _buscar(String texto) {
     _espera?.cancel();
     _espera = Timer(const Duration(milliseconds: 300), () {
-      setState(() { _busqueda = texto.trim(); _personas.clear(); _hayMas = true; _error = null; _cargando = false; _pedido++; });
+      setState(() {
+        _busqueda = texto.trim();
+        _personas.clear();
+        _hayMas = true;
+        _error = null;
+        _cargando = false;
+        _pedido++;
+      });
       _cargarMas();
     });
   }
@@ -1254,7 +1450,8 @@ class _ElegirPersonaState extends State<_ElegirPersona> {
                   return Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(_personas.isEmpty ? 'Nadie con ese nombre' : '', // al final de la lista no va texto
-                        textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600)),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey.shade600)),
                   );
                 }
                 final p = _personas[k];

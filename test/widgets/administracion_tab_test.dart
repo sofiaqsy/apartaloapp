@@ -118,7 +118,11 @@ void main() {
       return http.Response(jsonEncode({'proveedor': {
         'id': 'P-0001', 'nombre': 'Pedro Ramírez Ñique', 'tipo': 'person', 'comunidad': 'Sector Ejemplo', 'agricultor': true, 'vende': 'parchment',
         'comprador': false, 'procesos': [], 'documento': esDuenoMock ? '00000000' : null, 'telefono': esDuenoMock ? '999000000' : null,
-        'cuentas': esDuenoMock ? [{'tipo': 'bank_account', 'banco': 'BCP', 'numero': '000-0000000-0-00', 'titular': 'Pedro Ramírez Ñique'}] : null,
+        'cuentas': esDuenoMock ? [{'id': 5, 'tipo': 'bank_account', 'banco': 'BCP', 'numero': '000-0000000-0-00', 'titular': 'Pedro Ramírez Ñique'}] : null,
+        'puede_editar': esDuenoMock,
+        'adelantos_lista': esDuenoMock
+            ? [{'id': 'ADV-007', 'fecha': '2026-11-01', 'monto': 500, 'usado': 300, 'devuelto': 0, 'saldo': 200, 'estado': 'partly_used'}]
+            : null,
         'compras': {'n': 2, 'kg': 130, 'ultima': '2026-11-03'},
         'dinero': esDuenoMock ? {'comprado': 1800, 'debe': 300} : null, 'adelantos': esDuenoMock ? {'n': 1, 'saldo': 200} : null,
         'recientes': [{'id': 'DL-0001', 'fecha': '2026-11-03', 'estado': 'parchment', 'kg': 100}],
@@ -1188,9 +1192,55 @@ void main() {
     for (final t in ['Proveedor', 'Pergamino', 'Sector Ejemplo', 'Lo que le compramos', '130 kg', 'Últimas compras']) {
       expect(find.text(t), findsWidgets, reason: t);
     }
-    for (final t in ['DNI o RUC', 'Teléfono', 'Cuentas para pagarle', 'Le debemos']) {
+    for (final t in ['DNI o RUC', 'Teléfono', 'Cuentas para pagarle', 'Le debemos', 'Editar datos', 'Agregar cuenta', 'Adelantos']) {
       expect(find.text(t), findsNothing, reason: t);
     }
+    expect(find.text('Generar reporte'), findsOneWidget); // everyone can make the report (without money for staff)
+    // Opening the detail never asks for the report: it is read only when Generar reporte is tapped.
+    expect(pedidos.where((r) => r.url.path.endsWith('/reporte')), isEmpty);
+  });
+
+  testWidgets('a process screen asks the server only for its own summary', (tester) async {
+    await abrir(tester, rol: 'owner');
+    pedidos.clear();
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final procesos = pedidos.where((r) => r.url.path.endsWith('/procesos')).toList();
+    expect(procesos, isNotEmpty);
+    expect(procesos.last.url.queryParameters['solo'], 'compras');
+  });
+
+  testWidgets('owners edit a provider and its accounts, and see its advances', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Proveedores'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pedro Ramírez Ñique'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    for (final t in ['Generar reporte', 'Editar datos', 'Agregar cuenta']) {
+      expect(find.text(t), findsWidgets, reason: t);
+    }
+    await tester.scrollUntilVisible(find.text('S/ 500 · ADV-007'), 200, scrollable: find.byType(Scrollable).last);
+    expect(find.text('Saldo S/ 200'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Editar datos'), -200, scrollable: find.byType(Scrollable).last);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Editar datos'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Editar proveedor'), findsWidgets);
+    expect(find.descendant(of: find.byType(TextFormField), matching: find.text('Pedro Ramírez Ñique')), findsOneWidget); // filled with today's data
+    await tester.tap(find.byIcon(Icons.close).last);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('000-0000000-0-00'), 200, scrollable: find.byType(Scrollable).last);
+    await tester.tap(find.text('000-0000000-0-00'));
+    await tester.pumpAndSettle();
+    expect(find.text('Editar cuenta'), findsOneWidget);
+    expect(find.text('Quitar cuenta'), findsOneWidget);
   });
 
   testWidgets('owners see the provider\'s DNI, phone, accounts and what we owe', (tester) async {
@@ -1203,7 +1253,7 @@ void main() {
       await tester.tap(find.text('Pedro Ramírez Ñique'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    for (final t in ['DNI o RUC', 'Teléfono', 'Cuentas para pagarle', 'BCP · 000-0000000-0-00 · Pedro Ramírez Ñique', 'Le debemos', 'S/ 300']) {
+    for (final t in ['DNI o RUC', 'Teléfono', 'Cuentas para pagarle', '000-0000000-0-00', 'Cuenta · BCP · Pedro Ramírez Ñique', 'Le debemos', 'S/ 300']) {
       expect(find.text(t), findsWidgets, reason: t);
     }
   });
