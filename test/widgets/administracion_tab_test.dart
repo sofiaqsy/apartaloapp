@@ -165,8 +165,12 @@ void main() {
     }
     expect(find.text('Solicitudes'), findsNothing);
     // Registrar: one card per process, with its summary, and Registrar gasto below.
-    for (final t in ['Finca', 'Compras', 'Producción', 'Café verde', '760 kg', 'Sin precio', 'En almacén', 'Último recibido', 'Parcelas']) {
+    // Each card shows its 2 most important data; the other 2 are inside.
+    for (final t in ['Comercialización', 'Producción', 'Compras', 'Café verde', 'Café tostado', '760 kg', 'Recibido', 'Sin precio']) {
       expect(find.text(t), findsOneWidget, reason: t);
+    }
+    for (final t in ['Tuestes este mes', 'Merma', 'En almacén', 'Último recibido']) {
+      expect(find.text(t), findsNothing, reason: t);
     }
     // Registrar gasto and the cash withdrawal live inside the processes (3 Nov 2026).
     expect(find.text('Registrar gasto'), findsNothing);
@@ -187,9 +191,11 @@ void main() {
 
   testWidgets('the owner also sees Pagar compra and Retiro a caja', (tester) async {
     await abrir(tester, rol: 'owner');
-    for (final t in ['S/ 300', 'Adelantos abiertos', 'S/ 1,500', 'Sin precio', 'Gastos este mes', 'S/ 180']) {
+    for (final t in ['Recibido', 'S/ 300']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
+    expect(find.text('Por pagar'), findsWidgets); // Compras, and Finca further down
+    expect(find.text('Adelantos abiertos'), findsNothing); // inside Compras, not on the card
     await http.runWithClient(() async {
       await tester.tap(find.text('Compras'));
       await tester.pumpAndSettle();
@@ -751,18 +757,21 @@ void main() {
     expect(jsonDecode(req.body)['area'], 'production');
   });
 
-  testWidgets('the cards follow the coffee and the first two are in sight on an iPhone', (tester) async {
+  testWidgets('cards in the GM\'s order (Comercialización, Producción, Compras, Finca), three in sight on an iPhone', (tester) async {
     await abrir(tester, rol: 'owner');
-    final arriba = [for (final t in ['Finca', 'Compras', 'Producción']) tester.getTopLeft(find.text(t)).dy];
+    final arriba = [for (final t in ['Comercialización', 'Producción', 'Compras']) tester.getTopLeft(find.text(t)).dy];
     expect(arriba, orderedEquals([...arriba]..sort()));
     // On the phone the app bar and the bottom tabs take about 190 points of the 844.
-    final abajo = tester.getBottomLeft(find.text('Adelantos abiertos')).dy;
+    final abajo = tester.getBottomLeft(find.text('S/ 300')).dy;
     expect(abajo, lessThan(844 - 190), reason: 'bottom of the Compras card at $abajo');
+    await tester.scrollUntilVisible(find.text('Finca'), 200, scrollable: find.byType(Scrollable).last);
+    expect(tester.getTopLeft(find.text('Finca')).dy, greaterThan(tester.getTopLeft(find.text('Compras')).dy));
   });
 
   testWidgets('Finca: its 4 indicators, Registrar gasto de finca with the Finca area, and its last expenses', (tester) async {
     await abrir(tester, rol: 'staff');
-    expect(find.text('3'), findsOneWidget); // parcelas, staff see no money
+    await tester.scrollUntilVisible(find.text('Finca'), 200, scrollable: find.byType(Scrollable).last);
+    expect(find.text('Cosecha'), findsOneWidget); // staff: gastos (count) and cosecha, no money
     expect(find.text('S/ 180'), findsNothing);
     await http.runWithClient(() async {
       await tester.tap(find.text('Finca'));
@@ -778,13 +787,12 @@ void main() {
     expect(jsonDecode(req.body)['area'], 'farm');
   });
 
-  testWidgets('Comercialización is the third card, with the sales report inside; Resumen no longer has it', (tester) async {
+  testWidgets('Comercialización is the first card, with the sales report inside; Resumen no longer has it', (tester) async {
     await abrir(tester, rol: 'staff');
     await tester.scrollUntilVisible(find.text('Vendido este mes'), 200, scrollable: find.byType(Scrollable).last);
     expect(find.text('Comercialización'), findsOneWidget);
-    expect(find.text('S/ 3,000'), findsNWidgets(2)); // this month and the year (only one month in the test)
-    expect(find.text('Ticket promedio'), findsOneWidget);
-    expect(find.text('S/ 1,000'), findsOneWidget);
+    expect(find.text('S/ 3,000'), findsOneWidget); // vendido este mes; the card shows 2 data
+    expect(find.text('Ticket promedio'), findsNothing); // inside
     await http.runWithClient(() async {
       await tester.tap(find.text('Comercialización'));
       await tester.pumpAndSettle();

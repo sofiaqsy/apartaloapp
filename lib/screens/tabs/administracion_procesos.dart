@@ -117,21 +117,16 @@ class _RegistrarState extends State<_Registrar> {
 
   @override
   Widget build(BuildContext context) {
-    // Una tarjeta por proceso, en el orden del café: se cultiva, se compra, se produce, se vende.
+    // Una tarjeta por proceso, en el orden que pidió la General Manager (3 nov 2026): Comercialización,
+    // Producción, Compras y Finca al final.
     // Registrar gasto y el retiro de efectivo están dentro de cada proceso (General Manager, 3 nov 2026).
     // Sólo se ven las de las áreas marcadas en Perfil → Mis áreas (General Manager, 3 nov 2026).
     final tarjetas = <(String, Object?, Widget)>[
-      ('farm', _finca, _TarjetaProceso(
-        titulo: 'Finca',
-        indicadores: _finca == null ? null : _indicadoresFinca(_finca!, widget.esDueno),
+      ('commercial', _comercial, _TarjetaProceso(
+        titulo: 'Comercialización',
+        indicadores: _comercial == null ? null : _indicadoresComercial(_comercial!),
         error: _error,
-        onTap: () => _entrar(_FincaScreen(esDueno: widget.esDueno)),
-      )),
-      ('sourcing', _compras, _TarjetaProceso(
-        titulo: 'Compras',
-        indicadores: _compras == null ? null : _indicadoresCompras(_compras!, widget.esDueno),
-        error: _error,
-        onTap: () => _entrar(_ComprasScreen(esDueno: widget.esDueno)),
+        onTap: () => _entrar(const _ComercialScreen()),
       )),
       ('production', _produccion, _TarjetaProceso(
         titulo: 'Producción',
@@ -139,11 +134,17 @@ class _RegistrarState extends State<_Registrar> {
         error: _error,
         onTap: () => _entrar(const _ProduccionScreen()),
       )),
-      ('commercial', _comercial, _TarjetaProceso(
-        titulo: 'Comercialización',
-        indicadores: _comercial == null ? null : _indicadoresComercial(_comercial!),
+      ('sourcing', _compras, _TarjetaProceso(
+        titulo: 'Compras',
+        indicadores: _compras == null ? null : _indicadoresCompras(_compras!, widget.esDueno),
         error: _error,
-        onTap: () => _entrar(const _ComercialScreen()),
+        onTap: () => _entrar(_ComprasScreen(esDueno: widget.esDueno)),
+      )),
+      ('farm', _finca, _TarjetaProceso(
+        titulo: 'Finca',
+        indicadores: _finca == null ? null : _indicadoresFinca(_finca!, widget.esDueno),
+        error: _error,
+        onTap: () => _entrar(_FincaScreen(esDueno: widget.esDueno)),
       )),
     ];
     final areas = _areas;
@@ -228,10 +229,10 @@ List<_Indicador> _indicadoresFinca(Map<String, dynamic> f, bool esDueno) {
   final nAct = (f['actividades_mes'] as num?)?.toInt() ?? 0;
   return [
     _Indicador(Icons.receipt_long, '$nMes', 'Gastos este mes', tono: Colors.orange, nota: 'registrados'),
+    cosechaInd,
     _Indicador(Icons.landscape, '${parcelas['n'] ?? 0}', 'Parcelas', tono: Colors.brown,
         nota: '${parcelas['hectareas'] ?? 0} ha'),
     _Indicador(Icons.event_note, '$nAct', 'Labores del mes', tono: Colors.blue, nota: 'en las parcelas'),
-    cosechaInd,
   ];
 }
 
@@ -253,7 +254,6 @@ List<_Indicador> _indicadoresCompras(Map<String, dynamic> c, bool esDueno) {
     final nAdel = (adelantos['n'] as num?)?.toInt() ?? 0;
     return [
       recibido,
-      precio,
       _Indicador(Icons.account_balance_wallet, _soles(porPagar['total']), 'Por pagar',
           tono: Colors.blue, nota: '$nPagar ${nPagar == 1 ? 'compra' : 'compras'}', atencion: nPagar > 0),
       _Indicador(Icons.handshake, _soles(adelantos['saldo']), 'Adelantos abiertos',
@@ -351,7 +351,8 @@ class _TarjetaProceso extends StatelessWidget {
                 child: error != null ? Text(error!) : const Center(child: CircularProgressIndicator()),
               )
             else
-              _CuatroDatos(indicadores: datos),
+              // En la tarjeta sólo los 2 más importantes (General Manager, 3 nov 2026); los 4 están dentro.
+              _CuatroDatos(indicadores: datos.take(2).toList()),
           ]),
         ),
       ),
