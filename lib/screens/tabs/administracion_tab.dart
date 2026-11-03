@@ -245,7 +245,7 @@ bool _esDevolucion(Map<String, dynamic> v) => v['tipo'] == 'advance_return';
 const _titulos = {
   'gasto': 'Registrar gasto', 'pagoGasto': 'Pagar gasto', 'adelanto': 'Solicitar adelanto', 'aprobarAdelanto': 'Aprobar adelanto',
   'rechazarAdelanto': 'Rechazar adelanto', 'proveedor': 'Registrar proveedor', 'entrega': 'Registrar compra',
-  'precio': 'Poner precio al café recibido', 'pago': 'Pagar compra', 'ingreso': 'Registrar ingreso', 'retiro': 'Registrar retiro de efectivo',
+  'precio': 'Poner precio a la compra', 'pago': 'Pagar compra', 'ingreso': 'Registrar ingreso', 'retiro': 'Registrar retiro de efectivo',
 };
 
 // Lo que pasó y lo que sigue, después de guardar.
@@ -724,7 +724,8 @@ class _PendientesState extends State<_Pendientes> {
   }
 
   static const _iconos = {'gasto': Icons.receipt_long, 'adelanto': Icons.handshake, 'entrega': Icons.move_to_inbox};
-  static const _nombres = {'gasto': 'Gasto', 'adelanto': 'Adelanto', 'entrega': 'Café recibido'};
+  // Una sola palabra para el café que se compra (General Manager, 3 nov 2026): Compra, con su estado.
+  static const _nombres = {'gasto': 'Gasto', 'adelanto': 'Adelanto', 'entrega': 'Compra'};
 
   /// Una sola lista: lo que se pidió o registró (como en Solicitudes) y lo que espera a Administración, sin repetir.
   List<_Fila> _filas() {
@@ -748,13 +749,15 @@ class _PendientesState extends State<_Pendientes> {
 
     for (final d in lista('sinPrecio')) {
       final id = '${d['id']}';
-      fila(id, () => _Fila(id: id, tipo: 'Café recibido', icono: Icons.move_to_inbox, fecha: '${d['delivery_date']}', estado: 'Sin precio', areas: _areasCafe,
+      fila(id, () => _Fila(id: id, tipo: 'Compra', icono: Icons.move_to_inbox, fecha: '${d['delivery_date']}', estado: 'Sin precio', areas: _areasCafe,
               lineas: ['${d['kg']} kg · ${d['farmer_id']}', '${d['delivery_date']}']))
           .acciones.add(('Poner precio', () => _formulario('precio', {'entregaId': d['id']}, '$id · ${d['kg']} kg')));
     }
     for (final p in lista('porPagar')) {
       final id = '${p['delivery_id'] ?? p['id']}'; // la compra va en la fila de su entrega
-      final f = fila(id, () => _Fila(id: id, tipo: 'Compra', icono: Icons.shopping_bag, fecha: '${p['purchase_date']}', estado: 'Por pagar', areas: _areasCafe,
+      // Si ya se pagó algo (de un adelanto o un pago), es "Pagado en parte".
+      final pagadoAlgo = (num.tryParse('${p['paid'] ?? 0}') ?? 0) + (num.tryParse('${p['from_advances'] ?? 0}') ?? 0) > 0;
+      final f = fila(id, () => _Fila(id: id, tipo: 'Compra', icono: Icons.shopping_bag, fecha: '${p['purchase_date']}', estado: pagadoAlgo ? 'Pagado en parte' : 'Por pagar', areas: _areasCafe,
           monto: num.tryParse('${p['still_owed']}'), lineas: ['${p['id']} · ${p['farmer_id']}', 'Falta ${_soles(p['still_owed'])}']));
       if (dueno) f.acciones.add(('Pagar compra', () => _formulario('pago', {'compraId': p['id']}, '${p['id']} · debe ${_soles(p['still_owed'])}')));
     }

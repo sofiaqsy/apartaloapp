@@ -106,6 +106,8 @@ void main() {
       final offset = int.parse(req.url.queryParameters['offset'] ?? '0');
       final todas = [
         {'id': 'DL-0001', 'fecha': '2026-11-03', 'agricultor': 'Pedro Ramírez Ñique', 'estado': 'parchment', 'kg': 100, 'producto': 'Blend de Caturra, Pache, typica', 'situacion': 'Sin precio'},
+        {'id': 'DL-0002', 'fecha': '2026-11-02', 'agricultor': 'Agricultor Parte', 'estado': 'parchment', 'kg': 50, 'situacion': 'Pagado en parte', 'descuento': true},
+        {'id': 'DL-0003', 'fecha': '2026-11-02', 'agricultor': 'Agricultor Rechazo', 'estado': 'cherry', 'kg': 20, 'situacion': 'Rechazado'},
         for (var i = 0; i < 24; i++) {'id': 'DL-1$i', 'fecha': '2026-10-01', 'agricultor': 'Agricultor ${i.toString().padLeft(2, '0')}', 'estado': 'cherry', 'kg': 10, 'situacion': 'Pagado', 'precio': 5},
       ];
       final pagina = todas.skip(offset).take(20).toList();
@@ -197,10 +199,10 @@ void main() {
     expect(find.text('Solicitudes'), findsNothing);
     // Registrar: one card per process, with its summary, and Registrar gasto below.
     // Each card shows its 2 most important data; the other 2 are inside.
-    for (final t in ['Comercialización', 'Producción', 'Compras', 'Café verde', 'Café tostado', '760 kg', 'Recibido', 'Sin precio']) {
+    for (final t in ['Comercialización', 'Producción', 'Compras', 'Café verde', 'Café tostado', '760 kg', 'Comprado', 'Sin precio']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
-    for (final t in ['Tuestes este mes', 'Merma', 'En almacén', 'Último recibido']) {
+    for (final t in ['Tuestes este mes', 'Merma', 'En almacén', 'Última compra']) {
       expect(find.text(t), findsNothing, reason: t);
     }
     // Registrar gasto and the cash withdrawal live inside the processes (3 Nov 2026).
@@ -222,7 +224,7 @@ void main() {
 
   testWidgets('the owner also sees Pagar compra and Retiro a caja', (tester) async {
     await abrir(tester, rol: 'owner');
-    for (final t in ['Recibido', 'S/ 300']) {
+    for (final t in ['Comprado', 'S/ 300']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     expect(find.text('Por pagar'), findsWidgets); // Compras, and Finca further down
@@ -867,12 +869,12 @@ void main() {
       await tester.tap(find.text('Pendientes'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    expect(find.textContaining('Café recibido'), findsNothing); // coffee is Compras and Finanzas
+    expect(find.textContaining('Compra'), findsNothing); // compras belong to Compras and Finanzas
     expect(find.textContaining('de otras áreas'), findsOneWidget);
     expect(find.text('Nada pendiente en tus áreas'), findsOneWidget);
     await tester.tap(find.textContaining('de otras áreas'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Café recibido'), findsWidgets);
+    expect(find.textContaining('Compra'), findsWidgets);
   });
 
   testWidgets('Compras lists the farmers in pages of 20, searchable, without actions', (tester) async {
@@ -995,7 +997,7 @@ void main() {
       expect(find.byIcon(Icons.chevron_right), findsWidgets);
       await tester.tap(find.text('Pedro Ramírez Ñique'));
       await tester.pumpAndSettle();
-      for (final t in ['Compra', 'Blend de Caturra, Pache, typica', 'L-0001 · calidad por revisar', '12.5 %', 'Poner precio']) {
+      for (final t in ['Compra', 'Blend de Caturra, Pache, typica', 'L-0001 · calidad por revisar', '12.5 %', 'Revisión de calidad', 'Poner precio']) {
         expect(find.text(t), findsWidgets, reason: t);
       }
     }, () => MockClient((req) async => responder(req)));
@@ -1012,5 +1014,17 @@ void main() {
       await tester.pumpAndSettle();
       expect(pedidos.where((r) => r.url.path.endsWith('/compras')).length, greaterThan(antes));
     }, () => MockClient((req) async => responder(req)));
+  });
+
+  testWidgets('a compra shows one of the five states, and the discount label', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    for (final t in ['Sin precio', 'Pagado en parte', 'Rechazado']) {
+      expect(find.text(t), findsWidgets, reason: t);
+    }
+    expect(find.textContaining('Con descuento'), findsOneWidget);
   });
 }

@@ -2,9 +2,24 @@ part of 'administracion_tab.dart';
 
 // ─── Procesos (antes Registrar): tarjetas por proceso ───────────────────────
 // General Manager, 3 nov 2026: Registrar se ordena por proceso. Cada tarjeta muestra un resumen
-// (lotes y café de hoy) y al entrar tiene sus acciones: Compras (café recibido, adelantos, pagar
+// (lotes y café de hoy) y al entrar tiene sus acciones: Compras (compras, adelantos, pagar
 // compras) y Producción (tostar café). Los datos vienen de la base: purchasing_summary y
 // production_summary, que leen nuestros registros y los lotes y tuestes de Apartalo sin cambiarlos.
+
+/// Estados de una compra (General Manager, 3 nov 2026, tras la reunión con Compras, Finanzas, Calidad y TI).
+const _coloresCompra = {
+  'Sin precio': Colors.orange,
+  'Por pagar': Colors.blue,
+  'Pagado en parte': Colors.teal,
+  'Pagado': Colors.green,
+  'Rechazado': Colors.red,
+};
+const _decisiones = {
+  'accepted': 'Aceptado',
+  'accepted_with_discount': 'Aceptado con descuento',
+  'rejected': 'Rechazado',
+  'on_hold': 'En espera',
+};
 
 const _estadosCafe = {'parchment': 'Pergamino', 'cherry': 'Cereza', 'green': 'Verde', 'roasted': 'Tostado', 'packaged': 'Empacado'};
 
@@ -273,8 +288,12 @@ List<_Indicador> _indicadoresCompras(Map<String, dynamic> c, bool esDueno) {
   final sinPrecio = _mapa(c['sin_precio']);
   final nRecibidos = (mes['recibidos'] as num?)?.toInt() ?? 0;
   final nSinPrecio = (sinPrecio['n'] as num?)?.toInt() ?? 0;
-  final recibido = _Indicador(Icons.move_to_inbox, _kg(mes['kg']), 'Recibido',
-      tono: Colors.green, nota: '${_meses[DateTime.now().month - 1]} · $nRecibidos ${nRecibidos == 1 ? 'entrega' : 'entregas'}');
+  // Comprado: sólo el café que no se rechazó (General Manager, 3 nov 2026).
+  final rechazados = (c['rechazados_mes'] as num?)?.toInt() ?? 0;
+  final recibido = _Indicador(Icons.move_to_inbox, _kg(mes['kg']), 'Comprado',
+      tono: Colors.green,
+      nota: '${_meses[DateTime.now().month - 1]} · $nRecibidos ${nRecibidos == 1 ? 'compra' : 'compras'}'
+          '${rechazados > 0 ? ' · $rechazados ${rechazados == 1 ? 'rechazada' : 'rechazadas'}' : ''}');
   final precio = _Indicador(Icons.sell_outlined, '$nSinPrecio', 'Sin precio',
       tono: Colors.orange, nota: nSinPrecio == 0 ? 'todo con precio' : _kg(sinPrecio['kg']), atencion: nSinPrecio > 0);
   if (esDueno && c['por_pagar'] != null) {
@@ -297,7 +316,7 @@ List<_Indicador> _indicadoresCompras(Map<String, dynamic> c, bool esDueno) {
     precio,
     _Indicador(Icons.inventory_2_outlined, _kg(kgAlmacen), 'En almacén',
         tono: Colors.brown, nota: almacen.map((a) => _estadosCafe[a['estado']] ?? '${a['estado']}').join(', ')),
-    _Indicador(Icons.event, c['ultimo'] == null ? '—' : _fechaCorta(c['ultimo']), 'Último recibido', tono: Colors.blue),
+    _Indicador(Icons.event, c['ultimo'] == null ? '—' : _fechaCorta(c['ultimo']), 'Última compra', tono: Colors.blue),
   ];
 }
 
@@ -682,7 +701,8 @@ class _Pildora extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(color: tono.shade50, borderRadius: BorderRadius.circular(20)),
-      child: Text(texto, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: tono.shade800)),
+      child: Text(texto,
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: tono.shade800), maxLines: 1, overflow: TextOverflow.ellipsis),
     );
   }
 }
@@ -708,7 +728,11 @@ class _Ficha extends StatelessWidget {
             Text(detalle!, style: TextStyle(fontSize: 13, color: Colors.grey.shade700), maxLines: 2, overflow: TextOverflow.ellipsis),
         ]),
       ),
-      if (fin != null) ...[const SizedBox(width: 8), fin!],
+      // La etiqueta de la derecha nunca empuja la fila fuera de la pantalla: comparte el ancho con el texto y se corta.
+      if (fin != null) ...[
+        const SizedBox(width: 8),
+        Flexible(child: Align(alignment: Alignment.centerRight, widthFactor: 1, child: fin!)),
+      ],
       if (onTap != null) Icon(Icons.chevron_right, color: Colors.grey.shade600),
     ]);
     // Lo que no se toca no parece botón (General Manager, 3 nov 2026): sin caja blanca, sólo una línea fina.
@@ -1046,7 +1070,7 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
     }
   }
 
-  static const _colorSituacion = {'Sin precio': Colors.orange, 'Por pagar': Colors.blue, 'Pagado': Colors.green};
+  static const _colorSituacion = _coloresCompra;
 
   List<Widget> _listaCompras() => [
         const SizedBox(height: 12),
@@ -1057,6 +1081,7 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
             detalle: [
               '${_estadosCafe[c['estado']] ?? c['estado']} · ${_kg(c['kg'])}',
               if (c['producto'] != null) '${c['producto']}',
+              if (c['descuento'] == true) 'Con descuento',
             ].join(' · '),
             fin: _Pildora(
               c['precio'] != null ? '${_soles(c['precio'])}/kg' : '${c['situacion'] ?? ''}',
@@ -1216,7 +1241,7 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
                 Row(children: [
                   Expanded(
                       child: Text('${c['agricultor'] ?? 'Sin nombre'}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
-                  _Pildora(situacion, situacion == 'Pagado' ? Colors.green : (situacion == 'Por pagar' ? Colors.blue : Colors.orange)),
+                  _Pildora(situacion, _coloresCompra[situacion] ?? Colors.grey),
                 ]),
                 Text('${c['id']} · ${_fechaCorta(c['fecha'])}', style: TextStyle(color: Colors.grey.shade700)),
                 _panel('Café', [
@@ -1225,10 +1250,20 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
                   _dato('Producto vinculado', c['producto']?.toString()),
                   _dato('Lote',
                       lote == null ? null : '${lote['id']} · calidad ${lote['calidad'] == 'pending' ? 'por revisar' : lote['calidad']}'),
-                  _dato('Humedad', revision?['humedad'] == null ? null : '${revision!['humedad']} %'),
-                  _dato('Factor de rendimiento', revision?['rendimiento']?.toString()),
                   _dato('Notas', c['notas']?.toString()),
                   _dato('Registrado por', c['registrado_por']?.toString()),
+                ]),
+                // La revisión al llegar, como la registró Calidad (aquí sólo se muestra; sólo Calidad la registra).
+                _panel('Revisión de calidad', [
+                  _dato('Decisión',
+                      revision == null ? 'Sin revisión todavía' : (_decisiones[revision['decision']] ?? revision['decision']?.toString())),
+                  _dato('Humedad', revision?['humedad'] == null ? null : '${revision!['humedad']} %'),
+                  _dato('Cereza madura', revision?['maduro'] == null ? null : '${revision!['maduro']} %'),
+                  _dato('Factor de rendimiento', revision?['rendimiento']?.toString()),
+                  _dato('Defectos', revision?['defectos']?.toString()),
+                  _dato('Olor', revision?['olor']?.toString()),
+                  _dato('Muestra guardada', revision?['muestra'] == null ? null : (revision!['muestra'] == true ? 'Sí' : 'No')),
+                  _dato('Revisado por', revision?['por']?.toString()),
                 ]),
                 if (compra != null)
                   _panel('Dinero', [
@@ -1251,7 +1286,7 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
                       () => _formulario('precio', {'entregaId': c['id']}, '${c['id']} · ${_kg(c['kg'])}')
                     ),
                   ])
-                else if (widget.esDueno && situacion == 'Por pagar' && compra != null)
+                else if (widget.esDueno && (situacion == 'Por pagar' || situacion == 'Pagado en parte') && compra != null)
                   _Acciones(acciones: [
                     (
                       Icons.payments,
