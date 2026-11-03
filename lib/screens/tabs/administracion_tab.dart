@@ -890,6 +890,9 @@ class _Mensaje extends StatelessWidget {
 /// Dónde se recuerdan las áreas marcadas para Mi área (las mismas en Perfil y en Mi área).
 const claveAreasElegidas = 'mi_area_elegidas';
 
+/// Avisa que las áreas marcadas cambiaron (Perfil), para que Registrar muestre sólo esas tarjetas.
+final cambioDeAreas = ValueNotifier<int>(0);
+
 /// Mi área como pantalla propia (se abre desde Perfil), con flecha para volver.
 class MiAreaScreen extends StatelessWidget {
   const MiAreaScreen({super.key, this.area});
@@ -928,6 +931,7 @@ class _MiAreaState extends State<_MiArea> {
     if (r.isSuccess && elegidas is List && elegidas.isNotEmpty) {
       try {
         await (await SharedPreferences.getInstance()).setStringList(claveAreasElegidas, elegidas.map((e) => '$e').toList());
+        cambioDeAreas.value++;
       } catch (_) {}
     }
   }

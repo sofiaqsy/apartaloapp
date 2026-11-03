@@ -46,23 +46,56 @@ class _RegistrarState extends State<_Registrar> {
   Map<String, dynamic>? _produccion;
   Map<String, dynamic>? _comercial;
   String? _error;
+  Set<String>? _areas; // las áreas marcadas en Perfil; null mientras carga
+  bool _cargado = false; // ya llegaron los resúmenes (hasta entonces cada tarjeta muestra su carga)
 
   @override
   void initState() {
     super.initState();
+    cambioDeAreas.addListener(_leerAreas);
     _cargar();
   }
 
+  @override
+  void dispose() {
+    cambioDeAreas.removeListener(_leerAreas);
+    super.dispose();
+  }
+
+  /// Las mismas áreas que Perfil marca: las guardadas que son de la persona; sin nada guardado, la principal.
+  /// (Los dueños sin áreas asignadas tienen todas.)
+  Future<void> _leerAreas() async {
+    final r = await AdministracionService.miArea();
+    List<String> guardadas = [];
+    try {
+      guardadas = (await SharedPreferences.getInstance()).getStringList(claveAreasElegidas) ?? [];
+    } catch (_) {}
+    if (!mounted || !r.isSuccess) return;
+    final todas = ((r.data!['areas'] as List?) ?? []).map(_mapa).toList();
+    final asignadas = todas.where((a) => a['role'] == 'lead' || a['role'] == 'member').toList();
+    final mias = asignadas.isNotEmpty ? asignadas : todas;
+    final validas = mias.map((a) => '${a['area']}').toSet();
+    final elegidas = guardadas.where(validas.contains).toSet();
+    if (elegidas.isEmpty && mias.isNotEmpty) {
+      elegidas.add('${mias.firstWhere((a) => a['principal'] == true, orElse: () => mias.first)['area']}');
+    }
+    setState(() => _areas = elegidas);
+  }
+
   Future<void> _cargar() async {
+    _leerAreas();
     final r = await AdministracionService.procesos();
     if (!mounted) return;
     setState(() {
       _error = r.isSuccess ? null : r.error;
       if (r.isSuccess) {
-        _finca = _mapa(r.data!['finca']);
-        _compras = _mapa(r.data!['compras']);
-        _produccion = _mapa(r.data!['produccion']);
-        _comercial = _mapa(r.data!['comercial']);
+        _cargado = true;
+        // El servidor sólo manda los procesos de las áreas de la persona; los que faltan quedan en null.
+        Map<String, dynamic>? de(String k) => r.data![k] is Map ? _mapa(r.data![k]) : null;
+        _finca = de('finca');
+        _compras = de('compras');
+        _produccion = de('produccion');
+        _comercial = de('comercial');
       }
     });
   }
@@ -79,40 +112,57 @@ class _RegistrarState extends State<_Registrar> {
 
   @override
   Widget build(BuildContext context) {
+    // Una tarjeta por proceso, en el orden del café: se cultiva, se compra, se produce, se vende.
+    // Registrar gasto y el retiro de efectivo están dentro de cada proceso (General Manager, 3 nov 2026).
+    // Sólo se ven las de las áreas marcadas en Perfil → Mis áreas (General Manager, 3 nov 2026).
+    final tarjetas = <(String, Object?, Widget)>[
+      ('farm', _finca, _TarjetaProceso(
+        titulo: 'Finca',
+        indicadores: _finca == null ? null : _indicadoresFinca(_finca!, widget.esDueno),
+        error: _error,
+        onTap: () => _entrar(_FincaScreen(esDueno: widget.esDueno)),
+      )),
+      ('sourcing', _compras, _TarjetaProceso(
+        titulo: 'Compras',
+        indicadores: _compras == null ? null : _indicadoresCompras(_compras!, widget.esDueno),
+        error: _error,
+        onTap: () => _entrar(_ComprasScreen(esDueno: widget.esDueno)),
+      )),
+      ('production', _produccion, _TarjetaProceso(
+        titulo: 'Producción',
+        indicadores: _produccion == null ? null : _indicadoresProduccion(_produccion!),
+        error: _error,
+        onTap: () => _entrar(const _ProduccionScreen()),
+      )),
+      ('commercial', _comercial, _TarjetaProceso(
+        titulo: 'Comercialización',
+        indicadores: _comercial == null ? null : _indicadoresComercial(_comercial!),
+        error: _error,
+        onTap: () => _entrar(const _ComercialScreen()),
+      )),
+    ];
+    final areas = _areas;
+    // Marcada en Perfil y, ya cargado, con datos del servidor (que no manda procesos de áreas ajenas).
+    final visibles = areas == null
+        ? <Widget>[]
+        : [for (final (area, datos, t) in tarjetas) if (areas.contains(area) && (!_cargado || datos != null)) t];
     return RefreshIndicator(
       onRefresh: _cargar,
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Una tarjeta por proceso, en el orden del café: se cultiva, se compra, se produce, se vende.
-          // Registrar gasto y el retiro de efectivo están dentro de cada proceso (General Manager, 3 nov 2026).
-          _TarjetaProceso(
-            titulo: 'Finca',
-            indicadores: _finca == null ? null : _indicadoresFinca(_finca!, widget.esDueno),
-            error: _error,
-            onTap: () => _entrar(_FincaScreen(esDueno: widget.esDueno)),
-          ),
-          const SizedBox(height: 10),
-          _TarjetaProceso(
-            titulo: 'Compras',
-            indicadores: _compras == null ? null : _indicadoresCompras(_compras!, widget.esDueno),
-            error: _error,
-            onTap: () => _entrar(_ComprasScreen(esDueno: widget.esDueno)),
-          ),
-          const SizedBox(height: 10),
-          _TarjetaProceso(
-            titulo: 'Producción',
-            indicadores: _produccion == null ? null : _indicadoresProduccion(_produccion!),
-            error: _error,
-            onTap: () => _entrar(const _ProduccionScreen()),
-          ),
-          const SizedBox(height: 10),
-          _TarjetaProceso(
-            titulo: 'Comercialización',
-            indicadores: _comercial == null ? null : _indicadoresComercial(_comercial!),
-            error: _error,
-            onTap: () => _entrar(const _ComercialScreen()),
-          ),
+          if (areas == null)
+            const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator()))
+          else if (visibles.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                'Tus áreas marcadas no tienen tarjeta aquí. Marca Finca, Compras, Producción o Comercial en Perfil → Mis áreas.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey.shade700),
+              ),
+            ),
+          for (final (i, t) in visibles.indexed) ...[if (i > 0) const SizedBox(height: 10), t],
         ],
       ),
     );
@@ -445,7 +495,8 @@ abstract class _ProcesoState<T extends StatefulWidget> extends State<T> {
     if (!mounted) return;
     setState(() {
       error = r.isSuccess ? null : r.error;
-      if (r.isSuccess) datos = _mapa(r.data![clave]);
+      if (r.isSuccess && r.data![clave] is! Map) error = 'Este proceso no es de tus áreas.';
+      if (r.isSuccess && r.data![clave] is Map) datos = _mapa(r.data![clave]);
     });
   }
 
@@ -748,7 +799,8 @@ class _ComercialScreenState extends State<_ComercialScreen> {
     if (!mounted) return;
     setState(() {
       _error = r.isSuccess ? null : r.error;
-      if (r.isSuccess) _datos = _mapa(r.data!['comercial']);
+      if (r.isSuccess && r.data!['comercial'] is! Map) _error = 'Este proceso no es de tus áreas.';
+      if (r.isSuccess && r.data!['comercial'] is Map) _datos = _mapa(r.data!['comercial']);
     });
   }
 

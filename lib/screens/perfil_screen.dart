@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/administracion_service.dart';
 import '../services/auth_service.dart';
 import 'settings/settings_screen.dart';
-import 'tabs/administracion_tab.dart' show MiAreaScreen, claveAreasElegidas;
+import 'tabs/administracion_tab.dart' show MiAreaScreen, claveAreasElegidas, cambioDeAreas;
 import 'team_screen.dart';
 
 const _nombresAreas = {
@@ -78,6 +78,7 @@ class _PerfilScreenState extends State<PerfilScreen> {
     try {
       await (await SharedPreferences.getInstance()).setStringList(claveAreasElegidas, nuevas.toList());
     } catch (_) {}
+    cambioDeAreas.value++; // Registrar muestra sólo las tarjetas de las áreas marcadas
   }
 
   String _iniciales(String texto) {

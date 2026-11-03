@@ -12,6 +12,9 @@ import 'package:apartalo_app/services/administracion_service.dart';
 void main() {
   final pedidos = <http.Request>[];
   var sugerencia = <String, dynamic>{'area': 'fulfillment', 'cost_centre': 'coffee', 'source': 'to_review'};
+  // Las áreas marcadas en Perfil deciden qué tarjetas muestra Registrar.
+  var marcadas = ['farm', 'sourcing', 'production', 'commercial'];
+  var sinComercial = false; // el servidor no manda Comercialización (no es área de la persona)
 
   http.Response responder(http.Request req) {
     pedidos.add(req);
@@ -64,7 +67,15 @@ void main() {
       final elegidas = pedido == 'todas' ? ['fulfillment', 'sourcing'] : pedido.split(',');
       return http.Response(jsonEncode({
         'elegidas': elegidas,
-        'areas': [{'area': 'fulfillment', 'name': 'Logística', 'role': 'lead', 'principal': true}, {'area': 'sourcing', 'name': 'Compras', 'role': 'member', 'principal': false}],
+        'areas': [
+          {'area': 'fulfillment', 'name': 'Logística', 'role': 'lead', 'principal': true},
+          {'area': 'sourcing', 'name': 'Compras', 'role': 'member', 'principal': false},
+          if (!p.endsWith('/mi-area') || req.url.queryParameters['area'] == null) ...[
+            {'area': 'farm', 'name': 'Finca', 'role': 'member', 'principal': false},
+            {'area': 'production', 'name': 'Producción', 'role': 'member', 'principal': false},
+            {'area': 'commercial', 'name': 'Comercial', 'role': 'member', 'principal': false},
+          ],
+        ],
         'area': 'fulfillment',
         'meses': [{'month': '2026-11-01', 'cost_centre': 'coffee', 'total': 120, 'paid': 0, 'to_pay': 120}],
         'gastos': [
@@ -108,7 +119,7 @@ void main() {
           'cosecha': {'anio': 2026, 'kg': 0},
           'recientes': [{'id': 'EX-0009', 'fecha': '2026-11-02', 'categoria': 'Mano de obra', 'descripcion': 'Jornal deshierbo', 'estado': 'Pendiente de pago', 'monto': 120}],
         },
-        'comercial': {'meses': [
+        if (!sinComercial) 'comercial': {'meses': [
           {'month': '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-01', 'orders': 3, 'total': 3000, 'unpaid': 3000},
         ]},
       }), 200);
@@ -122,6 +133,8 @@ void main() {
   setUp(() {
     pedidos.clear();
     sugerencia = {'area': 'fulfillment', 'cost_centre': 'coffee', 'source': 'to_review'};
+    marcadas = ['farm', 'sourcing', 'production', 'commercial'];
+    sinComercial = false;
     dotenv.testLoad(fileInput: 'API_BASE_URL=https://api.test\nBUSINESS_ID=BIZ-002');
   });
 
@@ -136,7 +149,7 @@ void main() {
     tester.view.physicalSize = const Size(1170, 2532);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
-    SharedPreferences.setMockInitialValues({'business_role': rol});
+    SharedPreferences.setMockInitialValues({'business_role': rol, 'mi_area_elegidas': marcadas});
     await http.runWithClient(() async {
       await tester.pumpWidget(const MaterialApp(home: Scaffold(body: AdministracionTab())));
       await tester.pumpAndSettle();
@@ -782,5 +795,28 @@ void main() {
     await tester.tap(find.text('Resumen'));
     await tester.pumpAndSettle();
     expect(find.text('El reporte de ventas está en Registrar → Comercialización.'), findsOneWidget);
+  });
+
+  testWidgets('Registrar shows only the cards of the areas ticked in Perfil', (tester) async {
+    marcadas = ['sourcing'];
+    await abrir(tester, rol: 'owner');
+    expect(find.text('Compras'), findsOneWidget);
+    for (final t in ['Finca', 'Producción', 'Comercialización']) {
+      expect(find.text(t), findsNothing, reason: t);
+    }
+  });
+
+  testWidgets('with no process area ticked, Registrar says where to tick them', (tester) async {
+    marcadas = ['fulfillment'];
+    await abrir(tester, rol: 'staff');
+    expect(find.text('Compras'), findsNothing);
+    expect(find.textContaining('Perfil → Mis áreas'), findsOneWidget);
+  });
+
+  testWidgets('a process the server does not send (not the person\'s area) has no card even if ticked', (tester) async {
+    sinComercial = true;
+    await abrir(tester, rol: 'staff');
+    expect(find.text('Compras'), findsOneWidget);
+    expect(find.text('Comercialización'), findsNothing);
   });
 }
