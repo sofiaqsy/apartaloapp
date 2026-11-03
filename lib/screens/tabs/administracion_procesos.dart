@@ -73,36 +73,6 @@ class _RegistrarState extends State<_Registrar> {
     _cargar();
   }
 
-  List<String> _lineasCompras() {
-    final c = _compras;
-    if (c == null) return [_error ?? 'Cargando…'];
-    final mes = _mapa(c['mes']);
-    final sinPrecio = _mapa(c['sin_precio']);
-    final porPagar = c['por_pagar'] == null ? null : _mapa(c['por_pagar']);
-    final adelantos = c['adelantos'] == null ? null : _mapa(c['adelantos']);
-    return [
-      'Este mes: ${mes['recibidos'] ?? 0} recibidos · ${_kg(mes['kg'])}',
-      if ((sinPrecio['n'] ?? 0) != 0) 'Sin precio: ${sinPrecio['n']} (${_kg(sinPrecio['kg'])})',
-      if (porPagar != null && (porPagar['n'] ?? 0) != 0) 'Por pagar: ${_soles(porPagar['total'])} (${porPagar['n']})',
-      if (adelantos != null && (adelantos['n'] ?? 0) != 0) 'Adelantos abiertos: ${_soles(adelantos['saldo'])} (${adelantos['n']})',
-    ];
-  }
-
-  List<String> _lineasProduccion() {
-    final p = _produccion;
-    if (p == null) return [_error ?? 'Cargando…'];
-    final lotes = _lista(p['lotes_verdes']);
-    final tuestes = _lista(p['tuestes']);
-    final mes = _mapa(p['mes']);
-    final enCurso = tuestes.where((t) => t['estado'] == 'in_progress').length;
-    return [
-      'Café verde: ${_kg(p['verde_kg'])} en ${lotes.length} ${lotes.length == 1 ? 'lote' : 'lotes'}',
-      if (tuestes.isNotEmpty)
-        enCurso > 0 ? 'Tostando ahora: $enCurso · programados: ${tuestes.length - enCurso}' : 'Tuestes programados: ${tuestes.length}',
-      'Este mes: ${mes['tuestes'] ?? 0} tuestes${mes['merma_pct'] != null ? ' · merma ${mes['merma_pct']}%' : ''}',
-    ];
-  }
-
   @override
   Widget build(BuildContext context) {
     return RefreshIndicator(
@@ -111,22 +81,21 @@ class _RegistrarState extends State<_Registrar> {
         padding: const EdgeInsets.all(16),
         children: [
           _TarjetaProceso(
-            icono: Icons.shopping_basket,
             titulo: 'Compras',
-            lineas: _lineasCompras(),
+            indicadores: _compras == null ? null : _indicadoresCompras(_compras!, widget.esDueno),
+            error: _error,
             onTap: () => _entrar(_ComprasScreen(esDueno: widget.esDueno)),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           _TarjetaProceso(
-            icono: Icons.local_fire_department,
             titulo: 'Producción',
-            lineas: _lineasProduccion(),
+            indicadores: _produccion == null ? null : _indicadoresProduccion(_produccion!),
+            error: _error,
             onTap: () => _entrar(const _ProduccionScreen()),
           ),
-          const SizedBox(height: 20),
-          Text('Otros', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
-          const SizedBox(height: 8),
-          _Acciones(acciones: [
+          const SizedBox(height: 12),
+          // Botones bajos para que se vean sin deslizar, debajo de las dos tarjetas.
+          _Acciones(compactas: true, acciones: [
             (Icons.receipt_long, _titulos['gasto']!, () async { if (await _abrirFormulario(context, 'gasto')) _cargar(); }),
             if (widget.esDueno)
               (Icons.account_balance_wallet, _titulos['retiro']!, () => _abrirFormulario(context, 'retiro')),
@@ -137,36 +106,106 @@ class _RegistrarState extends State<_Registrar> {
   }
 }
 
-/// Tarjeta de un proceso: título, 2 o 3 líneas de resumen y una flecha; al tocarla se entra al proceso.
-class _TarjetaProceso extends StatelessWidget {
-  const _TarjetaProceso({required this.icono, required this.titulo, required this.lineas, required this.onTap});
+/// Un dato de un proceso: ícono, valor grande, nombre y una nota corta. [atencion] lo marca en naranja
+/// sólo cuando alguien tiene que hacer algo (por ejemplo café sin precio).
+class _Indicador {
+  const _Indicador(this.icono, this.valor, this.nombre, {this.nota, this.atencion = false});
   final IconData icono;
+  final String valor;
+  final String nombre;
+  final String? nota;
+  final bool atencion;
+}
+
+const _meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+/// Compras: siempre 4. Dueños: lo recibido, lo que falta precio, lo que se debe y los adelantos.
+/// El equipo no ve dinero: en su lugar, el café en almacén y el último recibido.
+List<_Indicador> _indicadoresCompras(Map<String, dynamic> c, bool esDueno) {
+  final mes = _mapa(c['mes']);
+  final sinPrecio = _mapa(c['sin_precio']);
+  final nRecibidos = (mes['recibidos'] as num?)?.toInt() ?? 0;
+  final nSinPrecio = (sinPrecio['n'] as num?)?.toInt() ?? 0;
+  final recibido = _Indicador(Icons.move_to_inbox, _kg(mes['kg']), 'Recibido',
+      nota: '${_meses[DateTime.now().month - 1]} · $nRecibidos ${nRecibidos == 1 ? 'entrega' : 'entregas'}');
+  final precio = _Indicador(Icons.sell_outlined, '$nSinPrecio', 'Sin precio',
+      nota: nSinPrecio == 0 ? 'todo con precio' : _kg(sinPrecio['kg']), atencion: nSinPrecio > 0);
+  if (esDueno && c['por_pagar'] != null) {
+    final porPagar = _mapa(c['por_pagar']);
+    final adelantos = _mapa(c['adelantos']);
+    final nPagar = (porPagar['n'] as num?)?.toInt() ?? 0;
+    final nAdel = (adelantos['n'] as num?)?.toInt() ?? 0;
+    return [
+      recibido,
+      precio,
+      _Indicador(Icons.account_balance_wallet, _soles(porPagar['total']), 'Por pagar',
+          nota: '$nPagar ${nPagar == 1 ? 'compra' : 'compras'}', atencion: nPagar > 0),
+      _Indicador(Icons.handshake, _soles(adelantos['saldo']), 'Adelantos abiertos',
+          nota: '$nAdel ${nAdel == 1 ? 'persona' : 'personas'}'),
+    ];
+  }
+  final almacen = _lista(c['almacen']);
+  final kgAlmacen = almacen.fold<double>(0, (t, a) => t + ((a['kg'] as num?)?.toDouble() ?? 0));
+  return [
+    recibido,
+    precio,
+    _Indicador(Icons.inventory_2_outlined, _kg(kgAlmacen), 'En almacén',
+        nota: almacen.map((a) => _estadosCafe[a['estado']] ?? '${a['estado']}').join(', ')),
+    _Indicador(Icons.event, c['ultimo'] == null ? '—' : _fechaCorta(c['ultimo']), 'Último recibido'),
+  ];
+}
+
+/// Producción: siempre 4. Café verde, café tostado, tuestes del mes y merma.
+List<_Indicador> _indicadoresProduccion(Map<String, dynamic> p) {
+  final lotes = _lista(p['lotes_verdes']);
+  final tuestes = _lista(p['tuestes']);
+  final mes = _mapa(p['mes']);
+  final enCurso = tuestes.where((t) => t['estado'] == 'in_progress').length;
+  final programados = tuestes.length - enCurso;
+  return [
+    _Indicador(Icons.eco, _kg(p['verde_kg']), 'Café verde', nota: '${lotes.length} ${lotes.length == 1 ? 'lote' : 'lotes'}'),
+    _Indicador(Icons.coffee, _kg(p['tostado_kg']), 'Café tostado', nota: 'disponible'),
+    _Indicador(Icons.local_fire_department, '${mes['tuestes'] ?? 0}', 'Tuestes este mes',
+        nota: enCurso > 0 ? '$enCurso tostando ahora' : (programados > 0 ? '$programados programados' : 'ninguno programado'),
+        atencion: enCurso > 0),
+    _Indicador(Icons.trending_down, mes['merma_pct'] != null ? '${mes['merma_pct']}%' : '—', 'Merma',
+        nota: '${_kg(mes['kg_verde'])} → ${_kg(mes['kg_tostado'])}'),
+  ];
+}
+
+/// Tarjeta de un proceso (estándar, General Manager 3 nov 2026): el nombre y una flecha, y siempre 4 datos
+/// en dos filas. Toda la tarjeta abre el proceso.
+class _TarjetaProceso extends StatelessWidget {
+  const _TarjetaProceso({required this.titulo, required this.indicadores, required this.onTap, this.error});
   final String titulo;
-  final List<String> lineas;
+  final List<_Indicador>? indicadores; // null mientras carga
   final VoidCallback onTap;
+  final String? error;
 
   @override
   Widget build(BuildContext context) {
+    final datos = indicadores;
     return Material(
       color: Colors.blue.shade50,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
-          child: Row(children: [
-            Icon(icono, size: 34, color: Colors.blue.shade700),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(titulo, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                for (final l in lineas)
-                  Text(l, style: TextStyle(fontSize: 14, color: Colors.grey.shade800), maxLines: 1, overflow: TextOverflow.ellipsis),
-              ]),
-            ),
-            Icon(Icons.chevron_right, color: Colors.grey.shade600),
+          padding: const EdgeInsets.fromLTRB(12, 6, 8, 10),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: Text(titulo, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold))),
+              Icon(Icons.chevron_right, color: Colors.grey.shade700),
+            ]),
+            const SizedBox(height: 6),
+            if (datos == null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: error != null ? Text(error!) : const Center(child: CircularProgressIndicator()),
+              )
+            else
+              _CuatroDatos(indicadores: datos),
           ]),
         ),
       ),
@@ -174,13 +213,96 @@ class _TarjetaProceso extends StatelessWidget {
   }
 }
 
-/// Botones grandes de acción, dos por fila.
-class _Acciones extends StatelessWidget {
-  const _Acciones({required this.acciones});
-  final List<(IconData, String, VoidCallback)> acciones;
+/// Los 4 datos en una cuadrícula de 2 x 2. Se usa en la tarjeta y arriba de la pantalla del proceso.
+class _CuatroDatos extends StatelessWidget {
+  const _CuatroDatos({required this.indicadores});
+  final List<_Indicador> indicadores;
 
   @override
   Widget build(BuildContext context) {
+    final filas = <Widget>[];
+    for (var i = 0; i < indicadores.length; i += 2) {
+      if (i > 0) filas.add(const SizedBox(height: 6));
+      filas.add(IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Expanded(child: _DatoCaja(indicadores[i])),
+          const SizedBox(width: 8),
+          Expanded(child: i + 1 < indicadores.length ? _DatoCaja(indicadores[i + 1]) : const SizedBox()),
+        ]),
+      ));
+    }
+    return Column(children: filas);
+  }
+}
+
+class _DatoCaja extends StatelessWidget {
+  const _DatoCaja(this.d);
+  final _Indicador d;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = d.atencion ? Colors.orange.shade800 : Colors.blue.shade700;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(12)),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          padding: const EdgeInsets.all(5),
+          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+          child: Icon(d.icono, size: 18, color: color),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(d.valor, style: TextStyle(fontSize: 18, height: 1.15, fontWeight: FontWeight.bold, color: d.atencion ? color : Colors.black87)),
+            ),
+            Text(d.nombre, style: TextStyle(fontSize: 13, height: 1.2, color: Colors.grey.shade800), maxLines: 1, overflow: TextOverflow.ellipsis),
+            if (d.nota != null && d.nota!.isNotEmpty)
+              Text(d.nota!, style: TextStyle(fontSize: 12, height: 1.2, color: Colors.grey.shade600), maxLines: 1, overflow: TextOverflow.ellipsis),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+/// Botones grandes de acción, dos por fila.
+class _Acciones extends StatelessWidget {
+  const _Acciones({required this.acciones, this.compactas = false});
+  final List<(IconData, String, VoidCallback)> acciones;
+  final bool compactas; // una fila baja: ícono y texto lado a lado
+
+  @override
+  Widget build(BuildContext context) {
+    if (compactas) {
+      return Row(children: [
+        for (final (i, (icono, texto, onTap)) in acciones.indexed) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Expanded(
+            child: Material(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(14),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: onTap,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(icono, size: 22, color: Colors.blue.shade700),
+                    const SizedBox(width: 6),
+                    Flexible(child: Text(texto, style: const TextStyle(fontWeight: FontWeight.w600), maxLines: 2)),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ],
+        if (acciones.length == 1) const Expanded(child: SizedBox()),
+      ]);
+    }
     return GridView.count(
       crossAxisCount: 2,
       shrinkWrap: true,
@@ -189,26 +311,6 @@ class _Acciones extends StatelessWidget {
       crossAxisSpacing: 12,
       childAspectRatio: 1.6,
       children: [for (final (icono, texto, onTap) in acciones) _BotonGrande(icono: icono, texto: texto, onTap: onTap)],
-    );
-  }
-}
-
-/// Un número con su nombre, para el resumen de arriba de cada proceso.
-class _Dato extends StatelessWidget {
-  const _Dato(this.valor, this.nombre);
-  final String valor;
-  final String nombre;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 160,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(valor, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        Text(nombre, style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
-      ]),
     );
   }
 }
@@ -285,19 +387,10 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> {
   @override
   Widget build(BuildContext context) {
     return pantalla('Compras', (d) {
-      final mes = _mapa(d['mes']);
-      final sinPrecio = _mapa(d['sin_precio']);
-      final porPagar = d['por_pagar'] == null ? null : _mapa(d['por_pagar']);
-      final adelantos = d['adelantos'] == null ? null : _mapa(d['adelantos']);
       final almacen = _lista(d['almacen']);
       final recientes = _lista(d['recientes']);
       return [
-        Wrap(spacing: 10, runSpacing: 10, children: [
-          _Dato(_kg(mes['kg']), 'recibido este mes (${mes['recibidos'] ?? 0})'),
-          _Dato('${sinPrecio['n'] ?? 0}', 'sin precio'),
-          if (porPagar != null) _Dato(_soles(porPagar['total']), 'por pagar (${porPagar['n'] ?? 0})'),
-          if (adelantos != null) _Dato(_soles(adelantos['saldo']), 'en adelantos (${adelantos['n'] ?? 0})'),
-        ]),
+        _CuatroDatos(indicadores: _indicadoresCompras(d, widget.esDueno)), // los mismos 4 de la tarjeta
         const SizedBox(height: 16),
         _Acciones(acciones: [
           (Icons.move_to_inbox, _titulos['entrega']!, () => formulario('entrega')),
@@ -391,16 +484,9 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> {
     return pantalla('Producción', (d) {
       final lotes = _lista(d['lotes_verdes']);
       final tuestes = _lista(d['tuestes']);
-      final mes = _mapa(d['mes']);
       final porProcesar = _lista(d['por_procesar']);
       return [
-        Wrap(spacing: 10, runSpacing: 10, children: [
-          _Dato(_kg(d['verde_kg']), 'café verde disponible'),
-          _Dato(_kg(d['tostado_kg']), 'café tostado disponible'),
-          _Dato('${mes['tuestes'] ?? 0}', 'tuestes este mes'),
-          _Dato(mes['merma_pct'] != null ? '${mes['merma_pct']}%' : '—',
-              'merma (${_kg(mes['kg_verde'])} → ${_kg(mes['kg_tostado'])})'),
-        ]),
+        _CuatroDatos(indicadores: _indicadoresProduccion(d)), // los mismos 4 de la tarjeta
         const SizedBox(height: 16),
         _Acciones(acciones: [
           (Icons.local_fire_department, 'Tostar café', _tostar),

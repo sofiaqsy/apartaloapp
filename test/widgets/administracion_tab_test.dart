@@ -136,9 +136,12 @@ void main() {
     }
     expect(find.text('Solicitudes'), findsNothing);
     // Registrar: one card per process, with its summary, and Registrar gasto below.
-    for (final t in ['Compras', 'Producción', 'Registrar gasto', 'Este mes: 2 recibidos · 130 kg', 'Café verde: 760 kg en 1 lote']) {
-      expect(find.text(t), findsOneWidget);
+    for (final t in ['Compras', 'Producción', 'Registrar gasto', 'Café verde', '760 kg', 'Sin precio', 'En almacén', 'Último recibido']) {
+      expect(find.text(t), findsOneWidget, reason: t);
     }
+    // Always 4 data per process; staff never see money.
+    expect(find.text('Por pagar'), findsNothing);
+    expect(find.text('Adelantos abiertos'), findsNothing);
     expect(find.text('Pasar dinero a caja'), findsNothing);
     await http.runWithClient(() async {
       await tester.tap(find.text('Compras'));
@@ -154,6 +157,9 @@ void main() {
   testWidgets('the owner also sees Pagar compra and Retiro a caja', (tester) async {
     await abrir(tester, rol: 'owner');
     expect(find.text('Pasar dinero a caja'), findsOneWidget);
+    for (final t in ['Por pagar', 'S/ 300', 'Adelantos abiertos', 'S/ 1,500', 'Sin precio']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
     await http.runWithClient(() async {
       await tester.tap(find.text('Compras'));
       await tester.pumpAndSettle();
@@ -666,7 +672,7 @@ void main() {
       await tester.tap(find.text('Producción'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    for (final t in ['Tostar café', 'Registrar gasto de producción', 'Omagua 250 g', 'Omagua 1 kg', 'L-1', '760 kg de 1,000 kg', '16.7%']) {
+    for (final t in ['Tostar café', 'Registrar gasto de producción', 'Omagua 250 g', 'Omagua 1 kg', 'L-1', '760 kg de 1,000 kg', '16.7%', '820 kg → 683 kg', '1 tostando ahora']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     expect(find.text('Finalizar'), findsOneWidget); // the roast in progress
@@ -705,5 +711,12 @@ void main() {
     }, () => MockClient((req) async => responder(req)));
     final req = pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/gasto'));
     expect(jsonDecode(req.body)['area'], 'production');
+  });
+
+  testWidgets('both cards and the Otros buttons fit on an iPhone without scrolling', (tester) async {
+    await abrir(tester, rol: 'owner');
+    // On the phone the app bar and the bottom tabs take about 190 points of the 844.
+    final abajo = tester.getBottomLeft(find.text('Pasar dinero a caja')).dy;
+    expect(abajo, lessThan(844 - 190), reason: 'bottom of Otros at $abajo');
   });
 }
