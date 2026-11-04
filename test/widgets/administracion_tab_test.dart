@@ -1250,12 +1250,16 @@ void main() {
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     // A short form, not a list of every month.
-    for (final t in ['Generar reporte', 'Mensual', 'Anual', 'Desde', 'Hasta', 'Generar PDF']) {
+    for (final t in ['Generar reporte', 'Mensual', 'Anual', 'FECHA DE INICIO', 'FECHA DE FIN', 'PERÍODO DEL REPORTE', '1 mes seleccionado', 'Generar PDF']) {
       expect(find.text(t), findsWidgets, reason: t);
     }
-    expect(find.text('${ComprasPdfService.nombreMes(hoy.month)} ${hoy.year}'), findsOneWidget); // this month by default
+    expect(find.text('${ComprasPdfService.nombreMes(hoy.month)} ${hoy.year}'), findsNWidgets(3)); // this month by default
     expect(pedidos.any((r) => r.url.path.endsWith('/compras/reporte')), isFalse);
-    // A future month cannot be chosen.
+    // The period is information, not a button: nothing to tap on it.
+    expect(find.ancestor(of: find.text('PERÍODO DEL REPORTE'), matching: find.byType(InkWell)), findsNothing);
+    // The start date opens its months right here; a future month cannot be chosen.
+    await tester.tap(find.text('FECHA DE INICIO'));
+    await tester.pumpAndSettle();
     if (hoy.month < 12) {
       final futuro = tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, ComprasPdfService.mesCorto(hoy.month + 1)).first);
       expect(futuro.onSelected, isNull);
@@ -1285,13 +1289,15 @@ void main() {
       await tester.tap(find.byIcon(Icons.picture_as_pdf_outlined));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    // Desde: January of last year. Hasta moves only if it was before; here Hasta stays this month: more than 12 months.
+    // Inicio: January of last year. Fin moves only if it was before; here Fin stays this month: more than 12 months.
+    await tester.tap(find.text('FECHA DE INICIO'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.chevron_left).first);
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(ChoiceChip, 'Ene').first);
     await tester.pumpAndSettle();
     expect(find.text('Un reporte cubre como máximo 12 meses.'), findsOneWidget);
-    expect(tester.widget<ElevatedButton>(find.ancestor(of: find.text('Generar PDF'), matching: find.byWidgetPredicate((w) => w is ElevatedButton))).onPressed, isNull);
+    expect(tester.widget<ButtonStyleButton>(find.ancestor(of: find.text('Generar PDF'), matching: find.byWidgetPredicate((w) => w is ButtonStyleButton))).onPressed, isNull);
     expect(find.text('Ene ${hoy.year - 1} – ${ComprasPdfService.mesCorto(hoy.month)} ${hoy.year}'), findsOneWidget);
     // The X closes without asking anything.
     await tester.tap(find.byIcon(Icons.close));

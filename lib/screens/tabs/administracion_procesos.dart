@@ -1985,10 +1985,11 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
 }
 
 /// El reporte de un proveedor en PDF, con el botón de compartir (como el PDF del detalle de pedido).
-/// Generar reporte (General Manager, 4 nov 2026; reunión con Compras, Finanzas y Tecnología): Mensual con Desde y
-/// Hasta (un mes, o un rango de hasta 12 meses, como la cosecha de mayo a septiembre) o Anual (el año). Cada mes es un
-/// toque: una fila con el año y flechas, y los 12 meses debajo; los meses futuros no se pueden elegir. Pantalla
-/// completa con X arriba a la izquierda, como los otros formularios; el aviso va justo encima del botón.
+/// Generar reporte (General Manager, 4 nov 2026; reunión con Compras, Finanzas y Tecnología; diseño de la General
+/// Manager): Mensual con fecha de inicio y de fin (un mes, o un rango de hasta 12 meses, como la cosecha de mayo a
+/// septiembre) o Anual (el año). Lo que se toca parece botón: Mensual | Anual, los dos campos de fecha (con flecha; se
+/// abren aquí mismo con el año y los 12 meses) y Generar PDF. El período elegido es información: texto con una línea
+/// fina, sin caja de color. Los meses futuros no se eligen; el aviso va justo encima del botón.
 class _ReporteComprasForm extends StatefulWidget {
   const _ReporteComprasForm();
 
@@ -2002,73 +2003,137 @@ class _ReporteComprasFormState extends State<_ReporteComprasForm> {
   late DateTime _desde = _hoy;
   late DateTime _hasta = _hoy;
   late int _anio = _hoy.year;
+  int? _abierto; // 0 fecha de inicio, 1 fecha de fin: se abre uno a la vez
 
   int get _meses => (_hasta.year * 12 + _hasta.month) - (_desde.year * 12 + _desde.month) + 1;
 
   String? get _aviso {
     if (_anual) return null;
-    if (_hasta.isBefore(_desde)) return 'El mes Hasta no puede ser antes del mes Desde.';
+    if (_hasta.isBefore(_desde)) return 'La fecha de fin no puede ser antes de la fecha de inicio.';
     if (_meses > 12) return 'Un reporte cubre como máximo 12 meses.';
     return null;
   }
 
-  void _elegirDesde(DateTime m) => setState(() {
-        _desde = m;
-        if (_hasta.isBefore(m)) _hasta = m; // Hasta sigue a Desde
-      });
+  static String _mesLargo(DateTime m) => '${ComprasPdfService.nombreMes(m.month)} ${m.year}';
 
   @override
   Widget build(BuildContext context) {
     final aviso = _aviso;
+    const etiqueta = TextStyle(fontSize: 12, letterSpacing: 0.8, fontWeight: FontWeight.w600, color: FincasColors.textMuted);
     return Scaffold(
+      backgroundColor: FincasColors.background,
       appBar: AppBar(
+        backgroundColor: FincasColors.background,
         leading: IconButton(icon: const Icon(Icons.close), tooltip: 'Cancelar', onPressed: () => Navigator.of(context).pop()),
         title: const Text('Generar reporte'),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
+          // Mensual | Anual: dos botones, el elegido relleno y con check.
           Row(children: [
-            for (final (anual, texto) in [(false, 'Mensual'), (true, 'Anual')])
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(label: Text(texto), selected: _anual == anual, onSelected: (_) => setState(() => _anual = anual)),
-              ),
+            for (final (anual, texto) in [(false, 'Mensual'), (true, 'Anual')]) ...[
+              if (anual) const SizedBox(width: 12),
+              Expanded(child: _BotonTipo(texto: texto, elegido: _anual == anual, onTap: () => setState(() => _anual = anual))),
+            ],
           ]),
+          const SizedBox(height: 10),
+          Text(_anual ? 'Genera el reporte de un año completo.' : 'Genera un reporte por rango de meses.',
+              style: const TextStyle(color: FincasColors.textSecondary)),
           const SizedBox(height: 16),
+          const Divider(height: 1, color: FincasColors.divider),
+          const SizedBox(height: 20),
+          Text(_anual ? 'Selecciona el año' : 'Selecciona el período', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 14),
           if (_anual)
-            _FilaAnio(
-              titulo: 'Año',
-              anio: _anio,
-              maximo: _hoy.year,
-              onCambio: (a) => setState(() => _anio = a),
+            _CampoPeriodo(
+              etiqueta: 'AÑO',
+              valor: '$_anio',
+              // El año se cambia con las flechas, aquí mismo; no se pasa del año actual.
+              fin: Row(mainAxisSize: MainAxisSize.min, children: [
+                IconButton(tooltip: 'Año anterior', icon: const Icon(Icons.chevron_left), onPressed: () => setState(() => _anio--)),
+                IconButton(
+                    tooltip: 'Año siguiente',
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: _anio >= _hoy.year ? null : () => setState(() => _anio++)),
+              ]),
             )
           else ...[
-            _SelectorMes(titulo: 'Desde', valor: _desde, maximo: _hoy, onCambio: _elegirDesde),
-            const SizedBox(height: 20),
-            _SelectorMes(titulo: 'Hasta', valor: _hasta, maximo: _hoy, onCambio: (m) => setState(() => _hasta = m)),
+            _CampoPeriodo(
+              etiqueta: 'FECHA DE INICIO',
+              valor: _mesLargo(_desde),
+              abierto: _abierto == 0,
+              onTap: () => setState(() => _abierto = _abierto == 0 ? null : 0),
+              panel: _SelectorMes(
+                valor: _desde,
+                maximo: _hoy,
+                onCambio: (m) => setState(() {
+                  _desde = m;
+                  if (_hasta.isBefore(m)) _hasta = m; // la fecha de fin sigue a la de inicio
+                  _abierto = null;
+                }),
+              ),
+            ),
+            const SizedBox(height: 12),
+            _CampoPeriodo(
+              etiqueta: 'FECHA DE FIN',
+              valor: _mesLargo(_hasta),
+              abierto: _abierto == 1,
+              onTap: () => setState(() => _abierto = _abierto == 1 ? null : 1),
+              panel: _SelectorMes(
+                valor: _hasta,
+                maximo: _hoy,
+                onCambio: (m) => setState(() {
+                  _hasta = m;
+                  _abierto = null;
+                }),
+              ),
+            ),
           ],
-          const SizedBox(height: 20),
-          Text(
-            _anual ? 'Año $_anio' : ComprasPdfService.periodo(_desde, _hasta),
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-          ),
+          // El período: información, sin caja ni sombra (no se toca).
+          const SizedBox(height: 24),
+          const Divider(height: 1, color: FincasColors.divider),
+          const SizedBox(height: 16),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Padding(padding: EdgeInsets.only(top: 2), child: const Icon(Icons.calendar_month_outlined, color: FincasColors.textMuted)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('PERÍODO DEL REPORTE', style: etiqueta),
+                const SizedBox(height: 4),
+                Text(_anual ? 'Año $_anio' : ComprasPdfService.periodo(_desde, _hasta),
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                if (!_anual && aviso == null) ...[
+                  const SizedBox(height: 2),
+                  Text(_meses == 1 ? '1 mes seleccionado' : '$_meses meses seleccionados', style: const TextStyle(color: FincasColors.textSecondary)),
+                ],
+              ]),
+            ),
+          ]),
         ],
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             if (aviso != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: Text(aviso, style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.w600)),
+                child: Text(aviso, style: const TextStyle(color: FincasColors.error, fontWeight: FontWeight.w600)),
               ),
-            ElevatedButton.icon(
+            FilledButton.icon(
               onPressed: aviso != null
                   ? null
                   : () => Navigator.of(context).pop(_anual ? (DateTime(_anio, 1), DateTime(_anio, 12)) : (_desde, _hasta)),
-              style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+              style: FilledButton.styleFrom(
+                backgroundColor: FincasColors.actionPrimary,
+                foregroundColor: FincasColors.actionPrimaryText,
+                disabledBackgroundColor: FincasColors.disabledBg,
+                disabledForegroundColor: FincasColors.disabledText,
+                minimumSize: const Size.fromHeight(56),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+              ),
               icon: const Icon(Icons.picture_as_pdf_outlined),
               label: const Text('Generar PDF'),
             ),
@@ -2079,29 +2144,94 @@ class _ReporteComprasFormState extends State<_ReporteComprasForm> {
   }
 }
 
-/// Un año con flechas: ‹ 2026 ›. No pasa del año [maximo].
-class _FilaAnio extends StatelessWidget {
-  const _FilaAnio({required this.titulo, required this.anio, required this.maximo, required this.onCambio});
-  final String titulo;
-  final int anio;
-  final int maximo;
-  final ValueChanged<int> onCambio;
+/// Uno de los dos botones Mensual | Anual: el elegido relleno con check, el otro con borde.
+class _BotonTipo extends StatelessWidget {
+  const _BotonTipo({required this.texto, required this.elegido, required this.onTap});
+  final String texto;
+  final bool elegido;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Row(children: [
-      Expanded(child: Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
-      IconButton(tooltip: 'Año anterior', icon: const Icon(Icons.chevron_left), onPressed: () => onCambio(anio - 1)),
-      Text('$anio', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-      IconButton(tooltip: 'Año siguiente', icon: const Icon(Icons.chevron_right), onPressed: anio >= maximo ? null : () => onCambio(anio + 1)),
-    ]);
+    return Material(
+      color: elegido ? FincasColors.sand : FincasColors.surface,
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12), side: BorderSide(color: elegido ? FincasColors.sand : FincasColors.border)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: SizedBox(
+          height: 52,
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            if (elegido) ...[const Icon(Icons.check, size: 20, color: FincasColors.espresso), const SizedBox(width: 8)],
+            Text(texto,
+                style: TextStyle(
+                    fontSize: 17, fontWeight: FontWeight.w600, color: elegido ? FincasColors.espresso : FincasColors.textSecondary)),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// Un campo de fecha que se toca: etiqueta, el mes elegido y una flecha; al tocarlo se abre aquí mismo [panel].
+/// Con [fin] (el año del reporte anual) las flechas van dentro y el campo no se abre.
+class _CampoPeriodo extends StatelessWidget {
+  const _CampoPeriodo({required this.etiqueta, required this.valor, this.abierto = false, this.onTap, this.panel, this.fin});
+  final String etiqueta;
+  final String valor;
+  final bool abierto;
+  final VoidCallback? onTap;
+  final Widget? panel;
+  final Widget? fin;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: FincasColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: const BorderSide(color: FincasColors.borderStrong)),
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: [
+        InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16, 12, fin == null ? 16 : 4, 14),
+            child: Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(etiqueta,
+                      style: const TextStyle(fontSize: 12, letterSpacing: 0.8, fontWeight: FontWeight.w600, color: FincasColors.textMuted)),
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    const Icon(Icons.calendar_today_outlined, size: 22, color: FincasColors.textSecondary),
+                    const SizedBox(width: 12),
+                    // Si un mes largo no cabe (Septiembre 2026 con letra grande), se achica en vez de cortarse.
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(valor, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ]),
+                ]),
+              ),
+              fin ?? Icon(abierto ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: FincasColors.textSecondary),
+            ]),
+          ),
+        ),
+        if (abierto && panel != null) ...[
+          const Divider(height: 1, color: FincasColors.divider),
+          Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 12), child: panel!),
+        ],
+      ]),
+    );
   }
 }
 
 /// Elegir un mes con un toque: el año con flechas y los 12 meses debajo; los meses después de [maximo] no se eligen.
 class _SelectorMes extends StatefulWidget {
-  const _SelectorMes({required this.titulo, required this.valor, required this.maximo, required this.onCambio});
-  final String titulo;
+  const _SelectorMes({required this.valor, required this.maximo, required this.onCambio});
   final DateTime valor;
   final DateTime maximo;
   final ValueChanged<DateTime> onCambio;
@@ -2116,7 +2246,14 @@ class _SelectorMesState extends State<_SelectorMes> {
   @override
   Widget build(BuildContext context) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _FilaAnio(titulo: widget.titulo, anio: _anio, maximo: widget.maximo.year, onCambio: (a) => setState(() => _anio = a)),
+      Row(children: [
+        IconButton(tooltip: 'Año anterior', icon: const Icon(Icons.chevron_left), onPressed: () => setState(() => _anio--)),
+        Expanded(child: Text('$_anio', textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+        IconButton(
+            tooltip: 'Año siguiente',
+            icon: const Icon(Icons.chevron_right),
+            onPressed: _anio >= widget.maximo.year ? null : () => setState(() => _anio++)),
+      ]),
       Wrap(spacing: 6, runSpacing: 6, children: [
         for (var m = 1; m <= 12; m++)
           ChoiceChip(
