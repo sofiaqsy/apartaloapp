@@ -1247,7 +1247,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Comercialización (4 Nov 2026): no data on top, Últimos pagos, Clientes and Gastos 20 a page, PDF; no Pedidos, Productos or Proveedores', (tester) async {
+  testWidgets('Comercialización (4 Nov 2026): no data on top, Clientes, Gastos and Últimos pagos 20 a page, PDF; no Pedidos, Productos or Proveedores', (tester) async {
     await abrir(tester, rol: 'owner');
     await tester.scrollUntilVisible(find.text('Vendido este mes'), 200, scrollable: find.byType(Scrollable).last);
     expect(find.text('Comercialización'), findsOneWidget); // the first card keeps its indicators
@@ -1264,16 +1264,12 @@ void main() {
       expect(find.text(t), findsNothing, reason: t);
     }
     expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
-    // Últimos pagos: 20 a page; each payment with its order opens the order detail.
-    expect(pedidos.any((r) => r.url.path.endsWith('/comercial/pagos') && r.url.queryParameters['limit'] == '20'), isTrue);
-    for (final t in ['Cafe Pago', 'Pedido ORD-500 · S/ 80', 'Verificado', 'Sin comprobante']) {
-      expect(find.text(t), findsOneWidget, reason: t);
-    }
-    // Clientes: from the orders; each opens its detail with its orders.
-    await http.runWithClient(() async {
-      await tester.tap(find.text('Clientes').last);
-      await tester.pumpAndSettle();
-    }, () => MockClient((req) async => responder(req)));
+    // The tabs in her order (4 Nov 2026): Clientes, Gastos, Últimos pagos; it opens on Clientes.
+    final x = ['Clientes', 'Gastos', 'Últimos pagos'].map((t) => tester.getCenter(find.text(t).last).dx).toList();
+    expect(x[0] < x[1] && x[1] < x[2], isTrue);
+    expect(pedidos.any((r) => r.url.path.endsWith('/comercial/pagos')), isFalse); // asked only when opened
+    // Clientes: from the orders, 20 a page.
+    expect(pedidos.any((r) => r.url.path.endsWith('/comercial/clientes') && r.url.queryParameters['limit'] == '20'), isTrue);
     expect(find.text('Cafe Uno'), findsOneWidget);
     expect(find.textContaining('2 pedidos · S/ 150'), findsOneWidget);
     await http.runWithClient(() async {
@@ -1284,6 +1280,17 @@ void main() {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     expect(pedidos.lastWhere((r) => r.url.path.contains('/api/pedidos/')).url.queryParameters['cliente'], 'Cafe Uno');
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    // Últimos pagos, the last tab: 20 a page; each payment with its order opens the order detail.
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Últimos pagos').last);
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(pedidos.any((r) => r.url.path.endsWith('/comercial/pagos') && r.url.queryParameters['limit'] == '20'), isTrue);
+    for (final t in ['Cafe Pago', 'Pedido ORD-500 · S/ 80', 'Verificado', 'Sin comprobante']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
     expect(tester.takeException(), isNull);
   });
 
@@ -1297,6 +1304,8 @@ void main() {
     await tester.scrollUntilVisible(find.text('Vendido este mes'), 200, scrollable: find.byType(Scrollable).last);
     await http.runWithClient(() async {
       await tester.tap(find.text('Comercialización'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Últimos pagos').last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Cafe Pago'));
       await tester.pumpAndSettle();

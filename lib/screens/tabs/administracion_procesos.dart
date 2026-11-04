@@ -2928,11 +2928,15 @@ class _ComercialScreen extends StatefulWidget {
 }
 
 /// Comercialización como los demás procesos (General Manager, 4 nov 2026; lo propuso el área Comercial y la General
-/// Manager lo ajustó el mismo día): sin datos arriba, Registrar gasto, pestañas Últimos pagos | Clientes | Gastos (de 20
+/// Manager lo ajustó el mismo día): sin datos arriba, Registrar gasto, pestañas Clientes | Gastos | Últimos pagos (de 20
 /// en 20) y el reporte en PDF. Sin pestañas Pedidos, Productos ni Proveedores, ni Registrar pedido. Sin "Por cobrar":
 /// el estado de pago de los pedidos todavía no cuadra.
 class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _GastosDelArea, _ReporteDelProceso {
-  int _pestana = 0; // 0 Últimos pagos, 1 Clientes, 2 Gastos
+  // Primero Clientes, luego Gastos y al final Últimos pagos (General Manager, 4 nov 2026).
+  int _pestana = 0; // 0 Clientes, 1 Gastos, 2 Últimos pagos
+
+  /// La lista de cada pestaña: 0 pagos, 1 clientes (Gastos tiene la suya).
+  static int? _listaDe(int pestana) => pestana == 0 ? 1 : (pestana == 2 ? 0 : null);
 
   @override
   String get clave => 'comercial';
@@ -2966,7 +2970,9 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Gastos
       _hayMasFilas[i] = true;
       _erroresFilas[i] = null;
     }
-    await Future.wait([super.cargar(), if (_pestana < 2) _mas(_pestana)]);
+    final l = _listaDe(_pestana);
+    if (_pestana == 1) cargarGastos();
+    await Future.wait([super.cargar(), if (l != null) _mas(l)]);
   }
 
   Future<void> _mas(int i) async {
@@ -3041,8 +3047,9 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Gastos
   @override
   Widget build(BuildContext context) {
     return pantalla('Comercialización', botonFlotante: botonReporte(), alFinal: () {
-      if (_pestana < 2) _mas(_pestana);
-      if (_pestana == 2) masGastos();
+      final l = _listaDe(_pestana);
+      if (l != null) _mas(l);
+      if (_pestana == 1) masGastos();
     }, (d) {
       return [
         // Sin datos arriba (General Manager, 4 nov 2026): la tarjeta de Procesos ya los muestra.
@@ -3054,16 +3061,17 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Gastos
           ),
         ]),
         _Pestanas(
-          nombres: const ['Últimos pagos', 'Clientes', 'Gastos'],
+          nombres: const ['Clientes', 'Gastos', 'Últimos pagos'],
           anchoPorNombre: true,
           elegida: _pestana,
           onElegir: (i) {
             setState(() => _pestana = i);
-            if (i < 2 && _filas[i].isEmpty) _mas(i);
-            if (i == 2) cargarGastos();
+            final l = _listaDe(i);
+            if (l != null && _filas[l].isEmpty) _mas(l);
+            if (i == 1) cargarGastos();
           },
         ),
-        if (_pestana < 2) ..._listaComercial(_pestana) else ...listaGastos(),
+        if (_pestana == 1) ...listaGastos() else ..._listaComercial(_listaDe(_pestana)!),
       ];
     });
   }
