@@ -9,9 +9,10 @@ part of 'administracion_tab.dart';
 /// Estados de una compra (General Manager, 3 nov 2026, tras la reunión con Compras, Finanzas, Calidad y TI).
 const _coloresCompra = {
   'Sin precio': Colors.orange,
-  'Por pagar': Colors.blue,
+  // Lo que todavía se debe va en naranja, igual que Pendiente en Finanzas (General Manager, 3 nov 2026).
+  'Por pagar': Colors.orange,
   'Pago solicitado': Colors.indigo, // Compras tocó "Solicitar pago": espera a Finanzas
-  'Pagado en parte': Colors.teal,
+  'Pagado en parte': Colors.orange,
   'Pagado': Colors.green,
   'Rechazado': Colors.red,
 };
@@ -1017,7 +1018,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
     'Urgente': Colors.red,
     'Pendiente': Colors.orange,
     'Pagado': Colors.green,
-    'Pagado en parte': Colors.teal,
+    'Pagado en parte': Colors.orange, // el mismo color que Pendiente: todavía se debe (General Manager, 3 nov 2026)
     'Aprobado': Colors.green,
     'Rechazado': Colors.grey,
   };
@@ -1562,13 +1563,14 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
             titulo: '${c['agricultor'] ?? 'Sin nombre'}',
             detalle: [
               '${_estadosCafe[c['estado']] ?? c['estado']} · ${_kg(c['kg'])}',
+              if (c['precio'] != null) '${_soles(c['precio'])}/kg', // dueños
+              if (c['situacion'] == 'Pagado en parte' && c['debe'] != null) 'falta ${_soles(c['debe'])}',
               if (c['producto'] != null) '${c['producto']}',
               if (c['descuento'] == true) 'Con descuento',
             ].join(' · '),
-            fin: _Pildora(
-              c['precio'] != null ? '${_soles(c['precio'])}/kg' : '${c['situacion'] ?? ''}',
-              _colorSituacion[c['situacion']] ?? Colors.grey,
-            ),
+            // Cada compra lleva su marca de pago a la derecha (General Manager, 3 nov 2026): Sin precio, Por pagar,
+            // Pago solicitado, Pagado en parte, Pagado o Rechazado. El precio va en la línea de abajo.
+            fin: _Pildora('${c['situacion'] ?? ''}', _colorSituacion[c['situacion']] ?? Colors.grey),
             onTap: () => _abrirCompra(c),
           ),
         if (_errorCompras != null)

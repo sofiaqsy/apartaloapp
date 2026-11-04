@@ -107,7 +107,7 @@ void main() {
       final offset = int.parse(req.url.queryParameters['offset'] ?? '0');
       final todas = [
         {'id': 'DL-0001', 'fecha': '2026-11-03', 'agricultor': 'Pedro Ramírez Ñique', 'estado': 'parchment', 'kg': 100, 'producto': 'Blend de Caturra, Pache, typica', 'situacion': 'Sin precio'},
-        {'id': 'DL-0002', 'fecha': '2026-11-02', 'agricultor': 'Agricultor Parte', 'estado': 'parchment', 'kg': 50, 'situacion': 'Pagado en parte', 'descuento': true},
+        {'id': 'DL-0002', 'fecha': '2026-11-02', 'agricultor': 'Agricultor Parte', 'estado': 'parchment', 'kg': 50, 'situacion': 'Pagado en parte', 'descuento': true, 'debe': 500},
         {'id': 'DL-0003', 'fecha': '2026-11-02', 'agricultor': 'Agricultor Rechazo', 'estado': 'cherry', 'kg': 20, 'situacion': 'Rechazado'},
         for (var i = 0; i < 24; i++) {'id': 'DL-1$i', 'fecha': '2026-10-01', 'agricultor': 'Agricultor ${i.toString().padLeft(2, '0')}', 'estado': 'cherry', 'kg': 10, 'situacion': 'Pagado', 'precio': 5},
       ];
@@ -1107,6 +1107,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(pedidos.where((r) => r.url.path.endsWith('/compras')).length, greaterThan(antes));
     }, () => MockClient((req) async => responder(req)));
+  });
+
+  testWidgets('owners see the payment mark on each compra too; the price goes in the line below', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Pagado en parte'), findsOneWidget);
+    expect(find.textContaining('falta S/ 500'), findsOneWidget);
+    expect(find.text('Pagado'), findsWidgets); // a priced compra shows its mark, not its price
+    expect(find.text('S/ 5/kg'), findsNothing);
+    expect(find.textContaining('S/ 5/kg'), findsWidgets);
   });
 
   testWidgets('a compra shows one of the five states, and the discount label', (tester) async {
