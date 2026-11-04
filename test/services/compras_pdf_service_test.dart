@@ -172,6 +172,41 @@ void main() {
     }
   });
 
+  test('builds the Finca and Finanzas reports (4 Nov 2026)', () async {
+    final salida = Platform.environment['COMPRAS_PDF_DIR'];
+    for (final dueno in [true, false]) {
+      final finca = await FincaPdfService.generarBytes({
+        'desde': '2026-11-01', 'hasta': '2026-11-30', 'meses': 1, 'generado': '2026-11-04T15:00:00Z', 'dueno': dueno,
+        'franja': {'gastos': 2, 'pendientes': 1, if (dueno) 'total': 420, if (dueno) 'por_pagar': 120},
+        'por_categoria': [
+          {'categoria': 'Insumos', 'gastos': 1, if (dueno) 'pendiente': 0, if (dueno) 'pagado': 300, if (dueno) 'total': 300},
+          {'categoria': 'Mano de obra', 'gastos': 1, if (dueno) 'pendiente': 120, if (dueno) 'pagado': 0, if (dueno) 'total': 120},
+        ],
+        'gastos': [
+          {'fecha': '2026-11-02', 'categoria': 'Mano de obra', 'descripcion': 'Jornal deshierbo', 'estado': 'Pendiente', if (dueno) 'monto': 120},
+          {'fecha': '2026-11-03', 'categoria': 'Insumos', 'descripcion': 'Abono', 'estado': 'Pagado', if (dueno) 'monto': 300},
+        ],
+      }, businessName: 'Negocio Ejemplo', base: pw.Font.helvetica(), bold: pw.Font.helveticaBold());
+      expect(String.fromCharCodes(finca.take(5)), '%PDF-');
+      if (salida != null) File('$salida/finca_${dueno ? 'dueno' : 'staff'}.pdf').writeAsBytesSync(finca);
+    }
+    final finanzas = await FinanzasPdfService.generarBytes({
+      'desde': '2026-11-01', 'hasta': '2026-11-30', 'meses': 1, 'generado': '2026-11-04T15:00:00Z', 'dueno': true,
+      'franja': {'gastos': 150, 'pagado': 458.95, 'compras_debe': 1584, 'retiros': 0},
+      'gastos_por_area': [{'area': 'Comercial', 'categoria': 'Combustible', 'pendiente': 0, 'pagado': 150, 'total': 150}],
+      'pagos_por_cuenta': [{'cuenta': 'BCP Corriente Soles', 'pagos': 2, 'total': 458.95}],
+      'pagos': [
+        {'fecha': '2026-11-04', 'cuenta': 'BCP Corriente Soles', 'tipo': 'Compra', 'quien': 'Jhonatan', 'monto': 308.95},
+        {'fecha': '2026-11-04', 'cuenta': 'BCP Corriente Soles', 'tipo': 'Gasto', 'monto': 150},
+      ],
+      'compras': {'comprado': 1892.95, 'pagado': 308.95, 'debe': 1584, 'compras': 2, 'kg': 88.7},
+      'adelantos': {'dados': 0, 'abiertos_al_cierre': 0},
+      'retiros': [],
+    }, businessName: 'Negocio Ejemplo', base: pw.Font.helvetica(), bold: pw.Font.helveticaBold());
+    expect(String.fromCharCodes(finanzas.take(5)), '%PDF-');
+    if (salida != null) File('$salida/finanzas_dueno.pdf').writeAsBytesSync(finanzas);
+  });
+
   test('month names are in Spanish', () {
     expect(ComprasPdfService.nombreMes(1), 'Enero');
     expect(ComprasPdfService.nombreMes(11), 'Noviembre');

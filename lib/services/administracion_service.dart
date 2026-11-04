@@ -118,6 +118,18 @@ class AdministracionService {
     return _get('logistica/reporte?desde=${mes(desde)}&hasta=${mes(hasta)}');
   }
 
+  /// Los gastos de un área para su pestaña Gastos, de 20 en 20 (4 nov 2026).
+  static Future<ApiResponse<Map<String, dynamic>>> gastosArea(String area, {int desde = 0}) =>
+      _get('gastos-area?area=${Uri.encodeComponent(area)}&offset=$desde&limit=20');
+
+  /// Reportes de Finca y de Finanzas (4 nov 2026): el mismo formulario que los demás procesos.
+  static Future<ApiResponse<Map<String, dynamic>>> reporteFinca(DateTime desde, DateTime hasta) => _reporte('finca', desde, hasta);
+  static Future<ApiResponse<Map<String, dynamic>>> reporteFinanzas(DateTime desde, DateTime hasta) => _reporte('finanzas', desde, hasta);
+  static Future<ApiResponse<Map<String, dynamic>>> _reporte(String ruta, DateTime desde, DateTime hasta) {
+    String mes(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}';
+    return _get('$ruta/reporte?desde=${mes(desde)}&hasta=${mes(hasta)}');
+  }
+
   static Future<ApiResponse<Map<String, dynamic>>> reporteProveedor(String id) => _get('proveedores/${Uri.encodeComponent(id)}/reporte');
 
   /// Subir evidencia (dueños): una foto o PDF del voucher o recibo de una compra (purchase), un gasto (expense),

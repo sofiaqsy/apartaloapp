@@ -65,6 +65,17 @@ void main() {
       return http.Response(jsonEncode({'personas': pagina, 'total': todos.length, 'hayMas': offset + 20 < todos.length}), 200);
     }
     if (p.endsWith('/sugerir-area')) return http.Response(jsonEncode(sugerencia), 200);
+    if (p.endsWith('/gastos-area')) {
+      // The Gastos tab of a process, 20 at a time (4 Nov 2026).
+      final area = req.url.queryParameters['area'];
+      final todos = [
+        {'id': 'EX-0001', 'area': 'fulfillment', 'category': 'Flete', 'amount': 120, 'description': 'Envío a Lima', 'expense_date': '2026-11-01', 'created_by': 'staff@x', 'status': 'Pendiente de pago'},
+        {'id': 'EX-0002', 'area': 'sourcing', 'category': 'Transporte', 'amount': 30, 'description': 'Lobato', 'expense_date': '2026-11-01', 'created_by': 'staff@x', 'status': 'Pendiente de pago'},
+        {'id': 'EX-0003', 'area': 'farm', 'category': 'Mano de obra', 'amount': 120, 'description': 'Jornal deshierbo', 'expense_date': '2026-11-02', 'created_by': 'staff@x', 'status': 'Pagado'},
+      ].where((g) => g['area'] == area).toList();
+      return http.Response(jsonEncode({'gastos': todos, 'hayMas': false}), 200);
+    }
+    if (p.endsWith('/finca/reporte') || p.endsWith('/finanzas/reporte')) return http.Response(jsonEncode({'error': 'Sin señal'}), 503);
     if (p.endsWith('/mi-area')) {
       final pedido = req.url.queryParameters['area'] ?? 'fulfillment';
       final elegidas = pedido == 'todas' ? ['fulfillment', 'sourcing'] : pedido.split(',');
@@ -431,7 +442,7 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
     await entrarFinanzas(tester);
-    for (final t in ['Registrar retiro de efectivo', 'Compras (1)', 'Gastos (1)', 'Adelantos (1)', 'Pedro Ramírez Ñique']) {
+    for (final t in ['Registrar retiro de efectivo', 'Compras', 'Gastos', 'Adelantos', 'Proveedores', 'Pedro Ramírez Ñique']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
   });
@@ -453,7 +464,7 @@ void main() {
     await abrir(tester, rol: 'owner');
     await entrarFinanzas(tester);
     await http.runWithClient(() async {
-      await tester.tap(find.text('Adelantos (1)'));
+      await tester.tap(find.text('Adelantos').last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Misael Cusi'));
       await tester.pumpAndSettle();
@@ -634,7 +645,7 @@ void main() {
     await abrir(tester, rol: 'owner');
     await entrarFinanzas(tester);
     await http.runWithClient(() async {
-      await tester.tap(find.textContaining('Gastos ('));
+      await tester.tap(find.text('Gastos').last);
       await tester.pumpAndSettle();
       expect(find.textContaining('Logística por revisar'), findsOneWidget);
       await tester.tap(find.text('Gas'));
@@ -653,7 +664,7 @@ void main() {
     await abrir(tester, rol: 'owner');
     await entrarFinanzas(tester);
     await http.runWithClient(() async {
-      await tester.tap(find.textContaining('Gastos ('));
+      await tester.tap(find.text('Gastos').last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Mano de obra'));
       await tester.pumpAndSettle();
@@ -1088,7 +1099,7 @@ void main() {
       await tester.tap(find.text('Gastos').last);
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    expect(pedidos.any((r) => r.url.path.endsWith('/mi-area') && r.url.queryParameters['area'] == 'production'), isTrue);
+    expect(pedidos.any((r) => r.url.path.endsWith('/gastos-area') && r.url.queryParameters['area'] == 'production'), isTrue);
     await http.runWithClient(() async {
       await tester.tap(find.byIcon(Icons.picture_as_pdf_outlined));
       await tester.pumpAndSettle();
@@ -1150,15 +1161,33 @@ void main() {
     expect(tester.getTopLeft(find.text('Finca')).dy, greaterThan(tester.getTopLeft(find.text('Compras')).dy));
   });
 
-  testWidgets('Finca: its 4 indicators, Registrar gasto de finca with the Finca area, and its last expenses', (tester) async {
+  testWidgets('Finca redesigned with Farm (4 Nov 2026): no data on top, Gastos 20 a page that open their detail, Proveedores, PDF', (tester) async {
     await abrir(tester, rol: 'staff');
     await tester.scrollUntilVisible(find.text('Finca'), 200, scrollable: find.byType(Scrollable).last);
-    expect(find.text('Cosecha'), findsOneWidget); // staff: gastos (count) and cosecha, no money
-    expect(find.text('S/ 180'), findsNothing);
+    expect(find.text('Cosecha'), findsOneWidget); // the Procesos card keeps its indicators
     await http.runWithClient(() async {
       await tester.tap(find.text('Finca'));
       await tester.pumpAndSettle();
-      expect(find.text('Jornal deshierbo · Pendiente de pago'), findsOneWidget);
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Cosecha'), findsNothing); // no data on top of the screen
+    for (final t in ['Registrar gasto', 'Gastos', 'Proveedores', 'Mano de obra', 'Pagado']) {
+      expect(find.text(t), findsWidgets, reason: t);
+    }
+    expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
+    final g = pedidos.lastWhere((r) => r.url.path.endsWith('/gastos-area'));
+    expect(g.url.queryParameters['area'], 'farm');
+    expect(g.url.queryParameters['limit'], '20');
+    // A gasto opens its detail; staff do not see the evidence.
+    await tester.tap(find.text('Mano de obra'));
+    await tester.pumpAndSettle();
+    for (final t in ['Gasto', 'Jornal deshierbo', 'EX-0003']) {
+      expect(find.text(t), findsWidgets, reason: t);
+    }
+    expect(find.text('Ver evidencia'), findsNothing);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    // Registrar gasto keeps the Finca area.
+    await http.runWithClient(() async {
       await tester.tap(find.text('Registrar gasto'));
       await tester.pumpAndSettle();
       await tester.enterText(find.widgetWithText(TextField, 'Monto (S/)'), '60');
@@ -1167,6 +1196,25 @@ void main() {
     }, () => MockClient((req) async => responder(req)));
     final req = pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/gasto'));
     expect(jsonDecode(req.body)['area'], 'farm');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Finanzas redesigned with Finance (4 Nov 2026): no data on top, tabs without numbers, Proveedores and the PDF', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await tester.scrollUntilVisible(find.text('Finanzas'), 200, scrollable: find.byType(Scrollable).last);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Finanzas'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.textContaining('Compras ('), findsNothing);
+    expect(find.text('Adelantos por aprobar'), findsNothing); // the indicators stay on the Procesos card
+    expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Proveedores').last);
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(pedidos.any((r) => r.url.path.endsWith('/personas/buscar') && r.url.queryParameters['area'] == 'finance'), isTrue);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('Comercialización is the first card, with the sales report inside; Resumen no longer has it', (tester) async {
@@ -1314,7 +1362,7 @@ void main() {
       await tester.tap(find.text('Gastos').last);
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    expect(pedidos.any((r) => r.url.path.endsWith('/mi-area') && r.url.queryParameters['area'] == 'fulfillment'), isTrue);
+    expect(pedidos.any((r) => r.url.path.endsWith('/gastos-area') && r.url.queryParameters['area'] == 'fulfillment'), isTrue);
     // Registrar gasto keeps the Logística area.
     await http.runWithClient(() async {
       await tester.tap(find.text('Registrar gasto'));
@@ -1515,7 +1563,7 @@ void main() {
     await abrir(tester, rol: 'owner');
     await entrarFinanzas(tester);
     await http.runWithClient(() async {
-      await tester.tap(find.textContaining('Gastos ('));
+      await tester.tap(find.text('Gastos').last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Mano de obra'));
       await tester.pumpAndSettle();
@@ -1570,7 +1618,7 @@ void main() {
       await tester.tap(find.text('Gastos').last);
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    expect(pedidos.any((r) => r.url.path.endsWith('/mi-area') && r.url.queryParameters['area'] == 'sourcing'), isTrue);
+    expect(pedidos.any((r) => r.url.path.endsWith('/gastos-area') && r.url.queryParameters['area'] == 'sourcing'), isTrue);
     for (final t in ['Transporte', 'Pendiente']) {
       expect(find.text(t), findsWidgets, reason: t);
     }
@@ -1768,7 +1816,7 @@ void main() {
     await abrir(tester, rol: 'owner');
     await entrarFinanzas(tester);
     await http.runWithClient(() async {
-      await tester.tap(find.textContaining('Gastos ('));
+      await tester.tap(find.text('Gastos').last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Gas'));
       await tester.pumpAndSettle();
@@ -1779,7 +1827,7 @@ void main() {
     await tester.tapAt(const Offset(10, 10)); // close the menu
     await tester.pumpAndSettle();
     await http.runWithClient(() async {
-      await tester.tap(find.textContaining('Adelantos ('));
+      await tester.tap(find.text('Adelantos').last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Misael Cusi'));
       await tester.pumpAndSettle();

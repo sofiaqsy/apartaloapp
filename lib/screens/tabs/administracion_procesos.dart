@@ -932,6 +932,8 @@ class _LogisticaScreenState extends _ProcesoState<_LogisticaScreen> with _Provee
   String get areaGastos => 'fulfillment';
   @override
   String get vacioGastos => 'Todavía no hay gastos de Logística.';
+  @override
+  bool get duenoGastos => widget.esDueno;
 
   @override
   String get nombreReporte => 'Logística';
@@ -1040,6 +1042,7 @@ class _LogisticaScreenState extends _ProcesoState<_LogisticaScreen> with _Provee
     return pantalla('Logística', botonFlotante: botonReporte(), alFinal: () {
       if (_pestana < 2) _masPedidos(_pestana);
       if (_pestana == 2) masProveedores();
+      if (_pestana == 3) masGastos();
     }, (d) {
       return [
         // Sin datos arriba, como Compras y Producción: la tarjeta de Procesos ya los muestra (4 nov 2026).
@@ -1084,8 +1087,23 @@ class _FinanzasScreen extends StatefulWidget {
   State<_FinanzasScreen> createState() => _FinanzasScreenState();
 }
 
-class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
-  int _pestana = 0; // 0 Compras, 1 Gastos, 2 Adelantos
+class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ProveedoresDelProceso, _ReporteDelProceso {
+  // Rediseñada con el área (General Manager, 4 nov 2026; la propuesta de Finanzas): sin datos arriba, los mismos pagos
+  // y aprobaciones de siempre, Proveedores y el reporte en PDF. Sin pestaña "Gastos del área": Finanzas paga los gastos
+  // de todas las áreas en Gastos.
+  int _pestana = 0; // 0 Compras, 1 Gastos, 2 Adelantos, 3 Proveedores
+
+  @override
+  String? get areaProveedores => 'finance';
+  @override
+  String get vacioProveedores => 'Todavía no hay proveedores de Finanzas.';
+
+  @override
+  String get nombreReporte => 'Finanzas';
+  @override
+  Future<ApiResponse<Map<String, dynamic>>> pedirReporte(DateTime desde, DateTime hasta) => AdministracionService.reporteFinanzas(desde, hasta);
+  @override
+  Future<Uint8List> armarPdf(Map<String, dynamic> reporte) => FinanzasPdfService.generarBytes(reporte);
 
   @override
   String get clave => 'finanzas';
@@ -1109,7 +1127,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
       _hayMas[i] = true;
       _errores[i] = null;
     }
-    await Future.wait([super.cargar(), _mas(_pestana)]);
+    await Future.wait([super.cargar(), if (_pestana < 3) _mas(_pestana)]);
   }
 
   Future<void> _mas(int i) async {
@@ -1138,11 +1156,11 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
     'Aprobado': Colors.green,
     'Rechazado': Colors.grey,
   };
-  static bool _espera(Map<String, dynamic> f) => f['estado'] == 'Pendiente' || f['estado'] == 'Urgente';
+  static bool _esperaFila(Map<String, dynamic> f) => f['estado'] == 'Pendiente' || f['estado'] == 'Urgente';
   static _Pildora _estado(Map<String, dynamic> f) => _Pildora('${f['estado'] ?? ''}', _coloresEstado[f['estado']] ?? Colors.grey);
   static String? _diasEsperando(Map<String, dynamic> f) {
     final d = (f['espera'] as num?)?.toInt();
-    if (d == null || !_espera(f)) return null;
+    if (d == null || !_esperaFila(f)) return null;
     return d == 0 ? 'pedido hoy' : (d == 1 ? 'espera 1 día' : 'espera $d días');
   }
 
@@ -1152,7 +1170,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
   /// Tocar una fila abre su detalle (General Manager, 3 nov 2026); debajo, lo que se puede hacer: pagar o aprobar
   /// (sólo si espera), Subir evidencia y Ver evidencia. Al volver, si algo cambió, Finanzas se recarga.
   Future<void> _detalle(String tipo, Map<String, dynamic> f) async {
-    final espera = _espera(f);
+    final espera = _esperaFila(f);
     final datos = <(String, String?)>[
       ('Estado', '${f['estado'] ?? ''}${_diasEsperando(f) != null ? ' · ${_diasEsperando(f)}' : ''}'),
       if (tipo == 'purchase') ...[
@@ -1317,30 +1335,36 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return pantalla('Finanzas', alFinal: () => _mas(_pestana), (d) {
+    return pantalla('Finanzas', botonFlotante: datos?['solo_duenos'] == true ? null : botonReporte(), alFinal: () {
+      if (_pestana < 3) _mas(_pestana);
+      if (_pestana == 3) masProveedores();
+    }, (d) {
       if (d['solo_duenos'] == true) return [_vacio('Finanzas es sólo para los dueños.')];
-      int n(String k) => (_mapa(d[k])['n'] as num?)?.toInt() ?? 0;
-      final filas = _filas[_pestana];
+      final filas = _pestana < 3 ? _filas[_pestana] : const <Map<String, dynamic>>[];
       return [
-        _CuatroDatos(indicadores: _indicadoresFinanzas(d), grande: true),
-        const SizedBox(height: 16),
+        // Sin datos arriba (General Manager, 4 nov 2026): la tarjeta de Procesos ya los muestra.
         _Acciones(acciones: [
           (Icons.account_balance_wallet, _titulos['retiro']!, () => formulario('retiro')),
           (Icons.receipt_long, _titulos['gasto']!, () => formulario('gasto', fijos: const {'area': 'finance'}, subtitulo: 'Área: Finanzas')),
         ]),
-        // El número de cada pestaña es lo que espera; la lista también trae lo del último mes.
+        // Sin números en las pestañas: un número no parece botón (4 nov 2026). Cada lista trae primero lo que espera.
         _Pestanas(
-          nombres: ['Compras (${n('compras')})', 'Gastos (${n('gastos')})', 'Adelantos (${n('adelantos')})'],
+          nombres: const ['Compras', 'Gastos', 'Adelantos', 'Proveedores'],
+          anchoPorNombre: true,
           elegida: _pestana,
           onElegir: (i) {
             setState(() => _pestana = i);
-            if (_filas[i].isEmpty) _mas(i);
+            if (i < 3 && _filas[i].isEmpty) _mas(i);
+            if (i == 3) abrirProveedores();
           },
         ),
-        const SizedBox(height: 12),
+        if (_pestana == 3) ..._listaProveedores(),
+        if (_pestana < 3) const SizedBox(height: 12),
         for (final f in filas)
           if (_pestana == 0) _filaCompra(f) else if (_pestana == 1) _filaGasto(f) else _filaAdelanto(f),
-        if (_errores[_pestana] != null)
+        if (_pestana == 3)
+          const SizedBox.shrink()
+        else if (_errores[_pestana] != null)
           Padding(padding: const EdgeInsets.all(16), child: Text(_errores[_pestana]!, textAlign: TextAlign.center))
         else if (_cargando[_pestana] || _hayMas[_pestana])
           const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
@@ -1356,7 +1380,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
 
   // Sólo las compras con "Solicitar pago" o pagadas el último mes; las demás esperan en Compras.
   Widget _filaCompra(Map<String, dynamic> c) {
-    final espera = _espera(c);
+    final espera = _esperaFila(c);
     final monto = espera ? (c['monto'] ?? c['debe']) : c['total'];
     return _Ficha(
       inicio: _Insignia(_fechaCorta(c['fecha']), tono: Colors.green),
@@ -1376,7 +1400,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
   }
 
   Widget _filaGasto(Map<String, dynamic> g) {
-    final espera = _espera(g);
+    final espera = _esperaFila(g);
     return _Ficha(
       inicio: _Insignia(_fechaCorta(g['fecha']), tono: Colors.orange),
       titulo: '${g['categoria'] ?? 'Gasto'}',
@@ -1518,23 +1542,45 @@ class _FincaScreen extends StatefulWidget {
   State<_FincaScreen> createState() => _FincaScreenState();
 }
 
-class _FincaScreenState extends _ProcesoState<_FincaScreen> with _ProveedoresDelProceso {
+class _FincaScreenState extends _ProcesoState<_FincaScreen> with _ProveedoresDelProceso, _GastosDelArea, _ReporteDelProceso {
+  // Rediseñada con el área (General Manager, 4 nov 2026; la propuesta de Finca): sin datos arriba, Registrar gasto,
+  // pestañas Gastos | Proveedores y el reporte en PDF. Parcelas, cosechas, labores, lluvia y plagas vendrán con sus
+  // formularios; hoy no se muestran pestañas vacías.
   int _pestana = 0; // 0 Gastos, 1 Proveedores
 
   @override
   String get clave => 'finca';
   @override
   String? get areaProveedores => 'farm';
+  @override
+  String get areaGastos => 'farm';
+  @override
+  String get vacioGastos => 'Todavía no hay gastos de la finca.';
+  @override
+  bool get duenoGastos => widget.esDueno;
+
+  @override
+  String get nombreReporte => 'Finca';
+  @override
+  Future<ApiResponse<Map<String, dynamic>>> pedirReporte(DateTime desde, DateTime hasta) => AdministracionService.reporteFinca(desde, hasta);
+  @override
+  Future<Uint8List> armarPdf(Map<String, dynamic> reporte) => FincaPdfService.generarBytes(reporte);
+
+  /// El resumen y, en la pestaña Gastos (la primera), sus gastos desde el comienzo (también después de Registrar gasto).
+  @override
+  Future<void> cargar() async {
+    if (_pestana == 0) cargarGastos();
+    await super.cargar();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return pantalla('Finca', alFinal: () {
+    return pantalla('Finca', botonFlotante: botonReporte(), alFinal: () {
+      if (_pestana == 0) masGastos();
       if (_pestana == 1) masProveedores();
     }, (d) {
-      final recientes = _lista(d['recientes']);
       return [
-        _CuatroDatos(indicadores: _indicadoresFinca(d, widget.esDueno), grande: true), // los mismos 4 de la tarjeta
-        const SizedBox(height: 16),
+        // Sin datos arriba (General Manager, 4 nov 2026): la tarjeta de Procesos ya los muestra.
         _Acciones(acciones: [
           (
             Icons.receipt_long,
@@ -1544,26 +1590,15 @@ class _FincaScreenState extends _ProcesoState<_FincaScreen> with _ProveedoresDel
         ]),
         _Pestanas(
           nombres: const ['Gastos', 'Proveedores'],
+          anchoPorNombre: true,
           elegida: _pestana,
           onElegir: (i) {
             setState(() => _pestana = i);
+            if (i == 0) cargarGastos();
             if (i == 1) abrirProveedores();
           },
         ),
-        if (_pestana == 1) ..._listaProveedores(),
-        if (_pestana == 0) _encabezado('Últimos gastos de la finca', '${recientes.length}'),
-        if (_pestana == 0 && recientes.isEmpty) _vacio('Todavía no hay gastos de la finca.'),
-        if (_pestana == 0)
-          for (final g in recientes)
-            _Ficha(
-              inicio: _Insignia(_fechaCorta(g['fecha']), tono: Colors.green),
-              titulo: '${g['categoria'] ?? 'Gasto'}',
-              detalle: [if ((g['descripcion'] ?? '').toString().isNotEmpty) '${g['descripcion']}', '${g['estado'] ?? ''}']
-                  .where((t) => t.isNotEmpty)
-                  .join(' · '),
-              // La base ya dice el estado en español ("Pendiente de pago", "Pagado").
-              fin: g['monto'] != null ? _Pildora(_soles(g['monto']), '${g['estado']}'.startsWith('Pagado') ? Colors.green : Colors.orange) : null,
-            ),
+        if (_pestana == 1) ..._listaProveedores() else ...listaGastos(),
       ];
     });
   }
@@ -1619,40 +1654,127 @@ mixin _ReporteDelProceso<T extends StatefulWidget> on State<T> {
 /// Pestaña Gastos de un proceso (General Manager, 4 nov 2026: Compras, luego Producción): los gastos de su área con su
 /// estado, los últimos 30 (de Mi área, que ya respeta las áreas de la persona); el monto lo dice la base.
 mixin _GastosDelArea<T extends StatefulWidget> on State<T> {
-  String get areaGastos; // 'sourcing', 'production'
+  String get areaGastos; // 'sourcing', 'production', 'fulfillment', 'farm'
   String get vacioGastos;
-  List<Map<String, dynamic>>? _gastos;
+  bool get duenoGastos => false; // los dueños ven y suben la evidencia en el detalle
+  // De 20 en 20 desde el servidor al llegar al final, lo más nuevo primero (4 nov 2026); cada gasto abre su detalle.
+  final List<Map<String, dynamic>> _gastos = [];
+  bool _cargandoGastos = false;
+  bool _hayMasGastos = true;
+  bool _gastosPedidos = false;
   String? _errorGastos;
+  int _vueltaGastos = 0;
 
+  /// Vuelve a empezar la lista (al abrir la pestaña).
   Future<void> cargarGastos() async {
-    final r = await AdministracionService.miArea(areaGastos);
-    if (!mounted) return;
+    _vueltaGastos++;
+    _gastos.clear();
+    _cargandoGastos = false;
+    _hayMasGastos = true;
+    _errorGastos = null;
+    _gastosPedidos = true;
+    await masGastos();
+  }
+
+  Future<void> masGastos() async {
+    if (_cargandoGastos || !_hayMasGastos) return;
+    final vuelta = _vueltaGastos;
+    setState(() => _cargandoGastos = true);
+    final r = await AdministracionService.gastosArea(areaGastos, desde: _gastos.length);
+    if (!mounted || vuelta != _vueltaGastos) return;
     setState(() {
-      _errorGastos = r.isSuccess ? null : (r.error ?? 'No se pudo cargar');
-      if (r.isSuccess) _gastos = _lista(r.data!['gastos']).map((g) => Map<String, dynamic>.from(g)).toList();
+      _cargandoGastos = false;
+      if (r.isSuccess) {
+        _gastos.addAll(_lista(r.data!['gastos']));
+        _hayMasGastos = r.data!['hayMas'] == true;
+      } else {
+        _errorGastos = r.error ?? 'No se pudo cargar';
+        _hayMasGastos = false;
+      }
     });
   }
 
   List<Widget> listaGastos() {
-    final gastos = _gastos;
-    if (_errorGastos != null) return [Padding(padding: const EdgeInsets.all(16), child: Text(_errorGastos!, textAlign: TextAlign.center))];
-    if (gastos == null) return [const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))];
-    if (gastos.isEmpty) return [_vacio(vacioGastos)];
+    if (_errorGastos != null && _gastos.isEmpty) return [Padding(padding: const EdgeInsets.all(16), child: Text(_errorGastos!, textAlign: TextAlign.center))];
     return [
       const SizedBox(height: 8),
-      for (final g in gastos)
+      if (_gastos.isEmpty && !_cargandoGastos && _gastosPedidos) _vacio(vacioGastos),
+      for (final g in _gastos)
         _Ficha(
           inicio: _Insignia(_fechaCorta(g['expense_date']), tono: Colors.orange),
           titulo: '${g['category'] ?? 'Gasto'}',
           detalle: [
             _soles(g['amount']),
             if ((g['description'] ?? '').toString().isNotEmpty) '${g['description']}',
-            if ((g['created_by'] ?? '').toString().isNotEmpty) '${g['created_by']}',
           ].join(' · '),
           // La base dice "Pagado" o "Pendiente de pago"; el mismo naranja que lo que espera en Finanzas.
           fin: g['status'] == 'Pagado' ? const _Pildora('Pagado', Colors.green) : const _Pildora('Pendiente', Colors.orange),
+          onTap: () => _abrirPantalla<void>(context, _GastoDetalleScreen(gasto: g, esDueno: duenoGastos)),
         ),
+      // Sin texto al final de la lista: sólo la carga mientras llega la siguiente página.
+      if (_cargandoGastos || !_gastosPedidos) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
     ];
+  }
+}
+
+/// Detalle de un gasto de un área (4 nov 2026): sus datos y, para los dueños, su evidencia. Sólo Finanzas paga: aquí no
+/// hay botón de pagar (General Manager, 3 nov 2026).
+class _GastoDetalleScreen extends StatelessWidget {
+  const _GastoDetalleScreen({required this.gasto, required this.esDueno});
+  final Map<String, dynamic> gasto;
+  final bool esDueno;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = gasto;
+    final pagado = g['status'] == 'Pagado';
+    Widget dato(String nombre, String? valor) => valor == null || valor.isEmpty || valor == 'null'
+        ? const SizedBox.shrink()
+        : Container(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade300))),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              SizedBox(width: 130, child: Text(nombre, style: TextStyle(color: Colors.grey.shade700))),
+              Expanded(child: Text(valor, style: const TextStyle(fontWeight: FontWeight.w600))),
+            ]),
+          );
+    return Scaffold(
+      appBar: AppBar(title: const Text('Gasto')),
+      body: ListView(padding: const EdgeInsets.all(16), children: [
+        Row(children: [
+          Expanded(child: Text('${g['category'] ?? 'Gasto'}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
+          _Pildora(pagado ? 'Pagado' : 'Pendiente', pagado ? Colors.green : Colors.orange),
+        ]),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(16)),
+          child: Column(children: [
+            dato('Monto', g['amount'] == null ? null : _soles(g['amount'])),
+            dato('Fecha', g['expense_date'] == null ? null : _fechaLarga(g['expense_date'])),
+            dato('Descripción', g['description']?.toString()),
+            dato('Gasto', g['id']?.toString()),
+            dato('Registrado por', g['created_by']?.toString()),
+          ].where((w) => w is! SizedBox).toList()),
+        ),
+        if (!pagado)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text('Lo paga Finanzas.', style: TextStyle(color: Colors.grey.shade700)),
+          ),
+        if (esDueno && g['id'] != null) ...[
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 48,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.attach_file),
+              label: const Text('Ver evidencia'),
+              onPressed: () => _abrirPantalla<void>(context, _EvidenciasScreen(tipo: 'expense', id: '${g['id']}', titulo: '${g['category'] ?? 'Gasto'}')),
+            ),
+          ),
+        ],
+      ]),
+    );
   }
 }
 
@@ -1821,6 +1943,8 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
   String get areaGastos => 'sourcing';
   @override
   String get vacioGastos => 'Todavía no hay gastos de Compras.';
+  @override
+  bool get duenoGastos => widget.esDueno;
 
   @override
   String? get rolProveedores => 'agricultor'; // en Compras, sólo quienes nos venden café
@@ -1860,7 +1984,7 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
           ..._listaAdelantos(),
       ];
     },
-        alFinal: _pestana == 3 ? null : (_pestana == 2 ? masProveedores : (_pestana == 0 ? _masCompras : _masAdelantos)),
+        alFinal: _pestana == 3 ? masGastos : (_pestana == 2 ? masProveedores : (_pestana == 0 ? _masCompras : _masAdelantos)),
         // Reporte en PDF, mensual o anual (General Manager, 4 nov 2026); el contenido lo decidió el área de Compras.
         botonFlotante: botonReporte());
   }
@@ -2916,6 +3040,8 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
   String get areaGastos => 'production';
   @override
   String get vacioGastos => 'Todavía no hay gastos de Producción.';
+  @override
+  bool get duenoGastos => widget.esDueno;
 
   @override
   String? get areaProveedores => 'production';
@@ -2986,6 +3112,7 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
     // Reporte en PDF como Compras (General Manager, 4 nov 2026); el contenido lo decidió el área de Producción.
     return pantalla('Producción', botonFlotante: botonReporte(), alFinal: () {
       if (_pestana == 2) masProveedores();
+      if (_pestana == 3) masGastos();
     }, (d) {
       final lotes = _lista(d['lotes_verdes']);
       final tuestes = _lista(d['tuestes']);

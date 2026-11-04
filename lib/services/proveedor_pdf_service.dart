@@ -1051,3 +1051,234 @@ class LogisticaPdfService {
     return doc.save();
   }
 }
+
+
+/// Cabecera, pie y franja comunes de los reportes de Finca y Finanzas (4 nov 2026), con el mismo diseño de los demás.
+class _ReporteBase {
+  static pw.Widget cabecera(String negocio, String area, Map<String, dynamic> reporte) {
+    final desde = DateTime.tryParse('${reporte['desde'] ?? ''}') ?? DateTime.now();
+    final hasta = DateTime.tryParse('${reporte['hasta'] ?? ''}') ?? desde;
+    final variosMeses = (int.tryParse('${reporte['meses'] ?? 1}') ?? 1) > 1;
+    final titulo = reporte['anual'] == true ? 'Reporte anual' : (variosMeses ? 'Reporte por meses' : 'Reporte mensual');
+    final hoy = ProveedorPdfService.fecha(reporte['generado'] ?? DateTime.now().toIso8601String());
+    return pw.Column(children: [
+      pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+        pw.Expanded(
+          child: pw.Row(children: [
+            pw.Flexible(
+                child: pw.Text(negocio.toUpperCase(),
+                    style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._brown, letterSpacing: 1.5))),
+            pw.SizedBox(width: 10),
+            pw.Container(
+              padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: pw.BoxDecoration(border: pw.Border.all(color: ProveedorPdfService._brown, width: 1), borderRadius: pw.BorderRadius.circular(3)),
+              child: pw.Text(area, style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._brown, letterSpacing: 2)),
+            ),
+          ]),
+        ),
+        pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+          pw.Text(titulo, style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._brown)),
+          pw.SizedBox(height: 3),
+          pw.Text(ComprasPdfService.periodo(desde, hasta),
+              style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._textDark)),
+          pw.SizedBox(height: 4),
+          pw.Text('Fecha de emisión: $hoy', style: const pw.TextStyle(fontSize: 8.5, color: ProveedorPdfService._textGrey)),
+        ]),
+      ]),
+      pw.SizedBox(height: 10),
+      pw.Divider(height: 1, thickness: 1.5, color: ProveedorPdfService._brown),
+      pw.SizedBox(height: 12),
+    ]);
+  }
+
+  static pw.Widget franja(List<(String, String)> datos) => pw.Container(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: pw.BoxDecoration(
+            color: ProveedorPdfService._warmBg, borderRadius: pw.BorderRadius.circular(6), border: pw.Border.all(color: ProveedorPdfService._cardBorder)),
+        child: pw.Row(children: [for (final (n, v) in datos) pw.Expanded(child: ProveedorPdfService._metaChip(n, v))]),
+      );
+
+  static pw.Widget nada(String titulo, String t) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+        ProveedorPdfService._sectionHeader('  $titulo'),
+        pw.Padding(
+            padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            child: pw.Text(t, style: const pw.TextStyle(fontSize: 9, color: ProveedorPdfService._textGrey))),
+      ]);
+
+  static pw.Widget nota(String t) => pw.Padding(
+      padding: const pw.EdgeInsets.only(top: 10), child: pw.Text(t, style: const pw.TextStyle(fontSize: 8.5, color: ProveedorPdfService._textGrey)));
+
+  static Future<Uint8List> documento(List<pw.Widget> Function() cuerpo, {required bool conMontos, pw.Font? base, pw.Font? bold}) async {
+    final doc = pw.Document();
+    final font = base ?? await PdfGoogleFonts.notoSansRegular();
+    final fontBold = bold ?? await PdfGoogleFonts.notoSansBold();
+    doc.addPage(pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(28),
+      maxPages: 30,
+      theme: pw.ThemeData.withFont(base: font, bold: fontBold),
+      footer: (ctx) => pw.Column(children: [
+        pw.Divider(thickness: 0.5, color: ProveedorPdfService._cardBorder),
+        pw.Row(children: [
+          pw.Expanded(
+              child: pw.Text(conMontos ? 'Documento interno: tiene montos.' : 'Documento interno.',
+                  style: const pw.TextStyle(fontSize: 7.5, color: ProveedorPdfService._textGrey))),
+          pw.Text('Página ${ctx.pageNumber} de ${ctx.pagesCount}', style: const pw.TextStyle(fontSize: 7.5, color: ProveedorPdfService._textGrey)),
+        ]),
+      ]),
+      build: (ctx) => cuerpo(),
+    ));
+    return doc.save();
+  }
+}
+
+/// Reporte de Finca (General Manager, 4 nov 2026; lo decidió el área de Finca): sólo lo que se registra hoy, los gastos
+/// de la finca por categoría y su lista. Montos sólo para dueños. Parcelas, cosecha, labores, lluvia y plagas vendrán
+/// cuando se registren.
+class FincaPdfService {
+  static Future<Uint8List> generarBytes(Map<String, dynamic> reporte, {String? businessName, pw.Font? base, pw.Font? bold}) {
+    const tabla = ProveedorPdfService._tabla;
+    final esDueno = reporte['dueno'] == true;
+    final franja = ProveedorPdfService._mapa(reporte['franja']);
+    final categorias = ProveedorPdfService._lista(reporte['por_categoria']);
+    final gastos = ProveedorPdfService._lista(reporte['gastos']);
+    String soles(dynamic v) => v == null ? '—' : ProveedorPdfService.soles(v);
+    return _ReporteBase.documento(
+      () => [
+        _ReporteBase.cabecera(businessName ?? ApiService.businessName, 'FINCA', reporte),
+        _ReporteBase.franja([
+          ('Gastos de la finca', ComprasPdfService._n(franja['gastos'] ?? 0)),
+          ('Por pagar', esDueno ? soles(franja['por_pagar']) : ComprasPdfService._n(franja['pendientes'] ?? 0)),
+          if (esDueno) ('Total del periodo', soles(franja['total'])),
+        ]),
+        pw.SizedBox(height: 12),
+        if (categorias.isEmpty)
+          _ReporteBase.nada('GASTOS POR CATEGORÍA', 'No hubo gastos de la finca en el periodo.')
+        else
+          ...tabla(
+            'GASTOS POR CATEGORÍA',
+            esDueno ? ['Categoría', 'Gastos', 'Pendiente', 'Pagado', 'Total'] : ['Categoría', 'Gastos'],
+            [
+              for (final c in categorias)
+                [
+                  '${c['categoria'] ?? ''}',
+                  ComprasPdfService._n(c['gastos']),
+                  if (esDueno) ...[soles(c['pendiente']), soles(c['pagado']), soles(c['total'])],
+                ],
+            ],
+            esDueno ? {1, 2, 3, 4} : {1},
+          ),
+        if (gastos.isNotEmpty) ...[
+          pw.SizedBox(height: 12),
+          ...tabla(
+            'GASTOS DEL PERIODO',
+            esDueno ? ['Fecha', 'Categoría', 'Descripción', 'Estado', 'Monto'] : ['Fecha', 'Categoría', 'Descripción', 'Estado'],
+            [
+              for (final g in gastos)
+                [
+                  ProveedorPdfService.fecha(g['fecha']),
+                  '${g['categoria'] ?? ''}',
+                  '${g['descripcion'] ?? ''}',
+                  '${g['estado'] ?? ''}',
+                  if (esDueno) soles(g['monto']),
+                ],
+            ],
+            esDueno ? {4} : <int>{},
+          ),
+        ],
+        _ReporteBase.nota('Todavía no se registran parcelas, cosechas, labores, cosechadores, lluvia ni plagas: por eso no hay kilos, '
+            'costo por hectárea ni costo por kilo.'),
+      ],
+      conMontos: esDueno,
+      base: base,
+      bold: bold,
+    );
+  }
+}
+
+/// Reporte de Finanzas (General Manager, 4 nov 2026; lo decidió el área de Finanzas), sólo dueños: gastos por área y
+/// categoría; pagos por cuenta y fecha (por la fecha en que se pagó); compras compradas, pagadas y por pagar al cierre;
+/// adelantos dados y abiertos al cierre; retiros de efectivo.
+class FinanzasPdfService {
+  static Future<Uint8List> generarBytes(Map<String, dynamic> reporte, {String? businessName, pw.Font? base, pw.Font? bold}) {
+    const tabla = ProveedorPdfService._tabla;
+    final franja = ProveedorPdfService._mapa(reporte['franja']);
+    final gastos = ProveedorPdfService._lista(reporte['gastos_por_area']);
+    final cuentas = ProveedorPdfService._lista(reporte['pagos_por_cuenta']);
+    final pagos = ProveedorPdfService._lista(reporte['pagos']);
+    final compras = ProveedorPdfService._mapa(reporte['compras']);
+    final adelantos = ProveedorPdfService._mapa(reporte['adelantos']);
+    final retiros = ProveedorPdfService._lista(reporte['retiros']);
+    String soles(dynamic v) => ProveedorPdfService.soles(v ?? 0);
+    return _ReporteBase.documento(
+      () => [
+        _ReporteBase.cabecera(businessName ?? ApiService.businessName, 'FINANZAS', reporte),
+        _ReporteBase.franja([
+          ('Gastos del periodo', soles(franja['gastos'])),
+          ('Pagado en el periodo', soles(franja['pagado'])),
+          ('Compras por pagar al cierre', soles(franja['compras_debe'])),
+          ('Retiros de efectivo', soles(franja['retiros'])),
+        ]),
+        pw.SizedBox(height: 12),
+        // 1. Gastos por área y categoría
+        if (gastos.isEmpty)
+          _ReporteBase.nada('GASTOS POR ÁREA Y CATEGORÍA', 'No hubo gastos en el periodo.')
+        else
+          ...tabla(
+            'GASTOS POR ÁREA Y CATEGORÍA',
+            ['Área', 'Categoría', 'Pendiente', 'Pagado', 'Total'],
+            [for (final g in gastos) ['${g['area'] ?? ''}', '${g['categoria'] ?? ''}', soles(g['pendiente']), soles(g['pagado']), soles(g['total'])]],
+            {2, 3, 4},
+          ),
+        pw.SizedBox(height: 12),
+        // 2. Pagos por cuenta y fecha
+        if (pagos.isEmpty)
+          _ReporteBase.nada('PAGOS POR CUENTA', 'No hubo pagos en el periodo.')
+        else ...[
+          ...tabla(
+            'PAGOS POR CUENTA',
+            ['Cuenta', 'Pagos', 'Total'],
+            [for (final c in cuentas) ['${c['cuenta'] ?? ''}', ComprasPdfService._n(c['pagos']), soles(c['total'])]],
+            {1, 2},
+          ),
+          pw.SizedBox(height: 12),
+          ...tabla(
+            'PAGOS DEL PERIODO',
+            ['Fecha', 'Cuenta', 'Tipo', 'A quién', 'Monto'],
+            [
+              for (final p in pagos)
+                [ProveedorPdfService.fecha(p['fecha']), '${p['cuenta'] ?? ''}', '${p['tipo'] ?? ''}', '${p['quien'] ?? '—'}', soles(p['monto'])],
+            ],
+            {4},
+          ),
+        ],
+        pw.SizedBox(height: 12),
+        // 3. Compras y 4. Adelantos
+        ...tabla(
+          'COMPRAS Y ADELANTOS',
+          ['Dato', 'Valor'],
+          [
+            ['Compras del periodo', '${ComprasPdfService._n(compras['compras'] ?? 0)} · ${ProveedorPdfService.kg(compras['kg'] ?? 0)}'],
+            ['Comprado en el periodo', soles(compras['comprado'])],
+            ['Pagado a agricultores en el periodo', soles(compras['pagado'])],
+            ['Por pagar al cierre', soles(compras['debe'])],
+            ['Adelantos dados en el periodo', soles(adelantos['dados'])],
+            ['Adelantos abiertos al cierre', soles(adelantos['abiertos_al_cierre'])],
+          ],
+          {1},
+        ),
+        pw.SizedBox(height: 12),
+        // 5. Retiros de efectivo
+        if (retiros.isEmpty)
+          _ReporteBase.nada('RETIROS DE EFECTIVO', 'No hubo retiros de efectivo en el periodo.')
+        else
+          ...tabla('RETIROS DE EFECTIVO', ['Fecha', 'Monto'], [for (final r in retiros) [ProveedorPdfService.fecha(r['fecha']), soles(r['monto'])]], {1}),
+        _ReporteBase.nota('No se muestran movimientos del banco, saldos de cuentas, flujo de caja proyectado, costo ni margen por kilo, '
+            'ventas ni cuentas por cobrar: todavía no se registran.'),
+      ],
+      conMontos: true,
+      base: base,
+      bold: bold,
+    );
+  }
+}
