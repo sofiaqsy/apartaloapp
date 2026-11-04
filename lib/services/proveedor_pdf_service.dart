@@ -600,7 +600,7 @@ class ComprasPdfService {
 }
 
 /// Reporte de Producción (General Manager, 4 nov 2026), con el mismo diseño del de Compras. Qué muestra lo decidió el
-/// área de Producción: franja (tuestes, verde que entró, tostado que salió, merma media); los tuestes del mes (o una
+/// área de Producción: franja (lotes de tostado, verde que entró, tostado que salió, merma media); los lotes de tostado del mes (o una
 /// tabla por mes); merma por lote verde; stock de verde y de tostado hoy; café por procesar hoy; costos (sólo dueños).
 /// [reporte] es lo que da /produccion/reporte.
 class ProduccionPdfService {
@@ -693,7 +693,7 @@ class ProduccionPdfService {
               borderRadius: pw.BorderRadius.circular(6),
               border: pw.Border.all(color: ProveedorPdfService._cardBorder)),
           child: pw.Row(children: [
-            pw.Expanded(child: ProveedorPdfService._metaChip('Tuestes terminados', ComprasPdfService._n(franja['tuestes']))),
+            pw.Expanded(child: ProveedorPdfService._metaChip('Lotes de tostado terminados', ComprasPdfService._n(franja['tuestes']))),
             pw.Expanded(child: ProveedorPdfService._metaChip('Café verde que entró', _kg(franja['kg_verde']))),
             pw.Expanded(child: ProveedorPdfService._metaChip('Café tostado que salió', _kg(franja['kg_tostado']))),
             pw.Expanded(child: ProveedorPdfService._metaChip('Merma media', _pct(franja['merma_pct']))),
@@ -701,13 +701,13 @@ class ProduccionPdfService {
         ),
         espacio(),
 
-        // ── A. TUESTES DEL MES / POR MES ──
+        // ── A. LOTES DE TOSTADO DEL MES / POR MES ── (antes "Tuestes": General Manager, 4 nov 2026)
         if (!variosMeses)
           if (tuestes.isEmpty)
-            nada('TUESTES DEL MES', 'No hubo tuestes este mes.')
+            nada('LOTES DE TOSTADO DEL MES', 'No hubo lotes de tostado este mes.')
           else
             ...tabla(
-              'TUESTES DEL MES',
+              'LOTES DE TOSTADO DEL MES',
               ['Fecha', 'Producto', 'Lote verde', 'Verde', 'Tostado', 'Merma', 'Estado'],
               [
                 for (final t in tuestes)
@@ -724,11 +724,11 @@ class ProduccionPdfService {
               {3, 4, 5},
             )
         else if (porMes.isEmpty)
-          nada('POR MES', 'No hubo tuestes terminados en el periodo.')
+          nada('POR MES', 'No hubo lotes de tostado terminados en el periodo.')
         else
           ...tabla(
             'POR MES',
-            ['Mes', 'Tuestes', 'Verde', 'Tostado', 'Merma'],
+            ['Mes', 'Lotes de tostado', 'Verde', 'Tostado', 'Merma'],
             [
               for (final m in porMes)
                 [ComprasPdfService._etiquetaMes(m['mes']), ComprasPdfService._n(m['tuestes']), _kg(m['kg_verde']), _kg(m['kg_tostado']), _pct(m['merma_pct'])],
@@ -738,7 +738,7 @@ class ProduccionPdfService {
         pw.Padding(
           padding: const pw.EdgeInsets.only(top: 6),
           child: pw.Text(
-              'Hoy: ${ComprasPdfService._cuantos(enCurso['programados'], 'tueste programado', 'tuestes programados')} · '
+              'Hoy: ${ComprasPdfService._cuantos(enCurso['programados'], 'lote de tostado programado', 'lotes de tostado programados')} · '
               '${ComprasPdfService._cuantos(enCurso['tostando'], 'tostando', 'tostando')}',
               style: const pw.TextStyle(fontSize: 8.5, color: ProveedorPdfService._textGrey)),
         ),
@@ -748,7 +748,7 @@ class ProduccionPdfService {
         if (porLote.isNotEmpty) ...[
           ...tabla(
             'MERMA POR LOTE VERDE',
-            ['Lote', 'Variedad', 'Cosecha', 'Tuestes', 'Verde', 'Tostado', 'Merma'],
+            ['Lote', 'Variedad', 'Cosecha', 'Lotes de tostado', 'Verde', 'Tostado', 'Merma'],
             [
               for (final l in porLote)
                 [

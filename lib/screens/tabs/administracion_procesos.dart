@@ -318,7 +318,7 @@ List<_Indicador> _indicadoresCompras(Map<String, dynamic> c, bool esDueno) {
   ];
 }
 
-/// Producción: siempre 4. Café tostado, café verde, tuestes del mes y merma.
+/// Producción: siempre 4. Café tostado, café verde, lotes de tostado del mes y merma.
 List<_Indicador> _indicadoresProduccion(Map<String, dynamic> p) {
   final lotes = _lista(p['lotes_verdes']);
   final tuestes = _lista(p['tuestes']);
@@ -329,7 +329,7 @@ List<_Indicador> _indicadoresProduccion(Map<String, dynamic> p) {
     // Primero el tostado, luego el verde (General Manager, 3 nov 2026).
     _Indicador(Icons.coffee, _kg(p['tostado_kg']), 'Café tostado', tono: Colors.orange, nota: 'disponible'),
     _Indicador(Icons.eco, _kg(p['verde_kg']), 'Café verde', tono: Colors.green, nota: '${lotes.length} ${lotes.length == 1 ? 'lote' : 'lotes'}'),
-    _Indicador(Icons.local_fire_department, '${mes['tuestes'] ?? 0}', 'Tuestes este mes',
+    _Indicador(Icons.local_fire_department, '${mes['tuestes'] ?? 0}', 'Lotes de tostado este mes', // antes "Tuestes" (General Manager, 4 nov 2026)
         tono: Colors.blue,
         nota: enCurso > 0 ? '$enCurso tostando ahora' : (programados > 0 ? '$programados programados' : 'ninguno programado'),
         atencion: enCurso > 0),
@@ -631,8 +631,10 @@ Widget _vacio(String texto) => Padding(
 
 /// Pestañas debajo de las acciones: el texto elegido en azul y subrayado.
 class _Pestanas extends StatelessWidget {
-  const _Pestanas({required this.nombres, required this.elegida, required this.onElegir});
+  const _Pestanas({required this.nombres, required this.elegida, required this.onElegir, this.anchoPorNombre = false});
   final List<String> nombres;
+  /// Cada pestaña tan ancha como su nombre, para que un nombre largo ("Lotes de tostado") se lea sin achicarse (4 nov 2026).
+  final bool anchoPorNombre;
   final int elegida;
   final ValueChanged<int> onElegir;
 
@@ -644,6 +646,7 @@ class _Pestanas extends StatelessWidget {
       child: Row(children: [
         for (final (i, n) in nombres.indexed)
           Expanded(
+            flex: anchoPorNombre ? (n.length < 6 ? 6 : n.length) : 1,
             child: InkWell(
               onTap: () => onElegir(i),
               child: Container(
@@ -2789,7 +2792,7 @@ class _ProduccionScreen extends StatefulWidget {
 }
 
 class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _ProveedoresDelProceso, _GastosDelArea, _ReporteDelProceso {
-  int? _pestana; // 0 Tuestes, 1 Lotes, 2 Proveedores, 3 Gastos; al abrir: Tuestes si hay alguno, si no Lotes
+  int? _pestana; // 0 Lotes de tostado, 1 Café verde, 2 Proveedores, 3 Gastos; al abrir: Lotes de tostado si hay alguno, si no Café verde
 
   @override
   String get nombreReporte => 'Producción';
@@ -2870,7 +2873,9 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
           ),
         ]),
         _Pestanas(
-          nombres: const ['Tuestes', 'Lotes', 'Proveedores', 'Gastos'], // Gastos: General Manager, 4 nov 2026
+          // Gastos, y "Lotes de tostado" y "Café verde" en vez de Tuestes y Lotes: General Manager, 4 nov 2026
+          nombres: const ['Lotes de tostado', 'Café verde', 'Proveedores', 'Gastos'],
+          anchoPorNombre: true,
           elegida: pestana,
           onElegir: (i) {
             setState(() => _pestana = i);
@@ -2883,8 +2888,8 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
         else if (pestana == 2)
           ..._listaProveedores()
         else if (pestana == 0) ...[
-          _encabezado('Tuestes en curso y programados', '${tuestes.length}'),
-          if (tuestes.isEmpty) _vacio('No hay tuestes programados. Toca "Tostar café".'),
+          _encabezado('Lotes de tostado en curso y programados', '${tuestes.length}'),
+          if (tuestes.isEmpty) _vacio('No hay lotes de tostado programados. Toca "Tostar café".'),
           for (final t in tuestes)
             _Ficha(
               inicio: _Insignia('${t['lote'] ?? '—'}', tono: t['estado'] == 'in_progress' ? Colors.deepOrange : Colors.blue),

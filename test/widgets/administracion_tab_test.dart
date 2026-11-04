@@ -288,7 +288,7 @@ void main() {
     for (final t in ['Comercialización', 'Producción', 'Compras', 'Café verde', 'Café tostado', '760 kg', 'Comprado', 'Sin precio']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
-    for (final t in ['Tuestes este mes', 'Merma', 'En almacén', 'Última compra']) {
+    for (final t in ['Lotes de tostado este mes', 'Merma', 'En almacén', 'Última compra']) {
       expect(find.text(t), findsNothing, reason: t);
     }
     // Registrar gasto and the cash withdrawal live inside the processes (3 Nov 2026).
@@ -806,8 +806,11 @@ void main() {
       await tester.tap(find.text('Producción'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    // Opens on Tuestes because there are roasts; Lotes and Proveedores are the other tabs.
-    for (final t in ['Tostar café', 'Registrar gasto', 'Omagua 250 g', 'Omagua 1 kg']) {
+    // Opens on Lotes de tostado because there are roasts; Café verde, Proveedores and Gastos are the other tabs.
+    // "Tuestes" is now "Lotes de tostado" and "Lotes" is "Café verde" (4 Nov 2026).
+    expect(find.text('Tuestes'), findsNothing);
+    expect(find.text('Lotes'), findsNothing);
+    for (final t in ['Tostar café', 'Registrar gasto', 'Omagua 250 g', 'Omagua 1 kg', 'Lotes de tostado en curso y programados']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     // No data on top, like Compras (4 Nov 2026): the Procesos card already shows it.
@@ -816,7 +819,7 @@ void main() {
     }
     expect(find.text('Finalizar'), findsOneWidget); // the roast in progress
     expect(find.text('Iniciar'), findsOneWidget); // the planned one
-    await tester.tap(find.text('Lotes'));
+    await tester.tap(find.text('Café verde').last);
     await tester.pump();
     for (final t in ['L-1', 'Catimor · cosecha 2026', '760 kg / 1,000 kg', '76%']) {
       expect(find.text(t), findsOneWidget, reason: t);
@@ -829,10 +832,14 @@ void main() {
     await http.runWithClient(() async {
       await tester.tap(find.text('Producción'));
       await tester.pumpAndSettle();
-      final tabs = ['Tuestes', 'Lotes', 'Proveedores', 'Gastos'].map((t) => tester.getCenter(find.text(t).last).dx).toList();
+      final tabs = ['Lotes de tostado', 'Café verde', 'Proveedores', 'Gastos'].map((t) => tester.getCenter(find.text(t).last).dx).toList();
       for (var i = 1; i < tabs.length; i++) {
         expect(tabs[i], greaterThan(tabs[i - 1]));
       }
+      // The long name gets the widest tab, so it is not shrunk on the iPhone (4 Nov 2026).
+      double ancho(String t) => tester.getSize(find.ancestor(of: find.text(t).last, matching: find.byType(InkWell)).first).width;
+      expect(ancho('Lotes de tostado'), greaterThan(ancho('Café verde')));
+      expect(ancho('Café verde'), greaterThan(ancho('Gastos')));
       await tester.tap(find.text('Gastos').last);
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
