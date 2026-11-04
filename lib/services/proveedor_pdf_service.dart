@@ -602,7 +602,7 @@ class ComprasPdfService {
 /// Reporte de Producción (General Manager, 4 nov 2026), con el mismo diseño del de Compras. Qué muestra lo decidió el
 /// área de Producción, revisado con ella el 4 nov 2026: franja (lotes de tostado, verde que entró, tostado que salió, merma media,
 /// verde vendido, tostado vendido); los lotes de tostado del mes (o una tabla por mes); movimientos del verde por lote; merma
-/// por lote verde; tostado vendido por producto y lotes vendidos de más; stock de verde y de tostado hoy; costos (sólo dueños).
+/// por lote verde (sólo lotes abiertos); tostado vendido por producto; stock de verde y de tostado hoy; costos (sólo dueños).
 /// [reporte] es lo que da /produccion/reporte.
 class ProduccionPdfService {
   static String _kg(dynamic v) => v == null ? '—' : ProveedorPdfService.kg(v);
@@ -628,9 +628,9 @@ class ProduccionPdfService {
     final porLote = ProveedorPdfService._lista(reporte['por_lote']);
     final verde = ProveedorPdfService._lista(reporte['verde_hoy']);
     final tostado = ProveedorPdfService._lista(reporte['tostado_hoy']);
-    final movVerde = ProveedorPdfService._lista(reporte['movimientos_verde']);
+    // Sólo los lotes abiertos (General Manager, 4 nov 2026: "just show the don't closed lotes").
+    final movVerde = ProveedorPdfService._lista(reporte['movimientos_verde']).where((m) => m['estado'] != 'Cerrado').toList();
     final vendidoTostado = ProveedorPdfService._lista(reporte['vendido_tostado']);
-    final deMas = ProveedorPdfService._lista(reporte['vendido_de_mas']);
     final costos = ProveedorPdfService._lista(reporte['costos']);
     final costosMes = ProveedorPdfService._lista(reporte['costos_por_mes']);
     final hoy = ProveedorPdfService.fecha(reporte['generado'] ?? DateTime.now().toIso8601String());
@@ -754,33 +754,32 @@ class ProduccionPdfService {
         ),
         espacio(),
 
-        // ── B. MOVIMIENTOS DEL CAFÉ VERDE POR LOTE ── (de su Estado de lote; Producción, 4 nov 2026)
+        // ── B. MOVIMIENTOS DEL CAFÉ VERDE POR LOTE ── (de su Estado de lote, sólo lotes abiertos; 4 nov 2026)
         if (movVerde.isEmpty)
-          nada('MOVIMIENTOS DEL CAFÉ VERDE POR LOTE', 'No hubo movimientos de café verde en el periodo.')
+          nada('MOVIMIENTOS DEL CAFÉ VERDE POR LOTE', 'No hubo movimientos en los lotes abiertos en el periodo.')
         else ...[
           ...tabla(
             'MOVIMIENTOS DEL CAFÉ VERDE POR LOTE',
-            ['Lote', 'Compras', 'Verde estimado', 'Tostado', 'Vendido', 'Cerrado', 'Diferencia', 'Saldo hoy'],
+            ['Lote', 'Compras', 'Verde estimado', 'Tostado', 'Vendido', 'Diferencia', 'Saldo hoy'],
             [
               for (final m in movVerde)
                 [
-                  '${m['lote'] ?? '—'}${m['estado'] == 'Cerrado' ? ' (cerrado)' : ''}',
+                  '${m['lote'] ?? '—'}',
                   m['compras'] == null ? '—' : '${ComprasPdfService._n(m['compras'])} · ${_kg(m['pergamino'])} perg.',
                   m['estimado'] == null ? '—' : '+${_kg(m['estimado'])}',
                   m['tostado'] == null ? '—' : '−${_kg(m['tostado'])}',
                   m['vendido'] == null ? '—' : '−${_kg(m['vendido'])}',
-                  m['cerrado'] == null ? '—' : '−${_kg(m['cerrado'])}',
                   m['diferencia'] == null ? '—' : _kg(m['diferencia']),
                   m['saldo'] == null ? '—' : _kg(m['saldo']),
                 ],
             ],
-            {2, 3, 4, 5, 6, 7},
+            {2, 3, 4, 5, 6},
           ),
           pw.Padding(
             padding: const pw.EdgeInsets.only(top: 6),
             child: pw.Text(
-                'Verde estimado: 80% del pergamino de cada compra del Blend; no es el rendimiento real. Cerrado: los kilos que el lote '
-                'mostraba al cerrarlo después del conteo. Diferencia: lo que no cuadra hoy entre los movimientos y los kilos del lote.',
+                'Sólo lotes abiertos. Verde estimado: 80% del pergamino de cada compra del Blend; no es el rendimiento real. '
+                'Diferencia: lo que no cuadra hoy entre los movimientos y los kilos del lote.',
                 style: const pw.TextStyle(fontSize: 8.5, color: ProveedorPdfService._textGrey)),
           ),
         ],
@@ -818,20 +817,7 @@ class ProduccionPdfService {
             [for (final v in vendidoTostado) ['${v['producto'] ?? '—'}', _kg(v['kg'])]],
             {1},
           ),
-        // Lotes tostados vendidos por encima de lo asignado: bajo 0, marcados (General Manager, 4 nov 2026).
-        if (deMas.isNotEmpty) ...[
-          espacio(),
-          ...tabla(
-            'LOTES TOSTADOS VENDIDOS DE MÁS (HOY)',
-            ['Producto', 'Lote', 'Tostado el', 'Asignado', 'Vendido', 'Saldo'],
-            [
-              for (final d in deMas)
-                ['${d['producto'] ?? '—'}', '${d['lote'] ?? '—'}', ProveedorPdfService.fecha(d['fecha']), _kg(d['asignado']), _kg(d['vendido']),
-                  'vendido de más: ${_kg(d['saldo'])}'],
-            ],
-            {3, 4, 5},
-          ),
-        ],
+        // Sin "Lotes tostados vendidos de más": se está calibrando el sistema (General Manager, 4 nov 2026).
         espacio(),
 
         // ── E. CAFÉ VERDE HOY ──
