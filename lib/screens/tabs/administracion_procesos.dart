@@ -635,7 +635,7 @@ class _Pestanas extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(top: 20),
+      margin: const EdgeInsets.only(top: 8), // menos espacio bajo los botones (General Manager, 4 nov 2026)
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade300))),
       child: Row(children: [
         for (final (i, n) in nombres.indexed)
@@ -647,13 +647,17 @@ class _Pestanas extends StatelessWidget {
                 decoration: BoxDecoration(
                   border: Border(bottom: BorderSide(color: i == elegida ? Colors.blue.shade700 : Colors.transparent, width: 3)),
                 ),
-                child: Text(n,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: i == elegida ? Colors.blue.shade700 : Colors.grey.shade600,
-                    )),
+                // Si no cabe, el texto se achica un poco en vez de cortarse.
+                child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(n,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: nombres.length > 3 ? 14 : 16, // cuatro pestañas caben en una línea del iPhone
+                          fontWeight: FontWeight.w600,
+                          color: i == elegida ? Colors.blue.shade700 : Colors.grey.shade600,
+                        ))),
               ),
             ),
           ),
@@ -1089,7 +1093,8 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
         (
           Icons.payments_outlined,
           _titulos['pagoGasto']!,
-          (ctx) => _pagar(ctx, 'pagoGasto', 'expense', '${f['id']}', fijos: {'gastoId': f['id']}, subtitulo: '${f['categoria']} · ${_soles(f['monto'])}')
+          (ctx) =>
+              _pagar(ctx, 'pagoGasto', 'expense', '${f['id']}', fijos: {'gastoId': f['id']}, subtitulo: '${f['categoria']} · ${_soles(f['monto'])}')
         ),
       // Antes estaba en Pendientes, que se quitó (General Manager, 4 nov 2026).
       if (tipo == 'expense' && f['revisar'] == true) (Icons.help_outline, 'Elegir para qué fue', (ctx) => _elegirParaQue(ctx, f)),
@@ -1165,8 +1170,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
     final r = await AdministracionService.registrar('corregirArea', {'gastoId': g['id'], 'area': p.$2, 'centro': p.$3, 'motivo': p.$1},
         clave: AdministracionService.nuevaClave('corregirArea'));
     if (!ctx.mounted) return false;
-    ScaffoldMessenger.of(ctx)
-        .showSnackBar(SnackBar(content: Text(r.isSuccess ? 'Área corregida ✓ ${_areas[p.$2]}' : (r.error ?? 'No se guardó'))));
+    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(r.isSuccess ? 'Área corregida ✓ ${_areas[p.$2]}' : (r.error ?? 'No se guardó'))));
     return r.isSuccess;
   }
 
@@ -1225,7 +1229,11 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
         else if (_cargando[_pestana] || _hayMas[_pestana])
           const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
         else if (filas.isEmpty)
-          _vacio(const ['Ninguna compra pidió pago en el último mes.', 'No hay gastos en el último mes.', 'No hay adelantos en el último mes.'][_pestana]),
+          _vacio(const [
+            'Ninguna compra pidió pago en el último mes.',
+            'No hay gastos en el último mes.',
+            'No hay adelantos en el último mes.'
+          ][_pestana]),
       ];
     });
   }
@@ -1456,7 +1464,42 @@ class _ComprasScreen extends StatefulWidget {
 }
 
 class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _ProveedoresDelProceso {
-  int _pestana = 0; // 0 Compras, 1 En almacén, 2 Proveedores
+  int _pestana = 0; // 0 Compras, 1 Adelantos, 2 Proveedores, 3 Gastos
+
+  // Pestaña Gastos (General Manager, 4 nov 2026): los gastos del área Compras con su estado (los últimos 30).
+  List<Map<String, dynamic>>? _gastos;
+  String? _errorGastos;
+
+  Future<void> _cargarGastos() async {
+    final r = await AdministracionService.miArea('sourcing');
+    if (!mounted) return;
+    setState(() {
+      _errorGastos = r.isSuccess ? null : (r.error ?? 'No se pudo cargar');
+      if (r.isSuccess) _gastos = _lista(r.data!['gastos']).map((g) => Map<String, dynamic>.from(g)).toList();
+    });
+  }
+
+  List<Widget> _listaGastos() {
+    final gastos = _gastos;
+    if (_errorGastos != null) return [Padding(padding: const EdgeInsets.all(16), child: Text(_errorGastos!, textAlign: TextAlign.center))];
+    if (gastos == null) return [const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))];
+    if (gastos.isEmpty) return [_vacio('Todavía no hay gastos de Compras.')];
+    return [
+      const SizedBox(height: 8),
+      for (final g in gastos)
+        _Ficha(
+          inicio: _Insignia(_fechaCorta(g['expense_date']), tono: Colors.orange),
+          titulo: '${g['category'] ?? 'Gasto'}',
+          detalle: [
+            _soles(g['amount']),
+            if ((g['description'] ?? '').toString().isNotEmpty) '${g['description']}',
+            if ((g['created_by'] ?? '').toString().isNotEmpty) '${g['created_by']}',
+          ].join(' · '),
+          // La base dice "Pagado" o "Pendiente de pago"; el mismo naranja que lo que espera en Finanzas.
+          fin: g['status'] == 'Pagado' ? const _Pildora('Pagado', Colors.green) : const _Pildora('Pendiente', Colors.orange),
+        ),
+    ];
+  }
 
   // Pestaña Compras: todas las compras, de 20 en 20 desde el servidor al llegar al final; cada una abre su detalle.
   final List<Map<String, dynamic>> _compras = [];
@@ -1625,17 +1668,25 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
         ]),
         _Pestanas(
           // Adelantos en lugar de En almacén (General Manager, 3 nov 2026).
-          nombres: const ['Compras', 'Adelantos', 'Proveedores'],
+          nombres: const ['Compras', 'Adelantos', 'Proveedores', 'Gastos'], // Gastos: General Manager, 4 nov 2026
           elegida: _pestana,
           onElegir: (i) {
             setState(() => _pestana = i);
             if (i == 2) abrirProveedores();
+            if (i == 3) _cargarGastos();
             if (i == 1 && _adelantos.isEmpty && _hayMasAdelantos) _masAdelantos();
           },
         ),
-        if (_pestana == 2) ..._listaProveedores() else if (_pestana == 0) ..._listaCompras() else ..._listaAdelantos(),
+        if (_pestana == 3)
+          ..._listaGastos()
+        else if (_pestana == 2)
+          ..._listaProveedores()
+        else if (_pestana == 0)
+          ..._listaCompras()
+        else
+          ..._listaAdelantos(),
       ];
-    }, alFinal: _pestana == 2 ? masProveedores : (_pestana == 0 ? _masCompras : _masAdelantos));
+    }, alFinal: _pestana == 3 ? null : (_pestana == 2 ? masProveedores : (_pestana == 0 ? _masCompras : _masAdelantos)));
   }
 }
 
@@ -1982,8 +2033,8 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
 
   /// Solicitar pago completo (General Manager, 3 nov 2026): todo lo que se debe, por transferencia; Finanzas lo paga.
   Future<void> _solicitarCompleto(Map<String, dynamic> c) async {
-    if (!await _confirmar('¿Solicitar pago completo?',
-        '${c['agricultor'] ?? ''}: ${_soles(c['debe'])} por transferencia. Finanzas lo pagará.', 'Solicitar')) {
+    if (!await _confirmar(
+        '¿Solicitar pago completo?', '${c['agricultor'] ?? ''}: ${_soles(c['debe'])} por transferencia. Finanzas lo pagará.', 'Solicitar')) {
       return;
     }
     await _guardar('solicitarPago', {'compraId': c['compra_id'], 'metodo': 'transfer'}, (_) => _hecho['solicitarPago']!);

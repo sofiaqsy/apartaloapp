@@ -1216,6 +1216,27 @@ void main() {
     expect(find.textContaining('ADV-007 · S/ 500 · usado en café S/ 300'), findsOneWidget);
   });
 
+  testWidgets('Compras has a Gastos tab after Proveedores: the Compras gastos with their status', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      final tabs = ['Compras', 'Adelantos', 'Proveedores', 'Gastos'].map((t) => tester.getCenter(find.text(t).last).dx).toList();
+      for (var i = 1; i < tabs.length; i++) {
+        expect(tabs[i], greaterThan(tabs[i - 1]));
+      }
+      await tester.tap(find.text('Gastos').last);
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(pedidos.any((r) => r.url.path.endsWith('/mi-area') && r.url.queryParameters['area'] == 'sourcing'), isTrue);
+    for (final t in ['Transporte', 'Pendiente']) {
+      expect(find.text(t), findsWidgets, reason: t);
+    }
+    expect(find.textContaining('30 · Lobato'), findsOneWidget);
+    expect(find.text('Flete'), findsNothing); // only the Compras area
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('lists end without a text: no "en total" and no "Se ven los…" at the bottom', (tester) async {
     await abrir(tester, rol: 'owner');
     await http.runWithClient(() async {
