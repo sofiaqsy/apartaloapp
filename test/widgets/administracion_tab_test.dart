@@ -111,10 +111,10 @@ void main() {
         'lote': {
           'id': 'g7', 'codigo': 'L-7', 'estado': 'available', 'kg_ahora': 414, 'kg_inicial': 1000, 'variedad': 'Blend', 'cosecha': 2026,
           'origen': 'Finca Rosal', 'llego': '2026-09-17', 'producto': 'Blend de Caturra', 'crece': true,
-          'por_pilar_kg': 88.7,
-          'por_pilar': [
-            {'id': 'DL-0009', 'fecha': '2026-11-04', 'agricultor': 'Jhonatan', 'estado': 'parchment', 'kg': 16.7},
-            {'id': 'DL-0008', 'fecha': '2026-11-04', 'agricultor': 'José Luis Gamboa Villano', 'estado': 'parchment', 'kg': 72},
+          'estimado_kg': 70.96,
+          'compras': [
+            {'id': 'DL-0009', 'fecha': '2026-11-04', 'agricultor': 'Jhonatan', 'pergamino': 16.7, 'verde': 13.36, 'factor_pct': 80},
+            {'id': 'DL-0008', 'fecha': '2026-11-04', 'agricultor': 'José Luis Gamboa Villano', 'pergamino': 72, 'verde': 57.6, 'factor_pct': 80},
           ],
           'movimientos': [
             {'fecha': '2026-11-03', 'tipo': 'Agregado', 'kg': 240, 'pergamino': 300, 'rendimiento_pct': 80, 'compras': [{'id': 'DL-0901', 'agricultor': 'Tito Lobato'}]}
@@ -247,7 +247,7 @@ void main() {
         'produccion': {
           // The Blend lot first (it grows), then the others; each with the product that uses it (4 Nov 2026).
           'lotes_verdes': [
-            {'id': 'g7', 'codigo': 'L-7', 'kg_ahora': 414, 'kg_inicial': 1000, 'cosecha': 2026, 'variedad': 'Blend', 'producto': 'Blend de Caturra', 'crece': true, 'por_pilar_n': 2, 'por_pilar_kg': 88.7},
+            {'id': 'g7', 'codigo': 'L-7', 'kg_ahora': 414, 'kg_inicial': 1000, 'cosecha': 2026, 'variedad': 'Blend', 'producto': 'Blend de Caturra', 'crece': true, 'compras_n': 2, 'estimado_kg': 70.96},
             {'id': 'g1', 'codigo': 'L-1', 'kg_ahora': 760, 'kg_inicial': 1000, 'cosecha': 2026, 'variedad': 'Catimor'},
             {'id': 'g8', 'codigo': 'L-8', 'kg_ahora': 140, 'kg_inicial': 1000, 'cosecha': 2026, 'variedad': 'Blend', 'producto': 'Essential'},
           ],
@@ -919,7 +919,7 @@ void main() {
     expect(find.text('Iniciar'), findsOneWidget); // the planned one
   });
 
-  testWidgets('Café verde: each lot opens its detail with the actions inside: Agregar café al lote on the Blend lot, Cerrar lote after the count', (tester) async {
+  testWidgets('Café verde: each lot opens its detail; the Blend lot lists its compras with the estimate; Cerrar lote after the count', (tester) async {
     await abrir(tester, rol: 'owner');
     Future<void> tocar(Finder f) => http.runWithClient(() async {
           await tester.ensureVisible(f);
@@ -929,8 +929,8 @@ void main() {
     await tocar(find.text('Producción'));
     expect(find.textContaining('Blend de Caturra · lote del Blend'), findsOneWidget);
     expect(find.text('Essential'), findsOneWidget);
-    // The Blend compras join the lot by themselves, as "por pilar" (4 Nov 2026).
-    expect(find.text('88.7 kg de pergamino por pilar · 2 compras'), findsOneWidget);
+    // Each Blend compra adds 80% of its parchment as estimated green to the lot by itself (4 Nov 2026).
+    expect(find.text('2 compras · 71.0 kg de verde estimado'), findsOneWidget);
     // The actions are inside each lot's detail, not on the list (4 Nov 2026).
     expect(find.text('Agregar café al lote'), findsNothing);
     expect(find.text('Cerrar lote'), findsNothing);
@@ -966,9 +966,12 @@ void main() {
 
     // L-7, the Blend lot: its data, what was added and its roasts, and Agregar café al lote.
     await tocar(find.text('L-7'));
-    for (final t in ['Por pilar', 'José Luis Gamboa Villano', 'Jhonatan', '72 kg']) {
+    for (final t in ['Compras del lote', 'Cada compra suma el 80% de su pergamino como verde estimado.', 'José Luis Gamboa Villano', 'Jhonatan', '+57.6 kg']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
+    expect(find.textContaining('72 kg de pergamino'), findsOneWidget);
+    // No Agregar café al lote any more: the estimate is added by itself (4 Nov 2026).
+    expect(find.text('Agregar café al lote'), findsNothing);
     for (final t in ['Lote L-7', 'Lote del Blend: crece con café pilado']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
@@ -977,38 +980,10 @@ void main() {
     expect(find.textContaining('rendimiento 80%'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('100 kg verde → 80 kg tostado'), 200, scrollable: lista);
     expect(find.text('Tuestes con este lote'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Agregar café al lote'), -200, scrollable: lista);
-    expect(find.text('Cerrar lote'), findsNothing); // the Blend lot stays open
-    await tocar(find.text('Agregar café al lote'));
-    expect(find.text('Agregar café al lote L-7'), findsOneWidget);
-    await tester.tap(find.text('Pedro Ramírez Ñique'));
-    await tester.pump();
-    expect(find.widgetWithText(TextField, '300'), findsOneWidget);
-    await tester.enterText(find.widgetWithText(TextField, 'Kilos de café verde que salieron'), '240');
-    await tester.pump();
-    expect(find.text('Rendimiento: 80.0%'), findsOneWidget);
-    final pergamino = tester.getRect(find.widgetWithText(TextField, 'Kilos de pergamino que entraron'));
-    final verde = tester.getRect(find.widgetWithText(TextField, 'Kilos de café verde que salieron'));
-    expect(verde.top - pergamino.bottom, greaterThanOrEqualTo(12)); // the two kilo fields are apart
-    await tester.ensureVisible(find.text('Agregar al lote'));
-    await tester.tap(find.text('Agregar al lote'));
-    await tester.pump();
-    expect(find.textContaining('Calidad tiene que aprobar'), findsOneWidget);
-    expect(pedidos.any((r) => r.url.path.endsWith('/agregar')), isFalse);
-    await tester.ensureVisible(find.text('Calidad aprobó este café'));
-    await tester.tap(find.text('Calidad aprobó este café'));
-    await tester.pump();
-    await tocar(find.text('Agregar al lote'));
-    final agregado = jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/lotes-verdes/g7/agregar')).body);
-    expect(agregado['compras'], ['DL-0901']);
-    expect(agregado['kgPergamino'], 300);
-    expect(agregado['kgVerde'], 240);
-    expect(agregado['calidadAprobo'], true);
-    expect(agregado['clientRef'], isNotNull);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('staff open a green lot and see its data, but not Agregar café al lote or Cerrar lote', (tester) async {
+  testWidgets('staff open a green lot and see its data, but not Cerrar lote', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
       await tester.tap(find.text('Producción'));

@@ -3203,199 +3203,6 @@ class _CerrarLoteDialogState extends State<_CerrarLoteDialog> {
   }
 }
 
-/// Agregar café al lote (General Manager, 4 nov 2026, tras la reunión de lotes): el café entra al lote del Blend cuando
-/// se pila, nunca al comprarlo. Se eligen las compras piladas, los kilos de pergamino que entraron y de verde que
-/// salieron (el rendimiento real), y que Calidad lo aprobó; el costo es opcional. Sólo dueños.
-class _AgregarCafeLoteScreen extends StatefulWidget {
-  const _AgregarCafeLoteScreen({required this.lote});
-  final Map<String, dynamic> lote;
-
-  @override
-  State<_AgregarCafeLoteScreen> createState() => _AgregarCafeLoteScreenState();
-}
-
-class _AgregarCafeLoteScreenState extends State<_AgregarCafeLoteScreen> {
-  List<Map<String, dynamic>>? _compras;
-  final _elegidas = <String>{};
-  final _pergamino = TextEditingController();
-  final _verde = TextEditingController();
-  final _costo = TextEditingController();
-  final _nota = TextEditingController();
-  final _clave = AdministracionService.nuevaClave('agregarCafeLote');
-  bool _calidad = false;
-  bool _guardando = false;
-  String? _error;
-  String? _errorCarga;
-
-  @override
-  void initState() {
-    super.initState();
-    _cargar();
-    _pergamino.addListener(() => setState(() {}));
-    _verde.addListener(() => setState(() {}));
-  }
-
-  @override
-  void dispose() {
-    for (final c in [_pergamino, _verde, _costo, _nota]) {
-      c.dispose();
-    }
-    super.dispose();
-  }
-
-  Future<void> _cargar() async {
-    final r = await AdministracionService.comprasParaLote('${widget.lote['id']}');
-    if (!mounted) return;
-    setState(() {
-      _errorCarga = r.isSuccess ? null : (r.error ?? 'No se pudieron cargar las compras.');
-      _compras = r.isSuccess ? _lista(r.data!['compras']) : const [];
-    });
-  }
-
-  static num? _numero(String t) => num.tryParse(t.trim().replaceAll(',', '.'));
-
-  void _elegir(Map<String, dynamic> c) {
-    setState(() {
-      final id = '${c['id']}';
-      _elegidas.contains(id) ? _elegidas.remove(id) : _elegidas.add(id);
-      // Los kilos de pergamino empiezan como la suma de las compras elegidas; se pueden cambiar.
-      final suma = (_compras ?? const <Map<String, dynamic>>[])
-          .where((x) => _elegidas.contains('${x['id']}'))
-          .fold<num>(0, (a, x) => a + (num.tryParse('${x['kg']}') ?? 0));
-      _pergamino.text = suma == 0 ? '' : (suma == suma.roundToDouble() ? '${suma.round()}' : '$suma');
-    });
-  }
-
-  Future<void> _agregar() async {
-    final pergamino = _numero(_pergamino.text);
-    final verde = _numero(_verde.text);
-    final costo = _costo.text.trim().isEmpty ? null : _numero(_costo.text);
-    String? error;
-    if (_elegidas.isEmpty) {
-      error = 'Elige las compras que se pilaron.';
-    } else if (pergamino == null || pergamino <= 0) {
-      error = 'Escribe los kilos de pergamino que entraron.';
-    } else if (verde == null || verde <= 0) {
-      error = 'Escribe los kilos de café verde que salieron.';
-    } else if (verde > pergamino) {
-      error = 'El café verde no puede pesar más que el pergamino que entró.';
-    } else if (!_calidad) {
-      error = 'Calidad tiene que aprobar este café antes de que entre al lote.';
-    } else if (_costo.text.trim().isNotEmpty && (costo == null || costo < 0)) {
-      error = 'El costo no es válido.';
-    }
-    if (error != null) return setState(() => _error = error);
-    setState(() {
-      _guardando = true;
-      _error = null;
-    });
-    final r = await AdministracionService.agregarCafeLote('${widget.lote['id']}', {
-      'compras': _elegidas.toList(),
-      'kgPergamino': pergamino,
-      'kgVerde': verde,
-      'calidadAprobo': true,
-      if (costo != null) 'costo': costo,
-      if (_nota.text.trim().isNotEmpty) 'nota': _nota.text.trim(),
-    }, clave: _clave);
-    if (!mounted) return;
-    if (r.isSuccess) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Agregado al lote ${widget.lote['codigo']} ✓ ahora ${_kg(r.data!['kg_despues'])} · rendimiento ${r.data!['rendimiento_pct']}%')));
-      return Navigator.pop(context, true);
-    }
-    setState(() {
-      _guardando = false;
-      _error = r.error ?? 'No se agregó.';
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final compras = _compras;
-    final pergamino = _numero(_pergamino.text);
-    final verde = _numero(_verde.text);
-    final rendimiento = pergamino != null && verde != null && pergamino > 0 ? (100 * verde / pergamino) : null;
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(icon: const Icon(Icons.close), tooltip: 'Cerrar', onPressed: () => Navigator.pop(context, false)),
-        title: Text('Agregar café al lote ${widget.lote['codigo']}'),
-      ),
-      body: ListView(padding: const EdgeInsets.all(16), children: [
-        if (widget.lote['producto'] != null)
-          Text('${widget.lote['producto']}', style: TextStyle(fontSize: 15, color: Colors.grey.shade700)),
-        const Padding(
-            padding: EdgeInsets.fromLTRB(0, 12, 0, 6),
-            child: Text('Compras que se pilaron', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
-        if (compras == null)
-          const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
-        else if (_errorCarga != null)
-          Text(_errorCarga!, style: const TextStyle(color: Colors.red))
-        else if (compras.isEmpty)
-          _vacio('No hay compras del Blend por agregar.')
-        else
-          for (final c in compras)
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              value: _elegidas.contains('${c['id']}'),
-              onChanged: (_) => _elegir(c),
-              title: Text('${c['agricultor'] ?? c['id']}'),
-              subtitle: Text([
-                '${c['id']}',
-                _fechaCorta(c['fecha']),
-                _estadosCafe[c['estado']] ?? '${c['estado'] ?? ''}',
-              ].where((t) => t.isNotEmpty).join(' · ')),
-              secondary: Text(_kg(c['kg']), style: const TextStyle(fontWeight: FontWeight.w600)),
-            ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _pergamino,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(labelText: 'Kilos de pergamino que entraron', suffixText: 'kg', border: const OutlineInputBorder()),
-        ),
-        const SizedBox(height: 16), // campos separados, nunca pegados (General Manager, 4 nov 2026)
-        TextField(
-          controller: _verde,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(labelText: 'Kilos de café verde que salieron', suffixText: 'kg', border: const OutlineInputBorder()),
-        ),
-        if (rendimiento != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text('Rendimiento: ${rendimiento.toStringAsFixed(1)}%', style: TextStyle(color: Colors.grey.shade800)),
-          ),
-        const SizedBox(height: 8),
-        CheckboxListTile(
-          contentPadding: EdgeInsets.zero,
-          controlAffinity: ListTileControlAffinity.leading,
-          value: _calidad,
-          onChanged: (v) => setState(() => _calidad = v == true),
-          title: const Text('Calidad aprobó este café'),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _costo,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(labelText: 'Costo total (opcional)', prefixText: 'S/ ', border: const OutlineInputBorder()),
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _nota,
-          textCapitalization: TextCapitalization.sentences,
-          decoration: InputDecoration(labelText: 'Nota (opcional)', hintText: 'Pilado el 5 nov', border: const OutlineInputBorder()),
-        ),
-        const SizedBox(height: 16),
-        if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(_error!, style: const TextStyle(color: Colors.red))),
-        SizedBox(
-          height: 52,
-          child: ElevatedButton(onPressed: _guardando ? null : _agregar, child: Text(_guardando ? 'Agregando…' : 'Agregar al lote')),
-        ),
-        const SizedBox(height: 24),
-      ]),
-    );
-  }
-}
-
 /// Nombre de un producto con su café tostado disponible a la derecha (información, no botón).
 class _NombreProducto extends StatelessWidget {
   const _NombreProducto({required this.nombre, this.kg});
@@ -3446,13 +3253,13 @@ class _FilaLote extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis),
               ),
-            // Las compras del Blend entran solas al lote como "por pilar"; su verde se suma al pilarlas (4 nov 2026).
-            if (lote['por_pilar_n'] != null)
+            // Cada compra del Blend suma sola un estimado de verde al lote: 80% del pergamino (General Manager, 4 nov 2026).
+            if (lote['compras_n'] != null)
               Padding(
                 padding: const EdgeInsets.only(top: 2),
                 child: Text(
-                    '${_kg(lote['por_pilar_kg'])} de pergamino por pilar · ${lote['por_pilar_n']} ${lote['por_pilar_n'] == 1 ? 'compra' : 'compras'}',
-                    style: TextStyle(fontSize: 13, color: Colors.orange.shade800)),
+                    '${lote['compras_n']} ${lote['compras_n'] == 1 ? 'compra' : 'compras'} · ${_kg(lote['estimado_kg'])} de verde estimado',
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
               ),
             const SizedBox(height: 6),
             Row(children: [
@@ -3532,13 +3339,6 @@ class _LoteVerdeDetalleScreenState extends State<_LoteVerdeDetalleScreen> {
     });
   }
 
-  Future<void> _agregar(Map<String, dynamic> l) async {
-    if (await _abrirPantalla<bool>(context, _AgregarCafeLoteScreen(lote: l)) == true) {
-      _cambio = true;
-      _cargar();
-    }
-  }
-
   Future<void> _cerrar(Map<String, dynamic> l) async {
     if (await showDialog<bool>(context: context, builder: (_) => _CerrarLoteDialog(lote: l)) == true) {
       _cambio = true;
@@ -3576,7 +3376,6 @@ class _LoteVerdeDetalleScreenState extends State<_LoteVerdeDetalleScreen> {
     final movimientos = l == null ? const <Map<String, dynamic>>[] : _lista(l['movimientos']);
     final tuestes = l == null ? const <Map<String, dynamic>>[] : _lista(l['tuestes']);
     final abierto = l != null && l['estado'] == 'available';
-    final puedeAgregar = widget.esDueno && abierto && l['crece'] == true;
     final puedeCerrar = widget.esDueno && abierto && l['crece'] != true && l['producto'] == null;
     return PopScope(
       canPop: false,
@@ -3607,20 +3406,14 @@ class _LoteVerdeDetalleScreenState extends State<_LoteVerdeDetalleScreen> {
                     ),
                   if (!abierto) Padding(padding: const EdgeInsets.only(top: 4), child: _Pildora('Cerrado', Colors.grey)),
                   // Las acciones, dentro del detalle (General Manager, 4 nov 2026).
-                  if (puedeAgregar || puedeCerrar) ...[
+                  // Agregar café al lote ya no hace falta: las compras del Blend suman solas su estimado (4 nov 2026).
+                  if (puedeCerrar) ...[
                     const SizedBox(height: 16),
-                    if (puedeAgregar)
-                      SizedBox(
-                        height: 48,
-                        child: ElevatedButton.icon(
-                            onPressed: () => _agregar(l), icon: const Icon(Icons.add), label: const Text('Agregar café al lote')),
-                      ),
-                    if (puedeCerrar)
-                      SizedBox(
-                        height: 48,
-                        child: OutlinedButton.icon(
-                            onPressed: () => _cerrar(l), icon: const Icon(Icons.inventory_2_outlined), label: const Text('Cerrar lote')),
-                      ),
+                    SizedBox(
+                      height: 48,
+                      child: OutlinedButton.icon(
+                          onPressed: () => _cerrar(l), icon: const Icon(Icons.inventory_2_outlined), label: const Text('Cerrar lote')),
+                    ),
                   ],
                   _panel([
                     _dato('Café verde ahora', _kg(l['kg_ahora'])),
@@ -3630,18 +3423,21 @@ class _LoteVerdeDetalleScreenState extends State<_LoteVerdeDetalleScreen> {
                     _dato('Origen', l['origen']?.toString()),
                     _dato('Llegó', l['llego'] == null ? null : _fechaLarga(l['llego'])),
                   ]),
-                  // Las compras del Blend que ya son del lote pero aún no se pilan (General Manager, 4 nov 2026): entran solas
-                  // al registrarlas; su café verde se suma con Agregar café al lote, con el rendimiento real.
-                  if (_lista(l['por_pilar']).isNotEmpty) ...[
-                    _encabezado('Por pilar', _kg(l['por_pilar_kg'])),
-                    for (final c in _lista(l['por_pilar']))
+                  // Las compras del lote (General Manager, 4 nov 2026): cada compra de pergamino del Blend suma sola el 80% de
+                  // sus kilos como café verde estimado, al registrarla; aquí sólo se listan.
+                  if (_lista(l['compras']).isNotEmpty) ...[
+                    _encabezado('Compras del lote', '${_lista(l['compras']).length}'),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+                      child: Text('Cada compra suma el ${_lista(l['compras']).first['factor_pct'] ?? 80}% de su pergamino como verde estimado.',
+                          style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+                    ),
+                    for (final c in _lista(l['compras']))
                       _Ficha(
                         inicio: const _InsigniaIcono(Icons.inventory_2_outlined, tono: Colors.brown),
                         titulo: '${c['agricultor'] ?? c['id']}',
-                        detalle: ['${c['id']}', _fechaLarga(c['fecha']), _estadosCafe[c['estado']] ?? '${c['estado'] ?? ''}']
-                            .where((t) => t.isNotEmpty)
-                            .join(' · '),
-                        fin: Text(_kg(c['kg']), style: const TextStyle(fontWeight: FontWeight.w600)),
+                        detalle: ['${c['id']}', _fechaLarga(c['fecha']), '${_kg(c['pergamino'])} de pergamino'].where((t) => t.isNotEmpty).join(' · '),
+                        fin: Text('+${_kg(c['verde'])}', style: const TextStyle(fontWeight: FontWeight.w600)),
                       ),
                   ],
                   if (movimientos.isNotEmpty) ...[
