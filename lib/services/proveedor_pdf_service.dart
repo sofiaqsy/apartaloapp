@@ -787,9 +787,10 @@ class ProduccionPdfService {
         else
           ...tabla(
             'CAFÉ TOSTADO DISPONIBLE HOY ($hoy)',
-            ['Tostado el', 'Producto', 'Lote', 'Disponible'],
+            // Por producto, como en la pantalla del producto (General Manager, 4 nov 2026).
+            ['Producto', 'Lote', 'Tostado el', 'Disponible'],
             [
-              for (final t in tostado) [ProveedorPdfService.fecha(t['fecha']), '${t['producto'] ?? '—'}', '${t['lote'] ?? '—'}', _kg(t['kg'])],
+              for (final t in tostado) ['${t['producto'] ?? '—'}', '${t['lote'] ?? '—'}', ProveedorPdfService.fecha(t['fecha']), _kg(t['kg'])],
             ],
             {3},
           ),

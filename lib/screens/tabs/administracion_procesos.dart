@@ -2852,6 +2852,20 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(texto)));
   }
 
+  /// Un tueste en curso o programado, con Iniciar o Finalizar. Bajo su producto no repite el nombre.
+  Widget _filaTueste(Map<String, dynamic> t, {bool conProducto = false}) {
+    final tostando = t['estado'] == 'in_progress';
+    final estado = tostando ? 'Tostando' : 'Programado';
+    return _Ficha(
+      inicio: _Insignia('${t['lote'] ?? '—'}', tono: tostando ? Colors.deepOrange : Colors.blue),
+      titulo: conProducto ? estado : '${t['producto'] ?? 'Lote ${t['lote'] ?? ''}'}',
+      detalle: '${conProducto ? '' : '$estado · '}${_kg(t['kg_verde'])} verde · ${_fechaCorta(t['fecha'])}',
+      fin: tostando
+          ? ElevatedButton(onPressed: () => _finalizar(t), child: const Text('Finalizar'))
+          : OutlinedButton(onPressed: () => _iniciar(t), child: const Text('Iniciar')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Reporte en PDF como Compras (General Manager, 4 nov 2026); el contenido lo decidió el área de Producción.
@@ -2860,8 +2874,13 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
     }, (d) {
       final lotes = _lista(d['lotes_verdes']);
       final tuestes = _lista(d['tuestes']);
+      // El café tostado se maneja por producto, como en la pantalla del producto (General Manager, 4 nov 2026):
+      // cada producto con su tostado disponible, sus lotes y sus tuestes (production_summary_v2).
+      final productos = _lista(d['productos']);
+      final conProducto = {for (final p in productos) for (final t in _lista(p['tuestes'])) '${t['id']}'};
+      final sinProducto = tuestes.where((t) => !conProducto.contains('${t['id']}')).toList();
       final porProcesar = _lista(d['por_procesar']);
-      final pestana = _pestana ?? (tuestes.isNotEmpty ? 0 : 1);
+      final pestana = _pestana ?? (tuestes.isNotEmpty || productos.isNotEmpty ? 0 : 1);
       return [
         // Sin resumen arriba, como Compras (General Manager, 4 nov 2026): la tarjeta de Procesos ya lo muestra.
         _Acciones(acciones: [
@@ -2888,17 +2907,24 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
         else if (pestana == 2)
           ..._listaProveedores()
         else if (pestana == 0) ...[
-          _encabezado('Lotes de tostado en curso y programados', '${tuestes.length}'),
-          if (tuestes.isEmpty) _vacio('No hay lotes de tostado programados. Toca "Tostar café".'),
-          for (final t in tuestes)
-            _Ficha(
-              inicio: _Insignia('${t['lote'] ?? '—'}', tono: t['estado'] == 'in_progress' ? Colors.deepOrange : Colors.blue),
-              titulo: '${t['producto'] ?? 'Lote ${t['lote'] ?? ''}'}',
-              detalle: '${t['estado'] == 'in_progress' ? 'Tostando' : 'Programado'} · ${_kg(t['kg_verde'])} · ${_fechaCorta(t['fecha'])}',
-              fin: t['estado'] == 'in_progress'
-                  ? ElevatedButton(onPressed: () => _finalizar(t), child: const Text('Finalizar'))
-                  : OutlinedButton(onPressed: () => _iniciar(t), child: const Text('Iniciar')),
-            ),
+          _encabezado('Café tostado por producto', _kg(d['tostado_kg'])),
+          if (productos.isEmpty && sinProducto.isEmpty) _vacio('No hay café tostado ni lotes de tostado programados. Toca "Tostar café".'),
+          for (final p in productos) ...[
+            _NombreProducto(nombre: '${p['nombre'] ?? 'Producto'}', kg: _kg(p['kg_tostado'])),
+            if (_lista(p['lotes']).isEmpty && _lista(p['tuestes']).isEmpty) _vacio('Sin lotes tostados disponibles.'),
+            for (final l in _lista(p['lotes']))
+              _Ficha(
+                inicio: _Insignia('${l['lote'] ?? '—'}', tono: Colors.orange),
+                titulo: 'Tostado el ${_fechaCorta(l['fecha'])}',
+                fin: Text(_kg(l['kg']), style: const TextStyle(fontWeight: FontWeight.w600)),
+              ),
+            for (final t in _lista(p['tuestes'])) _filaTueste(t, conProducto: true),
+          ],
+          // Un tueste sin producto (no debería pasar) se ve igual, para poder iniciarlo o finalizarlo.
+          if (sinProducto.isNotEmpty) ...[
+            _NombreProducto(nombre: 'Sin producto'),
+            for (final t in sinProducto) _filaTueste(t),
+          ],
         ] else ...[
           _encabezado('Lotes de café verde', '${lotes.length} ${lotes.length == 1 ? 'lote' : 'lotes'}'),
           if (lotes.isEmpty) _vacio('No hay lotes de café verde con stock.'),
@@ -2917,6 +2943,22 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
       ];
     });
   }
+}
+
+/// Nombre de un producto con su café tostado disponible a la derecha (información, no botón).
+class _NombreProducto extends StatelessWidget {
+  const _NombreProducto({required this.nombre, this.kg});
+  final String nombre;
+  final String? kg;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 14, 4, 2),
+        child: Row(children: [
+          Expanded(child: Text(nombre, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700), maxLines: 2)),
+          if (kg != null) Text(kg!, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.orange.shade800)),
+        ]),
+      );
 }
 
 /// Un lote verde en su ficha: código, variedad y cosecha, kilos que quedan de los que entraron, barra y %.
