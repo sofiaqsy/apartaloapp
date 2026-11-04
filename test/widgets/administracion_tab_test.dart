@@ -65,6 +65,26 @@ void main() {
       return http.Response(jsonEncode({'personas': pagina, 'total': todos.length, 'hayMas': offset + 20 < todos.length}), 200);
     }
     if (p.endsWith('/sugerir-area')) return http.Response(jsonEncode(sugerencia), 200);
+    if (p.endsWith('/comercial/clientes')) {
+      return http.Response(jsonEncode({
+        'clientes': [{'clave': 'c1', 'nombre': 'Cafe Uno', 'pedidos': 2, 'ultimo': '2026-11-02', 'primero': '2026-10-01', 'total': 150, 'telefono': '999111'}],
+        'total': 1, 'hay_mas': false,
+      }), 200);
+    }
+    if (p.endsWith('/comercial/productos')) {
+      return http.Response(jsonEncode({
+        'desde': '2026-01-01',
+        'productos': [{'producto': 'Blend', 'presentacion': '1 kg', 'unidades': 3, 'pedidos': 2, 'total': 100}],
+        'total': 1, 'hay_mas': false,
+      }), 200);
+    }
+    if (p.contains('/api/pedidos/') && req.url.queryParameters['vista'] == null && req.url.queryParameters['limite'] == '20') {
+      Map<String, dynamic> pedido(String id, String cliente) =>
+          {'id': id, 'cliente': cliente, 'estado': 'ENTREGADO', 'fecha': '2/11/2026', 'productos': [], 'total': 50, 'estadoPago': 'PAGADO', 'evidencias': [], 'pagos': []};
+      final todos = req.url.queryParameters['cliente'] == 'Cafe Uno' ? [pedido('ORD-301', 'Cafe Uno')] : [pedido('ORD-300', 'Cafe Venta')];
+      return http.Response(jsonEncode({'pedidos': todos, 'total': todos.length, 'pagina': 1, 'totalPaginas': 1, 'hayMas': false}), 200);
+    }
+    if (p.endsWith('/comercial/reporte')) return http.Response(jsonEncode({'error': 'Sin señal'}), 503);
     if (p.endsWith('/gastos-area')) {
       // The Gastos tab of a process, 20 at a time (4 Nov 2026).
       final area = req.url.queryParameters['area'];
@@ -1217,23 +1237,58 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Comercialización is the first card, with the sales report inside; Resumen no longer has it', (tester) async {
-    await abrir(tester, rol: 'staff');
+  testWidgets('Comercialización like the other processes (4 Nov 2026): no data on top, 5 tabs, orders, customers and products 20 a page, PDF', (tester) async {
+    await abrir(tester, rol: 'owner');
     await tester.scrollUntilVisible(find.text('Vendido este mes'), 200, scrollable: find.byType(Scrollable).last);
-    expect(find.text('Comercialización'), findsOneWidget);
-    expect(find.text('S/ 3,000'), findsOneWidget); // vendido este mes; the card shows 2 data
-    expect(find.text('Ticket promedio'), findsNothing); // inside
+    expect(find.text('Comercialización'), findsOneWidget); // the first card keeps its indicators
     await http.runWithClient(() async {
       await tester.tap(find.text('Comercialización'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    expect(find.text('Reporte de ventas'), findsOneWidget);
-    expect(find.text('Esta semana'), findsNothing); // the 4 indicators replace the old summary cards
+    expect(find.text('Reporte de ventas'), findsNothing); // the old report is gone
+    expect(find.text('Ticket promedio'), findsNothing); // no data on top
+    for (final t in ['Registrar pedido', 'Registrar gasto', 'Pedidos', 'Clientes', 'Productos', 'Proveedores', 'Gastos']) {
+      expect(find.text(t), findsWidgets, reason: t);
+    }
+    expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
+    // Pedidos: 20 a page, newest first; each opens the order detail.
+    final ped = pedidos.lastWhere((r) => r.url.path.contains('/api/pedidos/'));
+    expect(ped.url.queryParameters['limite'], '20');
+    expect(find.text('Cafe Venta'), findsOneWidget);
+    // Clientes: from the orders; each opens its detail with its orders.
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Clientes').last);
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(pedidos.any((r) => r.url.path.endsWith('/comercial/clientes') && r.url.queryParameters['limit'] == '20'), isTrue);
+    expect(find.text('Cafe Uno'), findsOneWidget);
+    expect(find.textContaining('2 pedidos · S/ 150'), findsOneWidget);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Cafe Uno'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    for (final t in ['Cliente', 'Total comprado', 'Último pedido']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    expect(pedidos.lastWhere((r) => r.url.path.contains('/api/pedidos/')).url.queryParameters['cliente'], 'Cafe Uno');
     await tester.pageBack();
     await tester.pumpAndSettle();
+    // Productos: the best sellers this year, information only.
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Productos').last);
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    for (final t in ['Más vendidos este año', 'Blend', '3 uds.']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Resumen points to Comercialización for the sales', (tester) async {
+    await abrir(tester, rol: 'staff');
     await tester.tap(find.text('Resumen'));
     await tester.pumpAndSettle();
-    expect(find.text('El reporte de ventas está en Procesos → Comercialización.'), findsOneWidget);
+    expect(find.textContaining('Las ventas están en Procesos → Comercialización'), findsOneWidget);
   });
 
   testWidgets('Registrar shows only the cards of the areas ticked in Perfil', (tester) async {

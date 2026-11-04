@@ -11,8 +11,8 @@ import '../../services/api_service.dart';
 import '../../services/proveedor_pdf_service.dart';
 import '../../theme/fincas_tokens.dart';
 import '../detalle_producto_screen.dart' show abrirProgramarTueste;
-import 'reportes_tab.dart';
 import 'pedidos/widgets/detalle_pedido/detalle_pedido_sheet.dart';
+import '../crear_pedido_screen.dart';
 
 part 'administracion_procesos.dart';
 
@@ -968,7 +968,7 @@ class _ResumenState extends State<_Resumen> {
     if (!widget.esDueno) {
       return const Center(
         child: Padding(
-            padding: EdgeInsets.all(24), child: Text('El reporte de ventas está en Procesos → Comercialización.', textAlign: TextAlign.center)),
+            padding: EdgeInsets.all(24), child: Text('Las ventas están en Procesos → Comercialización: pedidos, clientes, productos y el reporte en PDF.', textAlign: TextAlign.center)),
       );
     }
     return RefreshIndicator(

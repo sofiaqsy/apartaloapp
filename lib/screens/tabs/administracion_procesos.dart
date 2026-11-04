@@ -157,7 +157,7 @@ class _RegistrarState extends State<_Registrar> {
           titulo: 'Comercialización',
           indicadores: _comercial == null ? null : _indicadoresComercial(_comercial!),
           error: _error,
-          onTap: () => _entrar(const _ComercialScreen()),
+          onTap: () => _entrar(_ComercialScreen(esDueno: widget.esDueno)),
         )
       ),
       (
@@ -952,16 +952,6 @@ class _LogisticaScreenState extends _ProcesoState<_LogisticaScreen> with _Provee
   final _errores = <String?>[null, null];
   int _vuelta = 0;
 
-  static const _estados = {
-    'PENDIENTE': 'Pendiente',
-    'CONFIRMADO': 'Confirmado',
-    'EN_PREPARACION': 'Preparando',
-    'LISTO': 'Listo',
-    'ENVIADO': 'En camino',
-    'ENTREGADO': 'Entregado',
-    'CANCELADO': 'Cancelado',
-  };
-
   @override
   Future<void> cargar() async {
     _vuelta++;
@@ -994,44 +984,12 @@ class _LogisticaScreenState extends _ProcesoState<_LogisticaScreen> with _Provee
     });
   }
 
-  /// "4/11/2026" (como llega del servidor) a "4 nov".
-  static String _fechaPedido(dynamic f) {
-    final p = '${f ?? ''}'.split('/');
-    if (p.length != 3) return '${f ?? ''}';
-    final d = DateTime.tryParse('${p[2]}-${p[1].padLeft(2, '0')}-${p[0].padLeft(2, '0')}');
-    return d == null ? '${f ?? ''}' : _fechaCorta(d.toIso8601String());
-  }
-
-  void _abrirPedido(Map<String, dynamic> pedido) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => DetallePedidoSheet(pedido: pedido, onActualizado: cargar),
-    );
-  }
-
   List<Widget> _listaPedidos(int i) {
     final pedidos = _pedidos[i];
     return [
       if (pedidos.isEmpty && !_cargandoPedidos[i])
         _vacio(_errores[i] ?? (i == 0 ? 'No hay pedidos por despachar.' : 'Todavía no hay pedidos entregados.')),
-      for (final p in pedidos)
-        _Ficha(
-          inicio: _Insignia(_fechaPedido(p['fecha']), tono: p['estado'] == 'ENVIADO' ? Colors.blue : (i == 0 ? Colors.orange : Colors.grey)),
-          titulo: '${(p['cliente'] ?? '').toString().isEmpty ? 'Sin nombre' : p['cliente']}',
-          detalle: 'Pedido ${p['id'] ?? ''}',
-          fin: _Pildora(
-              _estados[p['estado']] ?? '${p['estado'] ?? ''}',
-              p['estado'] == 'ENTREGADO'
-                  ? Colors.green
-                  : p['estado'] == 'CANCELADO'
-                      ? Colors.grey
-                      : p['estado'] == 'ENVIADO'
-                          ? Colors.blue
-                          : Colors.orange),
-          onTap: () => _abrirPedido(p),
-        ),
+      for (final p in pedidos) _fichaPedido(context, p, onActualizado: cargar),
       // Sin texto al final de la lista: sólo la carga mientras llega la siguiente página.
       if (_cargandoPedidos[i]) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
     ];
@@ -2962,54 +2920,300 @@ class _EvidenciaVista extends StatelessWidget {
 
 /// Los 4 datos de ventas arriba y, debajo, el reporte de ventas de siempre (antes en Resumen).
 class _ComercialScreen extends StatefulWidget {
-  const _ComercialScreen();
+  const _ComercialScreen({this.esDueno = false});
+  final bool esDueno;
 
   @override
   State<_ComercialScreen> createState() => _ComercialScreenState();
 }
 
-class _ComercialScreenState extends State<_ComercialScreen> {
-  Map<String, dynamic>? _datos;
+/// Comercialización como los demás procesos (General Manager, 4 nov 2026; lo propuso el área Comercial): sin datos
+/// arriba, Registrar pedido y Registrar gasto, pestañas Pedidos | Clientes | Productos | Proveedores | Gastos (de 20 en
+/// 20; cada pedido y cada cliente abren su detalle) y el reporte en PDF. Sin "Por cobrar": el estado de pago de los
+/// pedidos todavía no cuadra.
+class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _ProveedoresDelProceso, _GastosDelArea, _ReporteDelProceso {
+  int _pestana = 0; // 0 Pedidos, 1 Clientes, 2 Productos, 3 Proveedores, 4 Gastos
+
+  @override
+  String get clave => 'comercial';
+  @override
+  String? get areaProveedores => 'commercial';
+  @override
+  String get vacioProveedores => 'Todavía no hay proveedores de Comercialización.';
+  @override
+  String get areaGastos => 'commercial';
+  @override
+  String get vacioGastos => 'Todavía no hay gastos de Comercialización.';
+  @override
+  bool get duenoGastos => widget.esDueno;
+
+  @override
+  String get nombreReporte => 'Comercialización';
+  @override
+  Future<ApiResponse<Map<String, dynamic>>> pedirReporte(DateTime desde, DateTime hasta) => AdministracionService.reporteComercial(desde, hasta);
+  @override
+  Future<Uint8List> armarPdf(Map<String, dynamic> reporte) => ComercialPdfService.generarBytes(reporte);
+
+  // Pedidos, clientes y productos: de 20 en 20 desde el servidor, al llegar al final.
+  final _filas = [<Map<String, dynamic>>[], <Map<String, dynamic>>[], <Map<String, dynamic>>[]];
+  final _cargandoFilas = [false, false, false];
+  final _hayMasFilas = [true, true, true];
+  final _erroresFilas = <String?>[null, null, null];
+  int _paginaPedidos = 0;
+  int _vuelta = 0;
+
+  @override
+  Future<void> cargar() async {
+    _vuelta++;
+    for (var i = 0; i < 3; i++) {
+      _filas[i].clear();
+      _cargandoFilas[i] = false;
+      _hayMasFilas[i] = true;
+      _erroresFilas[i] = null;
+    }
+    _paginaPedidos = 0;
+    await Future.wait([super.cargar(), if (_pestana < 3) _mas(_pestana)]);
+  }
+
+  Future<void> _mas(int i) async {
+    if (_cargandoFilas[i] || !_hayMasFilas[i]) return;
+    final vuelta = _vuelta;
+    setState(() => _cargandoFilas[i] = true);
+    List<Map<String, dynamic>> nuevas = const [];
+    bool hayMas = false;
+    String? error;
+    if (i == 0) {
+      final r = await ApiService.getPedidos(pagina: _paginaPedidos + 1, limite: 20);
+      if (r.isSuccess && r.data != null) {
+        nuevas = r.data!.pedidos;
+        hayMas = r.data!.hayMas;
+        _paginaPedidos++;
+      } else {
+        error = r.error ?? 'No se pudieron cargar los pedidos.';
+      }
+    } else {
+      final r = i == 1
+          ? await AdministracionService.clientesComercial(desde: _filas[1].length)
+          : await AdministracionService.productosComercial(desde: _filas[2].length);
+      if (r.isSuccess) {
+        nuevas = _lista(r.data![i == 1 ? 'clientes' : 'productos']);
+        hayMas = r.data!['hay_mas'] == true;
+      } else {
+        error = r.error ?? 'No se pudo cargar.';
+      }
+    }
+    if (!mounted || vuelta != _vuelta) return;
+    setState(() {
+      _cargandoFilas[i] = false;
+      _filas[i].addAll(nuevas);
+      _hayMasFilas[i] = error == null && hayMas;
+      _erroresFilas[i] = error;
+    });
+  }
+
+  Future<void> _registrarPedido() async {
+    final nuevo = await Navigator.push<Map<String, dynamic>>(context, MaterialPageRoute(builder: (_) => const CrearPedidoScreen()));
+    if (nuevo != null && mounted) cargar();
+  }
+
+  List<Widget> _listaComercial(int i) {
+    final filas = _filas[i];
+    return [
+      if (i == 2) _encabezado('Más vendidos este año', ''),
+      if (filas.isEmpty && !_cargandoFilas[i])
+        _vacio(_erroresFilas[i] ?? const ['Todavía no hay pedidos.', 'Todavía no hay clientes.', 'Todavía no hay ventas este año.'][i]),
+      for (final f in filas)
+        if (i == 0)
+          _fichaPedido(context, f, onActualizado: cargar)
+        else if (i == 1)
+          _Ficha(
+            inicio: _Insignia(_fechaCorta(f['ultimo']), tono: Colors.blue),
+            titulo: '${f['nombre'] ?? 'Sin nombre'}',
+            detalle: [
+              '${f['pedidos']} ${f['pedidos'] == 1 ? 'pedido' : 'pedidos'}',
+              if (f['total'] != null) _soles(f['total']),
+              if (f['primero'] != null) 'desde ${_fechaCorta(f['primero'])}',
+            ].join(' · '),
+            onTap: () => _abrirPantalla<void>(context, _ClienteComercialScreen(cliente: f)),
+          )
+        else
+          // Un producto es información: sin caja ni flecha.
+          _Ficha(
+            inicio: const _InsigniaIcono(Icons.coffee_outlined, tono: Colors.brown),
+            titulo: '${f['producto'] ?? 'Producto'}',
+            detalle: [
+              if (f['presentacion'] != null) '${f['presentacion']}',
+              '${f['pedidos']} ${f['pedidos'] == 1 ? 'pedido' : 'pedidos'}',
+              if (f['total'] != null) _soles(f['total']),
+            ].join(' · '),
+            fin: Text('${_numero(f['unidades'])} uds.', style: const TextStyle(fontWeight: FontWeight.w600)),
+          ),
+      if (_cargandoFilas[i]) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
+    ];
+  }
+
+  static String _numero(dynamic v) {
+    final n = num.tryParse('${v ?? ''}') ?? 0;
+    return n == n.roundToDouble() ? n.round().toString() : n.toStringAsFixed(1);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return pantalla('Comercialización', botonFlotante: botonReporte(), alFinal: () {
+      if (_pestana < 3) _mas(_pestana);
+      if (_pestana == 3) masProveedores();
+      if (_pestana == 4) masGastos();
+    }, (d) {
+      return [
+        // Sin datos arriba (General Manager, 4 nov 2026): la tarjeta de Procesos ya los muestra.
+        _Acciones(acciones: [
+          (Icons.add_shopping_cart, 'Registrar pedido', _registrarPedido),
+          (
+            Icons.receipt_long,
+            _titulos['gasto']!, // el mismo nombre en cada proceso; el área va fija (General Manager, 3 nov 2026)
+            () => formulario('gasto', fijos: const {'area': 'commercial'}, subtitulo: 'Área: Comercial')
+          ),
+        ]),
+        _Pestanas(
+          nombres: const ['Pedidos', 'Clientes', 'Productos', 'Proveedores', 'Gastos'],
+          anchoPorNombre: true,
+          elegida: _pestana,
+          onElegir: (i) {
+            setState(() => _pestana = i);
+            if (i < 3 && _filas[i].isEmpty) _mas(i);
+            if (i == 3) abrirProveedores();
+            if (i == 4) cargarGastos();
+          },
+        ),
+        if (_pestana < 3) ..._listaComercial(_pestana) else if (_pestana == 3) ..._listaProveedores() else ...listaGastos(),
+      ];
+    });
+  }
+}
+
+/// Un pedido de la tienda en una lista (Logística, Comercialización): fecha, cliente, número y estado; abre el mismo
+/// detalle que la pestaña Pedidos.
+const _estadosPedido = {
+  'PENDIENTE': 'Pendiente',
+  'CONFIRMADO': 'Confirmado',
+  'EN_PREPARACION': 'Preparando',
+  'LISTO': 'Listo',
+  'ENVIADO': 'En camino',
+  'ENTREGADO': 'Entregado',
+  'CANCELADO': 'Cancelado',
+};
+
+String _fechaPedidoCorta(dynamic f) {
+  final p = '${f ?? ''}'.split('/');
+  if (p.length != 3) return '${f ?? ''}';
+  final d = DateTime.tryParse('${p[2]}-${p[1].padLeft(2, '0')}-${p[0].padLeft(2, '0')}');
+  return d == null ? '${f ?? ''}' : _fechaCorta(d.toIso8601String());
+}
+
+Widget _fichaPedido(BuildContext context, Map<String, dynamic> p, {required VoidCallback onActualizado}) {
+  final estado = '${p['estado'] ?? ''}';
+  final color = estado == 'ENTREGADO'
+      ? Colors.green
+      : estado == 'CANCELADO'
+          ? Colors.grey
+          : estado == 'ENVIADO'
+              ? Colors.blue
+              : Colors.orange;
+  return _Ficha(
+    inicio: _Insignia(_fechaPedidoCorta(p['fecha']), tono: color),
+    titulo: '${(p['cliente'] ?? '').toString().isEmpty ? 'Sin nombre' : p['cliente']}',
+    detalle: 'Pedido ${p['id'] ?? ''}',
+    fin: _Pildora(_estadosPedido[estado] ?? estado, color),
+    onTap: () => showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DetallePedidoSheet(pedido: p, onActualizado: onActualizado),
+    ),
+  );
+}
+
+/// Un cliente de Comercialización (4 nov 2026): sus datos (teléfono y total sólo para dueños) y sus pedidos, de 20 en
+/// 20; cada pedido abre su detalle.
+class _ClienteComercialScreen extends StatefulWidget {
+  const _ClienteComercialScreen({required this.cliente});
+  final Map<String, dynamic> cliente;
+
+  @override
+  State<_ClienteComercialScreen> createState() => _ClienteComercialScreenState();
+}
+
+class _ClienteComercialScreenState extends State<_ClienteComercialScreen> {
+  final _pedidos = <Map<String, dynamic>>[];
+  int _pagina = 0;
+  bool _hayMas = true;
+  bool _cargando = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _cargar();
+    _mas();
   }
 
-  Future<void> _cargar() async {
-    final r = await AdministracionService.procesos(solo: 'comercial');
+  Future<void> _mas() async {
+    if (_cargando || !_hayMas) return;
+    setState(() => _cargando = true);
+    final r = await ApiService.getPedidos(cliente: '${widget.cliente['nombre'] ?? ''}', pagina: _pagina + 1, limite: 20);
     if (!mounted) return;
     setState(() {
-      _error = r.isSuccess ? null : r.error;
-      if (r.isSuccess && r.data!['comercial'] is! Map) _error = 'Este proceso no es de tus áreas.';
-      if (r.isSuccess && r.data!['comercial'] is Map) _datos = _mapa(r.data!['comercial']);
+      _cargando = false;
+      if (r.isSuccess && r.data != null) {
+        _pedidos.addAll(r.data!.pedidos);
+        _pagina++;
+        _hayMas = r.data!.hayMas;
+      } else {
+        _error = r.error ?? 'No se pudieron cargar los pedidos.';
+        _hayMas = false;
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final d = _datos;
+    final c = widget.cliente;
+    Widget dato(String nombre, String? valor) => valor == null || valor.isEmpty
+        ? const SizedBox.shrink()
+        : Container(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade300))),
+            child: Row(children: [
+              SizedBox(width: 130, child: Text(nombre, style: TextStyle(color: Colors.grey.shade700))),
+              Expanded(child: Text(valor, style: const TextStyle(fontWeight: FontWeight.w600))),
+            ]),
+          );
     return Scaffold(
-      appBar: AppBar(title: const Text('Comercialización')),
-      body: ReportesTab(
-        encabezado: d != null
-            ? Column(children: [
-                _CuatroDatos(indicadores: _indicadoresComercial(d), grande: true),
-                const SizedBox(height: 16),
-                _Acciones(acciones: [
-                  (
-                    Icons.receipt_long,
-                    _titulos['gasto']!, // el mismo nombre en cada proceso; el área va fija (General Manager, 3 nov 2026)
-                    () => _abrirFormulario(context, 'gasto', fijos: const {'area': 'commercial'}, subtitulo: 'Área: Comercial'),
-                  ),
-                ]),
-              ])
-            : Padding(
-                padding: const EdgeInsets.all(16),
-                child: _error != null ? Text(_error!) : const Center(child: CircularProgressIndicator()),
-              ),
+      appBar: AppBar(title: const Text('Cliente')),
+      body: NotificationListener<ScrollNotification>(
+        onNotification: (n) {
+          if (n.metrics.extentAfter < 300) _mas();
+          return false;
+        },
+        child: ListView(padding: const EdgeInsets.all(16), children: [
+          Text('${c['nombre'] ?? 'Sin nombre'}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(16)),
+            child: Column(children: [
+              dato('Pedidos', '${c['pedidos'] ?? 0}'),
+              dato('Total comprado', c['total'] == null ? null : _soles(c['total'])),
+              dato('Primer pedido', c['primero'] == null ? null : _fechaLarga(c['primero'])),
+              dato('Último pedido', c['ultimo'] == null ? null : _fechaLarga(c['ultimo'])),
+              dato('Teléfono', c['telefono']?.toString()),
+              dato('Correo', c['email']?.toString()),
+            ].where((w) => w is! SizedBox).toList()),
+          ),
+          _encabezado('Pedidos', ''),
+          if (_pedidos.isEmpty && !_cargando) _vacio(_error ?? 'Sin pedidos.'),
+          for (final p in _pedidos) _fichaPedido(context, p, onActualizado: () {}),
+          if (_cargando) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
+        ]),
       ),
     );
   }

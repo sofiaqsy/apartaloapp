@@ -207,6 +207,26 @@ void main() {
     if (salida != null) File('$salida/finanzas_dueno.pdf').writeAsBytesSync(finanzas);
   });
 
+  test('builds the Comercialización report, for owners and for staff (4 Nov 2026)', () async {
+    final salida = Platform.environment['COMPRAS_PDF_DIR'];
+    for (final dueno in [true, false]) {
+      final bytes = await ComercialPdfService.generarBytes({
+        'desde': '2026-10-01', 'hasta': '2026-10-31', 'meses': 1, 'generado': '2026-11-04T15:00:00Z', 'dueno': dueno,
+        'franja': {'pedidos': 29, 'pedidos_antes': 36, if (dueno) 'vendido': 25901, if (dueno) 'ticket': 893.14, if (dueno) 'vendido_antes': 19196.5, if (dueno) 'vendido_anio': 303861},
+        'productos': [
+          {'producto': 'Blend de Caturra, Pache, typica', 'presentacion': '1 kg', 'pedidos': 12, 'unidades': 40, if (dueno) 'total': 3200},
+          {'producto': 'Geisha', 'presentacion': '250 g', 'pedidos': 5, 'unidades': 9, if (dueno) 'total': 450},
+        ],
+        'clientes': {'activos': 23, 'nuevos': 3, 'silenciosos': 23},
+        'silenciosos': [{'nombre': 'Cafe Viejo', 'ultimo': '2026-07-01', 'pedidos': 4}],
+        'canales': [{'canal': 'manual', 'pedidos': 28, if (dueno) 'vendido': 25851}, {'canal': 'web', 'pedidos': 1, if (dueno) 'vendido': 50}],
+        if (dueno) 'costos': [{'categoria': 'Combustible', 'pendiente': 0, 'pagado': 150, 'total': 150}],
+      }, businessName: 'Negocio Ejemplo', base: pw.Font.helvetica(), bold: pw.Font.helveticaBold());
+      expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+      if (salida != null) File('$salida/comercial_${dueno ? 'dueno' : 'staff'}.pdf').writeAsBytesSync(bytes);
+    }
+  });
+
   test('month names are in Spanish', () {
     expect(ComprasPdfService.nombreMes(1), 'Enero');
     expect(ComprasPdfService.nombreMes(11), 'Noviembre');

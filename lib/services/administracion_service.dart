@@ -130,6 +130,12 @@ class AdministracionService {
     return _get('$ruta/reporte?desde=${mes(desde)}&hasta=${mes(hasta)}');
   }
 
+  /// Comercialización (4 nov 2026): su reporte, sus clientes (de sus pedidos) y sus productos más vendidos, de 20 en 20.
+  static Future<ApiResponse<Map<String, dynamic>>> reporteComercial(DateTime desde, DateTime hasta) => _reporte('comercial', desde, hasta);
+  static Future<ApiResponse<Map<String, dynamic>>> clientesComercial({int desde = 0, String? buscar}) =>
+      _get('comercial/clientes?offset=$desde&limit=20${buscar == null || buscar.isEmpty ? '' : '&q=${Uri.encodeComponent(buscar)}'}');
+  static Future<ApiResponse<Map<String, dynamic>>> productosComercial({int desde = 0}) => _get('comercial/productos?offset=$desde&limit=20');
+
   static Future<ApiResponse<Map<String, dynamic>>> reporteProveedor(String id) => _get('proveedores/${Uri.encodeComponent(id)}/reporte');
 
   /// Subir evidencia (dueños): una foto o PDF del voucher o recibo de una compra (purchase), un gasto (expense),

@@ -1282,3 +1282,112 @@ class FinanzasPdfService {
     );
   }
 }
+
+/// Reporte de Comercialización (General Manager, 4 nov 2026; lo decidió el área Comercial): ventas del periodo y del
+/// periodo anterior, ventas por mes, productos más vendidos, clientes (activos, nuevos y silenciosos: sin pedido en 60
+/// días), canales y gastos comerciales. El dinero sólo para dueños; sin "Por cobrar" mientras el estado de pago no cuadre.
+class ComercialPdfService {
+  static const _canales = {'manual': 'Manual', 'web': 'Web'};
+
+  static Future<Uint8List> generarBytes(Map<String, dynamic> reporte, {String? businessName, pw.Font? base, pw.Font? bold}) {
+    const tabla = ProveedorPdfService._tabla;
+    final esDueno = reporte['dueno'] == true;
+    final variosMeses = (int.tryParse('${reporte['meses'] ?? 1}') ?? 1) > 1;
+    final franja = ProveedorPdfService._mapa(reporte['franja']);
+    final porMes = ProveedorPdfService._lista(reporte['por_mes']);
+    final productos = ProveedorPdfService._lista(reporte['productos']);
+    final clientes = ProveedorPdfService._mapa(reporte['clientes']);
+    final silenciosos = ProveedorPdfService._lista(reporte['silenciosos']);
+    final canales = ProveedorPdfService._lista(reporte['canales']);
+    final costos = ProveedorPdfService._lista(reporte['costos']);
+    String soles(dynamic v) => v == null ? '—' : ProveedorPdfService.soles(v);
+    String n(dynamic v) => ComprasPdfService._n(v ?? 0);
+    return _ReporteBase.documento(
+      () => [
+        _ReporteBase.cabecera(businessName ?? ApiService.businessName, 'COMERCIALIZACIÓN', reporte),
+        // 1. Ventas del periodo
+        _ReporteBase.franja([
+          ('Pedidos', n(franja['pedidos'])),
+          if (esDueno) ('Vendido', soles(franja['vendido'])),
+          if (esDueno) ('Ticket promedio', soles(franja['ticket'])),
+          ('Periodo anterior', esDueno ? '${soles(franja['vendido_antes'])} · ${n(franja['pedidos_antes'])} ped.' : '${n(franja['pedidos_antes'])} pedidos'),
+          if (esDueno) ('En el año', soles(franja['vendido_anio'])),
+        ]),
+        // 2. Ventas por mes
+        if (variosMeses && porMes.isNotEmpty) ...[
+          pw.SizedBox(height: 12),
+          ...tabla(
+            'VENTAS POR MES',
+            esDueno ? ['Mes', 'Pedidos', 'Vendido'] : ['Mes', 'Pedidos'],
+            [for (final m in porMes) [ComprasPdfService._etiquetaMes(m['mes']), n(m['pedidos']), if (esDueno) soles(m['vendido'])]],
+            esDueno ? {1, 2} : {1},
+          ),
+        ],
+        pw.SizedBox(height: 12),
+        // 3. Productos más vendidos
+        if (productos.isEmpty)
+          _ReporteBase.nada('PRODUCTOS MÁS VENDIDOS', 'No hubo ventas en el periodo.')
+        else
+          ...tabla(
+            'PRODUCTOS MÁS VENDIDOS',
+            esDueno ? ['Producto', 'Presentación', 'Pedidos', 'Unidades', 'Vendido'] : ['Producto', 'Presentación', 'Pedidos', 'Unidades'],
+            [
+              for (final p in productos)
+                ['${p['producto'] ?? ''}', '${p['presentacion'] ?? '—'}', n(p['pedidos']), n(p['unidades']), if (esDueno) soles(p['total'])],
+            ],
+            esDueno ? {2, 3, 4} : {2, 3},
+          ),
+        pw.SizedBox(height: 12),
+        // 4. Clientes
+        ...tabla(
+          'CLIENTES',
+          ['Dato', 'Clientes'],
+          [
+            ['Compraron en el periodo', n(clientes['activos'])],
+            ['Nuevos (primer pedido en el periodo)', n(clientes['nuevos'])],
+            ['Silenciosos hoy (sin pedido en 60 días)', n(clientes['silenciosos'])],
+          ],
+          {1},
+        ),
+        if (silenciosos.isNotEmpty) ...[
+          pw.SizedBox(height: 12),
+          ...tabla(
+            'CLIENTES SILENCIOSOS',
+            ['Cliente', 'Último pedido', 'Pedidos'],
+            [for (final c in silenciosos) ['${c['nombre'] ?? ''}', ProveedorPdfService.fecha(c['ultimo']), n(c['pedidos'])]],
+            {2},
+          ),
+        ],
+        pw.SizedBox(height: 12),
+        // 5. Canales
+        if (canales.isEmpty)
+          _ReporteBase.nada('PEDIDOS POR CANAL', 'No hubo pedidos en el periodo.')
+        else
+          ...tabla(
+            'PEDIDOS POR CANAL',
+            esDueno ? ['Canal', 'Pedidos', 'Vendido'] : ['Canal', 'Pedidos'],
+            [for (final c in canales) [_canales[c['canal']] ?? '${c['canal'] ?? ''}', n(c['pedidos']), if (esDueno) soles(c['vendido'])]],
+            esDueno ? {1, 2} : {1},
+          ),
+        // 6. Gastos comerciales (sólo dueños)
+        if (esDueno) ...[
+          pw.SizedBox(height: 12),
+          if (costos.isEmpty)
+            _ReporteBase.nada('GASTOS COMERCIALES', 'No hubo gastos comerciales en el periodo.')
+          else
+            ...tabla(
+              'GASTOS COMERCIALES',
+              ['Categoría', 'Pendiente', 'Pagado', 'Total'],
+              [for (final c in costos) ['${c['categoria'] ?? ''}', soles(c['pendiente']), soles(c['pagado']), soles(c['total'])]],
+              {1, 2, 3},
+            ),
+        ],
+        _ReporteBase.nota('Las ventas suman los productos de cada pedido, sin el envío. No se muestra "Por cobrar": el estado de pago de los '
+            'pedidos todavía no cuadra. Tampoco listas de precios, cotizaciones, contratos ni margen: todavía no se registran.'),
+      ],
+      conMontos: esDueno,
+      base: base,
+      bold: bold,
+    );
+  }
+}
