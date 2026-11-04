@@ -831,7 +831,7 @@ void main() {
     // Roasted coffee by product, the same as the product screen (4 Nov 2026): each product with its kilos, its lots
     // and its roasts in progress or planned.
     for (final t in ['Tostar café', 'Registrar gasto', 'Essential', 'Omagua 250 g', 'Omagua 1 kg',
-        '20 oct', '2 nov', 'L-8', 'L-7', 'Tostando', 'Programado']) {
+        'Martes 20 de octubre', 'Lunes 2 de noviembre', 'L-8', 'L-7', 'Tostando', 'Programado']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     // Only the date on each lot: everything here is roasted, so "Tostado" is not repeated (4 Nov 2026).
@@ -845,7 +845,7 @@ void main() {
     expect(orden[0] < orden[1] && orden[1] < orden[2], isTrue);
     // A roasted lot opens its detail.
     await http.runWithClient(() async {
-      await tester.tap(find.text('20 oct'));
+      await tester.tap(find.text('Martes 20 de octubre'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     for (final t in ['Lote de tostado', 'Café verde que entró', '100 kg', '80 kg', '20%', 'Asignado', '380 kg', 'Vendido', '40 kg', 'Disponible',

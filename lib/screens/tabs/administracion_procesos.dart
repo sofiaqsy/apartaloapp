@@ -43,6 +43,16 @@ String _fechaCorta(dynamic iso) {
   return '${d.day} ${meses[d.month - 1]}';
 }
 
+/// "Lunes 2 de noviembre": el día de la semana, el día y el mes (General Manager, 4 nov 2026, para los lotes de tostado).
+/// La fecha viene como "2026-11-02" (día de Lima); se lee tal cual, sin pasar por la hora del teléfono.
+String _fechaLarga(dynamic iso) {
+  final d = DateTime.tryParse('${iso ?? ''}');
+  if (d == null) return '';
+  const dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+  const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  return '${dias[d.weekday - 1]} ${d.day} de ${meses[d.month - 1]}';
+}
+
 Map<String, dynamic> _mapa(dynamic v) => v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
 List<Map<String, dynamic>> _lista(dynamic v) => v is List ? v.map(_mapa).toList() : <Map<String, dynamic>>[];
 
@@ -2916,7 +2926,8 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
             for (final l in _lista(p['lotes']))
               _Ficha(
                 inicio: _Insignia('${l['lote'] ?? '—'}', tono: Colors.orange),
-                titulo: _fechaCorta(l['fecha']), // sólo la fecha: en esta pestaña todo es tostado (General Manager, 4 nov 2026)
+                // Sólo la fecha, sin "Tostado el": en esta pestaña todo es tostado; como "Lunes 2 de noviembre" (General Manager, 4 nov 2026).
+                titulo: _fechaLarga(l['fecha']),
                 fin: Text(_kg(l['kg']), style: const TextStyle(fontWeight: FontWeight.w600)),
                 // Cada lote tostado abre su detalle (General Manager, 4 nov 2026).
                 onTap: l['id'] == null ? null : () => _abrirPantalla<void>(context, _TostadoDetalleScreen(id: '${l['id']}', producto: '${p['nombre'] ?? ''}')),
