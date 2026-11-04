@@ -167,7 +167,7 @@ class _RegistrarState extends State<_Registrar> {
           titulo: 'Producción',
           indicadores: _produccion == null ? null : _indicadoresProduccion(_produccion!),
           error: _error,
-          onTap: () => _entrar(const _ProduccionScreen()),
+          onTap: () => _entrar(_ProduccionScreen(esDueno: widget.esDueno)),
         )
       ),
       (
@@ -2795,7 +2795,8 @@ class _ComercialScreenState extends State<_ComercialScreen> {
 // ─── Producción ──────────────────────────────────────────────────────────────
 
 class _ProduccionScreen extends StatefulWidget {
-  const _ProduccionScreen();
+  const _ProduccionScreen({this.esDueno = false});
+  final bool esDueno; // Cerrar lote y Agregar café al lote: sólo dueños (la base de datos también lo revisa)
 
   @override
   State<_ProduccionScreen> createState() => _ProduccionScreenState();
@@ -2855,6 +2856,19 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
     final r = await ApiService.finalizarTueste('${t['id']}', resultado.$1, notas: resultado.$2);
     _aviso(r.isSuccess ? 'Tueste finalizado ✓ ${_kg(resultado.$1)} de café tostado' : 'No se finalizó: ${r.error}');
     cargar();
+  }
+
+  Future<void> _agregarCafe(Map<String, dynamic> lote) async {
+    final hecho = await _abrirPantalla<bool>(context, _AgregarCafeLoteScreen(lote: lote));
+    if (hecho == true) cargar();
+  }
+
+  Future<void> _cerrarLote(Map<String, dynamic> lote) async {
+    final hecho = await showDialog<bool>(context: context, builder: (_) => _CerrarLoteDialog(lote: lote));
+    if (hecho == true) {
+      _aviso('Lote ${lote['codigo']} cerrado ✓');
+      cargar();
+    }
   }
 
   void _aviso(String texto) {
@@ -2943,7 +2957,20 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
         ] else ...[
           _encabezado('Lotes de café verde', '${lotes.length} ${lotes.length == 1 ? 'lote' : 'lotes'}'),
           if (lotes.isEmpty) _vacio('No hay lotes de café verde con stock.'),
-          for (final l in lotes) _FilaLote(lote: l),
+          for (final l in lotes)
+            _FilaLote(
+              lote: l,
+              // Lotes verdes (General Manager, 4 nov 2026, tras la reunión): el lote del Blend crece con café pilado;
+              // los demás se cierran después del conteo, si no son el café verde de un producto.
+              accion: !widget.esDueno
+                  ? null
+                  : l['crece'] == true
+                      ? OutlinedButton.icon(
+                          onPressed: () => _agregarCafe(l), icon: const Icon(Icons.add, size: 18), label: const Text('Agregar café al lote'))
+                      : l['producto'] == null
+                          ? TextButton(onPressed: () => _cerrarLote(l), child: const Text('Cerrar lote'))
+                          : null,
+            ),
           if (porProcesar.isNotEmpty) ...[
             _encabezado('Café comprado por procesar', '${porProcesar.length}'),
             for (final p in porProcesar)
@@ -3121,6 +3148,269 @@ class _TostadoDetalleScreenState extends State<_TostadoDetalleScreen> {
   }
 }
 
+/// Cerrar lote (General Manager, 4 nov 2026, tras la reunión de lotes): sólo después del conteo. El lote se cierra
+/// (archivado, nunca borrado) sólo si el conteo encontró 0 kg; los kilos que mostraba quedan escritos con el motivo.
+class _CerrarLoteDialog extends StatefulWidget {
+  const _CerrarLoteDialog({required this.lote});
+  final Map<String, dynamic> lote;
+
+  @override
+  State<_CerrarLoteDialog> createState() => _CerrarLoteDialogState();
+}
+
+class _CerrarLoteDialogState extends State<_CerrarLoteDialog> {
+  final _contados = TextEditingController();
+  final _motivo = TextEditingController();
+  final _clave = AdministracionService.nuevaClave('cerrarLote');
+  String? _error;
+  bool _guardando = false;
+
+  @override
+  void dispose() {
+    _contados.dispose();
+    _motivo.dispose();
+    super.dispose();
+  }
+
+  Future<void> _cerrar() async {
+    final kg = num.tryParse(_contados.text.trim().replaceAll(',', '.'));
+    if (kg == null) return setState(() => _error = 'Escribe los kilos que encontró el conteo.');
+    if (kg > 0) return setState(() => _error = 'El conteo encontró café: el lote no se cierra. Tuéstalo primero.');
+    if (_motivo.text.trim().isEmpty) return setState(() => _error = 'Escribe por qué se cierra.');
+    setState(() {
+      _guardando = true;
+      _error = null;
+    });
+    final r = await AdministracionService.cerrarLote('${widget.lote['id']}', kg, _motivo.text.trim(), clave: _clave);
+    if (!mounted) return;
+    if (r.isSuccess) return Navigator.pop(context, true);
+    setState(() {
+      _guardando = false;
+      _error = r.error ?? 'No se cerró.';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lote = widget.lote;
+    return AlertDialog(
+      title: Text('¿Cerrar el lote ${lote['codigo']}?'),
+      content: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('La app muestra ${_kg(lote['kg_ahora'])}. Ciérralo sólo después de pesar los sacos: si el conteo encontró 0 kg.'),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _contados,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'Kilos que encontró el conteo', suffixText: 'kg'),
+          ),
+          TextField(
+            controller: _motivo,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(labelText: 'Motivo', hintText: 'Conteo del 5 nov: sin sacos'),
+          ),
+          if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: const TextStyle(color: Colors.red))),
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: _guardando ? null : () => Navigator.pop(context, false), child: const Text('Cancelar')),
+        ElevatedButton(onPressed: _guardando ? null : _cerrar, child: Text(_guardando ? 'Cerrando…' : 'Cerrar lote')),
+      ],
+    );
+  }
+}
+
+/// Agregar café al lote (General Manager, 4 nov 2026, tras la reunión de lotes): el café entra al lote del Blend cuando
+/// se pila, nunca al comprarlo. Se eligen las compras piladas, los kilos de pergamino que entraron y de verde que
+/// salieron (el rendimiento real), y que Calidad lo aprobó; el costo es opcional. Sólo dueños.
+class _AgregarCafeLoteScreen extends StatefulWidget {
+  const _AgregarCafeLoteScreen({required this.lote});
+  final Map<String, dynamic> lote;
+
+  @override
+  State<_AgregarCafeLoteScreen> createState() => _AgregarCafeLoteScreenState();
+}
+
+class _AgregarCafeLoteScreenState extends State<_AgregarCafeLoteScreen> {
+  List<Map<String, dynamic>>? _compras;
+  final _elegidas = <String>{};
+  final _pergamino = TextEditingController();
+  final _verde = TextEditingController();
+  final _costo = TextEditingController();
+  final _nota = TextEditingController();
+  final _clave = AdministracionService.nuevaClave('agregarCafeLote');
+  bool _calidad = false;
+  bool _guardando = false;
+  String? _error;
+  String? _errorCarga;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+    _pergamino.addListener(() => setState(() {}));
+    _verde.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    for (final c in [_pergamino, _verde, _costo, _nota]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _cargar() async {
+    final r = await AdministracionService.comprasParaLote('${widget.lote['id']}');
+    if (!mounted) return;
+    setState(() {
+      _errorCarga = r.isSuccess ? null : (r.error ?? 'No se pudieron cargar las compras.');
+      _compras = r.isSuccess ? _lista(r.data!['compras']) : const [];
+    });
+  }
+
+  static num? _numero(String t) => num.tryParse(t.trim().replaceAll(',', '.'));
+
+  void _elegir(Map<String, dynamic> c) {
+    setState(() {
+      final id = '${c['id']}';
+      _elegidas.contains(id) ? _elegidas.remove(id) : _elegidas.add(id);
+      // Los kilos de pergamino empiezan como la suma de las compras elegidas; se pueden cambiar.
+      final suma = (_compras ?? const <Map<String, dynamic>>[])
+          .where((x) => _elegidas.contains('${x['id']}'))
+          .fold<num>(0, (a, x) => a + (num.tryParse('${x['kg']}') ?? 0));
+      _pergamino.text = suma == 0 ? '' : (suma == suma.roundToDouble() ? '${suma.round()}' : '$suma');
+    });
+  }
+
+  Future<void> _agregar() async {
+    final pergamino = _numero(_pergamino.text);
+    final verde = _numero(_verde.text);
+    final costo = _costo.text.trim().isEmpty ? null : _numero(_costo.text);
+    String? error;
+    if (_elegidas.isEmpty) {
+      error = 'Elige las compras que se pilaron.';
+    } else if (pergamino == null || pergamino <= 0) {
+      error = 'Escribe los kilos de pergamino que entraron.';
+    } else if (verde == null || verde <= 0) {
+      error = 'Escribe los kilos de café verde que salieron.';
+    } else if (verde > pergamino) {
+      error = 'El café verde no puede pesar más que el pergamino que entró.';
+    } else if (!_calidad) {
+      error = 'Calidad tiene que aprobar este café antes de que entre al lote.';
+    } else if (_costo.text.trim().isNotEmpty && (costo == null || costo < 0)) {
+      error = 'El costo no es válido.';
+    }
+    if (error != null) return setState(() => _error = error);
+    setState(() {
+      _guardando = true;
+      _error = null;
+    });
+    final r = await AdministracionService.agregarCafeLote('${widget.lote['id']}', {
+      'compras': _elegidas.toList(),
+      'kgPergamino': pergamino,
+      'kgVerde': verde,
+      'calidadAprobo': true,
+      if (costo != null) 'costo': costo,
+      if (_nota.text.trim().isNotEmpty) 'nota': _nota.text.trim(),
+    }, clave: _clave);
+    if (!mounted) return;
+    if (r.isSuccess) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Agregado al lote ${widget.lote['codigo']} ✓ ahora ${_kg(r.data!['kg_despues'])} · rendimiento ${r.data!['rendimiento_pct']}%')));
+      return Navigator.pop(context, true);
+    }
+    setState(() {
+      _guardando = false;
+      _error = r.error ?? 'No se agregó.';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final compras = _compras;
+    final pergamino = _numero(_pergamino.text);
+    final verde = _numero(_verde.text);
+    final rendimiento = pergamino != null && verde != null && pergamino > 0 ? (100 * verde / pergamino) : null;
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.close), tooltip: 'Cerrar', onPressed: () => Navigator.pop(context, false)),
+        title: Text('Agregar café al lote ${widget.lote['codigo']}'),
+      ),
+      body: ListView(padding: const EdgeInsets.all(16), children: [
+        if (widget.lote['producto'] != null)
+          Text('${widget.lote['producto']}', style: TextStyle(fontSize: 15, color: Colors.grey.shade700)),
+        const Padding(
+            padding: EdgeInsets.fromLTRB(0, 12, 0, 6),
+            child: Text('Compras que se pilaron', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+        if (compras == null)
+          const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
+        else if (_errorCarga != null)
+          Text(_errorCarga!, style: const TextStyle(color: Colors.red))
+        else if (compras.isEmpty)
+          _vacio('No hay compras del Blend por agregar.')
+        else
+          for (final c in compras)
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              value: _elegidas.contains('${c['id']}'),
+              onChanged: (_) => _elegir(c),
+              title: Text('${c['agricultor'] ?? c['id']}'),
+              subtitle: Text([
+                '${c['id']}',
+                _fechaCorta(c['fecha']),
+                _estadosCafe[c['estado']] ?? '${c['estado'] ?? ''}',
+              ].where((t) => t.isNotEmpty).join(' · ')),
+              secondary: Text(_kg(c['kg']), style: const TextStyle(fontWeight: FontWeight.w600)),
+            ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _pergamino,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Kilos de pergamino que entraron', suffixText: 'kg'),
+        ),
+        TextField(
+          controller: _verde,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Kilos de café verde que salieron', suffixText: 'kg'),
+        ),
+        if (rendimiento != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text('Rendimiento: ${rendimiento.toStringAsFixed(1)}%', style: TextStyle(color: Colors.grey.shade800)),
+          ),
+        const SizedBox(height: 8),
+        CheckboxListTile(
+          contentPadding: EdgeInsets.zero,
+          controlAffinity: ListTileControlAffinity.leading,
+          value: _calidad,
+          onChanged: (v) => setState(() => _calidad = v == true),
+          title: const Text('Calidad aprobó este café'),
+        ),
+        TextField(
+          controller: _costo,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Costo total (opcional)', prefixText: 'S/ '),
+        ),
+        TextField(
+          controller: _nota,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(labelText: 'Nota (opcional)', hintText: 'Pilado el 5 nov'),
+        ),
+        const SizedBox(height: 16),
+        if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(_error!, style: const TextStyle(color: Colors.red))),
+        SizedBox(
+          height: 52,
+          child: ElevatedButton(onPressed: _guardando ? null : _agregar, child: Text(_guardando ? 'Agregando…' : 'Agregar al lote')),
+        ),
+        const SizedBox(height: 24),
+      ]),
+    );
+  }
+}
+
 /// Nombre de un producto con su café tostado disponible a la derecha (información, no botón).
 class _NombreProducto extends StatelessWidget {
   const _NombreProducto({required this.nombre, this.kg});
@@ -3139,8 +3429,9 @@ class _NombreProducto extends StatelessWidget {
 
 /// Un lote verde en su ficha: código, variedad y cosecha, kilos que quedan de los que entraron, barra y %.
 class _FilaLote extends StatelessWidget {
-  const _FilaLote({required this.lote});
+  const _FilaLote({required this.lote, this.accion});
   final Map<String, dynamic> lote;
+  final Widget? accion; // Agregar café al lote o Cerrar lote (dueños)
 
   @override
   Widget build(BuildContext context) {
@@ -3164,6 +3455,16 @@ class _FilaLote extends StatelessWidget {
               ),
               Text('${_kg(ahora).replaceAll(' kg', '')} kg / ${_kg(inicial)}', style: TextStyle(color: Colors.grey.shade800)),
             ]),
+            // El producto que usa este lote, y si es el lote del Blend (General Manager, 4 nov 2026).
+            if (lote['producto'] != null || lote['crece'] == true)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                    [if (lote['producto'] != null) '${lote['producto']}', if (lote['crece'] == true) 'lote del Blend: crece con café pilado'].join(' · '),
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis),
+              ),
             const SizedBox(height: 6),
             Row(children: [
               Expanded(
@@ -3178,6 +3479,7 @@ class _FilaLote extends StatelessWidget {
               const SizedBox(width: 10),
               _Pildora('${(parte * 100).round()}%', Colors.green),
             ]),
+            if (accion != null) Align(alignment: Alignment.centerRight, child: accion!),
           ]),
         ),
       ]),

@@ -106,6 +106,20 @@ void main() {
     }
     // The report is checked up to the request; building the PDF needs the fonts from the internet (tested apart).
     if (p.endsWith('/compras/reporte') || p.endsWith('/produccion/reporte')) return http.Response(jsonEncode({'error': 'Sin señal'}), 503);
+    if (p.endsWith('/lotes-verdes/g7/compras')) {
+      return http.Response(jsonEncode({
+        'compras': [
+          {'id': 'DL-0902', 'fecha': '2026-11-02', 'agricultor': 'Tito Lobato', 'estado': 'parchment', 'kg': 200},
+          {'id': 'DL-0901', 'fecha': '2026-11-01', 'agricultor': 'Pedro Ramírez Ñique', 'estado': 'parchment', 'kg': 300},
+        ]
+      }), 200);
+    }
+    if (p.endsWith('/lotes-verdes/g7/agregar')) {
+      return http.Response(jsonEncode({'ok': true, 'resultado': {'lote': 'L-7', 'kg_antes': 414, 'kg_despues': 654, 'rendimiento_pct': 80}}), 200);
+    }
+    if (p.endsWith('/lotes-verdes/g1/cerrar')) {
+      return http.Response(jsonEncode({'ok': true, 'resultado': {'lote': 'L-1', 'kg_que_mostraba': 760}}), 200);
+    }
     if (p.endsWith('/produccion/tostados/r8')) {
       return http.Response(jsonEncode({
         'tostado': {
@@ -203,7 +217,12 @@ void main() {
           'recientes': [{'id': 'DL-0001', 'fecha': '2026-11-03', 'agricultor': 'Pedro Ramírez Ñique', 'estado': 'parchment', 'kg': 100, 'precio': null}],
         },
         'produccion': {
-          'lotes_verdes': [{'id': 'g1', 'codigo': 'L-1', 'kg_ahora': 760, 'kg_inicial': 1000, 'cosecha': 2026, 'variedad': 'Catimor'}],
+          // The Blend lot first (it grows), then the others; each with the product that uses it (4 Nov 2026).
+          'lotes_verdes': [
+            {'id': 'g7', 'codigo': 'L-7', 'kg_ahora': 414, 'kg_inicial': 1000, 'cosecha': 2026, 'variedad': 'Blend', 'producto': 'Blend de Caturra', 'crece': true},
+            {'id': 'g1', 'codigo': 'L-1', 'kg_ahora': 760, 'kg_inicial': 1000, 'cosecha': 2026, 'variedad': 'Catimor'},
+            {'id': 'g8', 'codigo': 'L-8', 'kg_ahora': 140, 'kg_inicial': 1000, 'cosecha': 2026, 'variedad': 'Blend', 'producto': 'Essential'},
+          ],
           'verde_kg': 760,
           'tuestes': [
             {'id': 'e1', 'estado': 'in_progress', 'fecha': '2026-11-03T15:00:00Z', 'kg_verde': 20, 'lote': 'L-1', 'producto': 'Omagua 250 g'},
@@ -870,6 +889,81 @@ void main() {
     }
     expect(find.text('Finalizar'), findsOneWidget); // the roast in progress
     expect(find.text('Iniciar'), findsOneWidget); // the planned one
+  });
+
+  testWidgets('Café verde: each lot shows its product; owners add milled coffee to the Blend lot and close old lots after the count', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Producción'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.textContaining('Blend de Caturra · lote del Blend'), findsOneWidget);
+    expect(find.text('Essential'), findsOneWidget);
+    expect(find.text('Agregar café al lote'), findsOneWidget); // only the Blend lot
+    expect(find.text('Cerrar lote'), findsOneWidget); // only L-1: L-7 is the Blend lot and L-8 is Essential's coffee
+
+    // Cerrar lote: only after a count of 0 kg.
+    await tester.tap(find.text('Cerrar lote'));
+    await tester.pumpAndSettle();
+    expect(find.text('¿Cerrar el lote L-1?'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextField, 'Kilos que encontró el conteo'), '120');
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Cerrar lote'));
+    await tester.pump();
+    expect(find.textContaining('El conteo encontró café'), findsOneWidget);
+    expect(pedidos.any((r) => r.url.path.endsWith('/cerrar')), isFalse);
+    await tester.enterText(find.widgetWithText(TextField, 'Kilos que encontró el conteo'), '0');
+    await tester.enterText(find.widgetWithText(TextField, 'Motivo'), 'Conteo del 5 nov: sin sacos');
+    await http.runWithClient(() async {
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Cerrar lote'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final cierre = pedidos.lastWhere((r) => r.url.path.endsWith('/lotes-verdes/g1/cerrar'));
+    expect(jsonDecode(cierre.body)['kgContados'], 0);
+    expect(jsonDecode(cierre.body)['motivo'], 'Conteo del 5 nov: sin sacos');
+
+    // Agregar café al lote: the compras milled, parchment in (the sum of the compras), green out, and Quality's yes.
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Agregar café al lote'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Agregar café al lote L-7'), findsOneWidget);
+    await tester.tap(find.text('Pedro Ramírez Ñique'));
+    await tester.pump();
+    expect(find.widgetWithText(TextField, '300'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextField, 'Kilos de café verde que salieron'), '240');
+    await tester.pump();
+    expect(find.text('Rendimiento: 80.0%'), findsOneWidget);
+    await tester.ensureVisible(find.text('Agregar al lote'));
+    await tester.tap(find.text('Agregar al lote'));
+    await tester.pump();
+    expect(find.textContaining('Calidad tiene que aprobar'), findsOneWidget);
+    expect(pedidos.any((r) => r.url.path.endsWith('/agregar')), isFalse);
+    await tester.ensureVisible(find.text('Calidad aprobó este café'));
+    await tester.tap(find.text('Calidad aprobó este café'));
+    await tester.pump();
+    await http.runWithClient(() async {
+      await tester.ensureVisible(find.text('Agregar al lote'));
+      await tester.tap(find.text('Agregar al lote'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final agregado = jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/lotes-verdes/g7/agregar')).body);
+    expect(agregado['compras'], ['DL-0901']);
+    expect(agregado['kgPergamino'], 300);
+    expect(agregado['kgVerde'], 240);
+    expect(agregado['calidadAprobo'], true);
+    expect(agregado['clientRef'], isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('staff see the green lots and their product, but not Agregar café al lote or Cerrar lote', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Producción'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Essential'), findsOneWidget);
+    expect(find.text('Agregar café al lote'), findsNothing);
+    expect(find.text('Cerrar lote'), findsNothing);
   });
 
   testWidgets('Producción copies Compras: a Gastos tab after Proveedores, and the PDF button with its own report', (tester) async {

@@ -74,6 +74,29 @@ class AdministracionService {
     return _get('produccion/reporte?desde=${mes(desde)}&hasta=${mes(hasta)}');
   }
 
+  /// Lotes verdes (General Manager, 4 nov 2026, tras la reunión de lotes): las compras que pueden entrar al lote del
+  /// Blend, Agregar café al lote y Cerrar lote. Sólo dueños; lo decide la base de datos.
+  static Future<ApiResponse<Map<String, dynamic>>> comprasParaLote(String loteId) => _get('produccion/lotes-verdes/${Uri.encodeComponent(loteId)}/compras');
+
+  static Future<ApiResponse<Map<String, dynamic>>> agregarCafeLote(String loteId, Map<String, dynamic> datos, {required String clave}) =>
+      _post('produccion/lotes-verdes/${Uri.encodeComponent(loteId)}/agregar', {...datos, 'clientRef': clave});
+
+  static Future<ApiResponse<Map<String, dynamic>>> cerrarLote(String loteId, num kgContados, String motivo, {required String clave}) =>
+      _post('produccion/lotes-verdes/${Uri.encodeComponent(loteId)}/cerrar', {'kgContados': kgContados, 'motivo': motivo, 'clientRef': clave});
+
+  static Future<ApiResponse<Map<String, dynamic>>> _post(String path, Map<String, dynamic> datos) async {
+    try {
+      final res = await http.post(Uri.parse('$_base/$path'), headers: _json, body: jsonEncode(datos)).timeout(const Duration(seconds: 25));
+      final body = _decode(res.body);
+      if (res.statusCode == 200 && body is Map && body['ok'] == true) {
+        return ApiResponse.success(Map<String, dynamic>.from(body['resultado'] ?? {}));
+      }
+      return ApiResponse.error(_mensaje(res.statusCode, body));
+    } catch (_) {
+      return ApiResponse.error('No se guardó: revisa la señal e inténtalo de nuevo. No se duplicará.');
+    }
+  }
+
   /// Detalle de un lote de tostado (General Manager, 4 nov 2026): entró, salió, merma, lote verde, datos del tueste,
   /// notas, fotos y kilos por producto.
   static Future<ApiResponse<Map<String, dynamic>>> tostado(String id) => _get('produccion/tostados/${Uri.encodeComponent(id)}');
