@@ -106,6 +106,23 @@ void main() {
     }
     // The report is checked up to the request; building the PDF needs the fonts from the internet (tested apart).
     if (p.endsWith('/compras/reporte') || p.endsWith('/produccion/reporte')) return http.Response(jsonEncode({'error': 'Sin señal'}), 503);
+    if (p.endsWith('/lotes-verdes/g7/cuenta')) {
+      // The lot as an account statement, newest first, 20 lines a page (4 Nov 2026): 5 recent lines, 19 older roasts and
+      // the Entrada inicial, 25 in all.
+      final todas = <Map<String, dynamic>>[
+        {'fecha': '2026-11-04', 'tipo': 'compra', 'titulo': 'Compra DL-0008 · José Luis Gamboa Villano', 'detalle': '72 kg de pergamino al 80%', 'kg': 57.6, 'saldo': 484.96},
+        {'fecha': '2026-11-04', 'tipo': 'compra', 'titulo': 'Compra DL-0009 · Jhonatan', 'detalle': '16.7 kg de pergamino al 80%', 'kg': 13.36, 'saldo': 427.36},
+        {'fecha': '2026-11-03', 'tipo': 'venta', 'titulo': 'Venta de café verde · pedido ORD-1', 'kg': -72, 'saldo': 414},
+        {'fecha': '2026-11-02', 'tipo': 'tueste', 'titulo': 'Tueste · Blend de Caturra', 'detalle': '80 kg tostado', 'kg': -100, 'saldo': 486},
+        for (var i = 0; i < 20; i++) {'fecha': '2026-10-01', 'tipo': 'tueste', 'titulo': 'Tueste antiguo $i', 'kg': -1, 'saldo': 586 + i},
+        {'fecha': '2026-09-17', 'tipo': 'inicio', 'titulo': 'Entrada inicial', 'kg': 1000, 'saldo': 1000},
+      ];
+      final desde = int.tryParse(req.url.queryParameters['offset'] ?? '0') ?? 0;
+      final pagina = todas.skip(desde).take(20).toList();
+      return http.Response(jsonEncode({
+        'cuenta': {'lineas': pagina, 'total': todas.length, 'hay_mas': desde + pagina.length < todas.length, 'saldo': 484.96, 'entradas': 1070.96, 'salidas': 586}
+      }), 200);
+    }
     if (p.endsWith('/lotes-verdes/g7')) {
       return http.Response(jsonEncode({
         'lote': {
@@ -121,17 +138,7 @@ void main() {
           ],
           'tuestes': [{'id': 'e9', 'fecha': '2026-11-02T15:00:00Z', 'estado': 'completed', 'kg_verde': 100, 'kg_tostado': 80, 'producto': 'Blend de Caturra'}],
           'tuestes_total': 2,
-          // The lot as an account statement, newest first, with the balance after each line (4 Nov 2026).
-          'cuenta': {
-            'saldo': 484.96, 'entradas': 1070.96, 'salidas': 586,
-            'lineas': [
-              {'fecha': '2026-11-04', 'tipo': 'compra', 'titulo': 'Compra DL-0008 · José Luis Gamboa Villano', 'detalle': '72 kg de pergamino al 80%', 'kg': 57.6, 'saldo': 484.96},
-              {'fecha': '2026-11-04', 'tipo': 'compra', 'titulo': 'Compra DL-0009 · Jhonatan', 'detalle': '16.7 kg de pergamino al 80%', 'kg': 13.36, 'saldo': 427.36},
-              {'fecha': '2026-11-03', 'tipo': 'venta', 'titulo': 'Venta de café verde · pedido ORD-1', 'kg': -72, 'saldo': 414},
-              {'fecha': '2026-11-02', 'tipo': 'tueste', 'titulo': 'Tueste · Blend de Caturra', 'detalle': '80 kg tostado', 'kg': -100, 'saldo': 486},
-              {'fecha': '2026-09-17', 'tipo': 'inicio', 'titulo': 'Entrada inicial', 'kg': 1000, 'saldo': 1000},
-            ],
-          },
+
         }
       }), 200);
     }
@@ -989,10 +996,27 @@ void main() {
     for (final t in ['Estado de cuenta', '+57.6 kg', 'Saldo 485.0 kg']) {
       expect(find.text(t), findsWidgets, reason: t);
     }
-    await tester.scrollUntilVisible(find.text('Entrada inicial'), 200, scrollable: lista);
-    for (final t in ['Tueste · Blend de Caturra', '−100 kg', 'Venta de café verde · pedido ORD-1', '−72 kg', '+1,000 kg', 'Saldo 1,000 kg']) {
+    expect(find.text('25'), findsOneWidget); // the count on the title is all the lines, not the page
+    // What comes in is green and what goes out is orange (4 Nov 2026).
+    expect(tester.widget<Text>(find.text('+57.6 kg')).style?.color, Colors.green.shade800);
+    await tester.scrollUntilVisible(find.text('−100 kg'), 200, scrollable: lista);
+    expect(tester.widget<Text>(find.text('−100 kg')).style?.color, Colors.orange.shade800);
+    for (final t in ['Tueste · Blend de Caturra', 'Venta de café verde · pedido ORD-1', '−72 kg']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
+    // 20 lines a page: the second page is asked to the server only near the end of the list.
+    final cuentas = () => pedidos.where((r) => r.url.path.endsWith('/lotes-verdes/g7/cuenta')).toList();
+    expect(cuentas().map((r) => r.url.queryParameters['offset']), ['0']);
+    expect(find.text('Entrada inicial'), findsNothing);
+    await http.runWithClient(() async {
+      await tester.scrollUntilVisible(find.text('Entrada inicial'), 300, scrollable: lista);
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(cuentas().map((r) => r.url.queryParameters['offset']), ['0', '20']);
+    for (final t in ['Tueste antiguo 19', '+1,000 kg', 'Saldo 1,000 kg']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    expect(find.textContaining('en total'), findsNothing); // no text at the end of a list
     expect(find.text('Compras del lote'), findsNothing);
     expect(find.text('Tuestes con este lote'), findsNothing);
     // No Agregar café al lote any more: the estimate is added by itself (4 Nov 2026).

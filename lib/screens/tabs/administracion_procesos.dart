@@ -3130,7 +3130,7 @@ class _TostadoDetalleScreenState extends State<_TostadoDetalleScreen> {
 }
 
 /// Una línea del estado de cuenta de un lote verde: qué fue y cuándo a la izquierda; a la derecha los kilos con su signo
-/// (+ entra, − sale) y, debajo, el saldo después de esa línea. Sólo información: sin caja ni flecha.
+/// (+ entra en verde, − sale en naranja) y, debajo, el saldo después de esa línea. Sólo información: sin caja ni flecha.
 class _LineaCuenta extends StatelessWidget {
   const _LineaCuenta({required this.linea});
   final Map<String, dynamic> linea;
@@ -3152,7 +3152,7 @@ class _LineaCuenta extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade200))),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _InsigniaIcono(iconos[linea['tipo']] ?? Icons.circle_outlined, tono: entra ? Colors.green : Colors.grey),
+        _InsigniaIcono(iconos[linea['tipo']] ?? Icons.circle_outlined, tono: entra ? Colors.green : Colors.orange),
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -3164,7 +3164,7 @@ class _LineaCuenta extends StatelessWidget {
         const SizedBox(width: 8),
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
           Text('${entra ? '+' : '−'}${_kg(kg.abs())}',
-              style: TextStyle(fontWeight: FontWeight.w700, color: entra ? Colors.green.shade800 : Colors.grey.shade900)), // sin rojo: salir no es malo
+              style: TextStyle(fontWeight: FontWeight.w700, color: entra ? Colors.green.shade800 : Colors.orange.shade800)), // lo que sale, en naranja (General Manager, 4 nov 2026)
           Text('Saldo ${_kg(linea['saldo'])}', style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
         ]),
       ]),
@@ -3366,7 +3366,12 @@ class _LoteVerdeDetalleScreenState extends State<_LoteVerdeDetalleScreen> {
   Map<String, dynamic>? _l;
   String? _error;
   bool _cambio = false;
-  int _visibles = 20; // el estado de cuenta se ve de 20 en 20, al llegar al final
+  // El estado de cuenta llega del servidor de 20 en 20, al acercarse al final (General Manager, 4 nov 2026).
+  final _lineas = <Map<String, dynamic>>[];
+  Map<String, dynamic> _cuenta = const {};
+  bool _hayMas = false;
+  bool _cargandoMas = false;
+  int _pedido = 0;
   final _scroll = ScrollController();
 
   @override
@@ -3374,10 +3379,28 @@ class _LoteVerdeDetalleScreenState extends State<_LoteVerdeDetalleScreen> {
     super.initState();
     _cargar();
     _scroll.addListener(() {
-      final total = _lista(_mapa(_l?['cuenta'])['lineas']).length;
-      if (_visibles < total && _scroll.position.pixels > _scroll.position.maxScrollExtent - 200) {
-        setState(() => _visibles += 20);
+      if (_scroll.position.pixels > _scroll.position.maxScrollExtent - 200) _masLineas();
+    });
+  }
+
+  /// La siguiente página del estado de cuenta (o la primera, al cargar).
+  Future<void> _masLineas({bool desdeCero = false}) async {
+    if (!desdeCero && (_cargandoMas || !_hayMas)) return;
+    final pedido = desdeCero ? ++_pedido : _pedido;
+    setState(() => _cargandoMas = true);
+    final r = await AdministracionService.cuentaLote(widget.id, desde: desdeCero ? 0 : _lineas.length);
+    if (!mounted || pedido != _pedido) return;
+    setState(() {
+      _cargandoMas = false;
+      if (!r.isSuccess) {
+        _hayMas = false;
+        return;
       }
+      final c = _mapa(r.data!['cuenta']);
+      if (desdeCero) _lineas.clear();
+      _lineas.addAll(_lista(c['lineas']));
+      _cuenta = c;
+      _hayMas = c['hay_mas'] == true;
     });
   }
 
@@ -3388,6 +3411,7 @@ class _LoteVerdeDetalleScreenState extends State<_LoteVerdeDetalleScreen> {
   }
 
   Future<void> _cargar() async {
+    _masLineas(desdeCero: true);
     final r = await AdministracionService.loteVerde(widget.id);
     if (!mounted) return;
     setState(() {
@@ -3430,8 +3454,7 @@ class _LoteVerdeDetalleScreenState extends State<_LoteVerdeDetalleScreen> {
   @override
   Widget build(BuildContext context) {
     final l = _l;
-    final cuenta = l == null ? const <String, dynamic>{} : _mapa(l['cuenta']);
-    final lineas = _lista(cuenta['lineas']);
+    final cuenta = _cuenta;
     final abierto = l != null && l['estado'] == 'available';
     final puedeCerrar = widget.esDueno && abierto && l['crece'] != true && l['producto'] == null;
     return PopScope(
@@ -3484,9 +3507,11 @@ class _LoteVerdeDetalleScreenState extends State<_LoteVerdeDetalleScreen> {
                   ]),
                   // Una sola lista, como un estado de cuenta (General Manager, 4 nov 2026): las compras suman (+) y los tuestes,
                   // las ventas de verde y el cierre restan (−), con el saldo después de cada línea; lo más nuevo arriba.
-                  _encabezado('Estado de cuenta', '${lineas.length}'),
-                  if (lineas.isEmpty) _vacio('Este lote todavía no tiene movimientos.'),
-                  for (final m in lineas.take(_visibles)) _LineaCuenta(linea: m),
+                  _encabezado('Estado de cuenta', cuenta['total'] == null ? '' : '${cuenta['total']}'),
+                  if (_lineas.isEmpty && !_cargandoMas) _vacio('Este lote todavía no tiene movimientos.'),
+                  for (final m in _lineas) _LineaCuenta(linea: m),
+                  // Sin texto al final de la lista: sólo la carga mientras llega la siguiente página.
+                  if (_cargandoMas) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
                   const SizedBox(height: 24),
                 ]),
         ),
