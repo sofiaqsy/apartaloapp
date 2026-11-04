@@ -128,6 +128,28 @@ void main() {
         'recientes': [{'id': 'DL-0001', 'fecha': '2026-11-03', 'estado': 'parchment', 'kg': 100}],
       }}), 200);
     }
+    if (p.endsWith('/finanzas/lista')) {
+      final filas = {
+        'compras': [
+          {'id': 'PU-0001', 'entrega': 'DL-0001', 'fecha': '2026-11-04', 'agricultor': 'Pedro Ramírez Ñique', 'kg': 100, 'total': 1800, 'pagado': 1500, 'debe': 300,
+           'monto': 300, 'metodo': 'transfer', 'solicitud': 8, 'evidencias': 1, 'estado': 'Pendiente', 'espera': 0},
+          {'id': 'PU-0002', 'entrega': 'DL-0002', 'fecha': '2026-11-02', 'agricultor': 'Agricultor Parte', 'kg': 50, 'total': 1000, 'pagado': 500, 'debe': 500,
+           'monto': 200, 'metodo': 'advance', 'adelanto': 'ADV-007', 'solicitud': 9, 'estado': 'Urgente', 'espera': 9},
+          {'id': 'PU-0003', 'entrega': 'DL-0003', 'fecha': '2026-10-20', 'agricultor': 'Agricultor Pagado', 'kg': 20, 'total': 400, 'pagado': 400, 'debe': 0, 'estado': 'Pagado'},
+        ],
+        'gastos': [
+          {'id': 'EX-0001', 'fecha': '2026-11-01', 'categoria': 'Gas', 'descripcion': 'Gasolina', 'area': 'fulfillment', 'monto': 120, 'por': 'staff@x', 'estado': 'Pendiente', 'espera': 2},
+          {'id': 'EX-0002', 'fecha': '2026-10-25', 'categoria': 'Mano de obra', 'descripcion': 'Jornal', 'area': 'farm', 'monto': 80, 'por': 'staff@x',
+           'estado': 'Pagado', 'pagado_el': '2026-10-26', 'metodo': 'transfer', 'pagado_por': 'owner@x'},
+        ],
+        'adelantos': [
+          {'id': 'SOL-0001', 'fecha': '2026-11-02', 'para': 'Misael Cusi', 'monto': 1500, 'motivo': 'Compras', 'por': 'misael@x', 'estado': 'Pendiente', 'espera': 1},
+          {'id': 'SOL-0002', 'fecha': '2026-10-28', 'para': 'Tito Ejemplo', 'monto': 300, 'motivo': 'Abono', 'por': 'misael@x', 'estado': 'Rechazado',
+           'decidido_el': '2026-10-29T10:00:00Z', 'motivo_rechazo': 'No ahora'},
+        ],
+      }[req.url.queryParameters['tipo']]!;
+      return http.Response(jsonEncode({'filas': filas, 'total': filas.length, 'hayMas': false}), 200);
+    }
     if (p.endsWith('/evidencias') && req.method == 'GET') {
       return http.Response(jsonEncode({'evidencias': [
         {'id': 3, 'tipo': 'image/jpeg', 'nota': 'Voucher', 'fecha': '2026-11-03T15:00:00Z', 'por': 'owner@x', 'url': null},
@@ -1147,6 +1169,39 @@ void main() {
     }, () => MockClient((req) async => responder(req)));
     final r = pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/pagoDesdeAdelantos'));
     expect((jsonDecode(r.body) as Map)['compraId'], 'PU-0002');
+  });
+
+  testWidgets('Finanzas keeps the last month with Pendiente, Urgente or Pagado, and a paid row has no Pagar', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await entrarFinanzas(tester);
+    for (final t in ['Pendiente', 'Urgente', 'Pagado']) {
+      expect(find.text(t), findsWidgets, reason: t);
+    }
+    expect(find.textContaining('espera 9 días'), findsOneWidget);
+    expect(pedidos.any((r) => r.url.path.endsWith('/finanzas/lista') && r.url.queryParameters['tipo'] == 'compras'), isTrue);
+    expect(pedidos.any((r) => r.url.queryParameters['tipo'] == 'gastos'), isFalse); // a tab loads only when opened
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Agricultor Pagado'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Ver detalle'), findsOneWidget);
+    expect(find.text('Pagar compra'), findsNothing);
+  });
+
+  testWidgets('Ver detalle of a paid gasto shows when and how it was paid', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await entrarFinanzas(tester);
+    await http.runWithClient(() async {
+      await tester.tap(find.textContaining('Gastos ('));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Mano de obra'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ver detalle'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    for (final t in ['Pagado el', 'Transferencia', 'owner@x', 'Evidencia', 'S/ 80']) {
+      expect(find.textContaining(t), findsWidgets, reason: t);
+    }
   });
 
   testWidgets('Finanzas confirms a payment with an advance with one tap', (tester) async {

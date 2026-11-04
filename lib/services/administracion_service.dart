@@ -50,6 +50,11 @@ class AdministracionService {
   /// Pestaña Compras: compras de la más nueva a la más antigua, de [limit] en [limit] ({compras, total, hayMas}).
   static Future<ApiResponse<Map<String, dynamic>>> compras({int offset = 0, int limit = 20}) => _get('compras?offset=$offset&limit=$limit');
 
+  /// Finanzas: una pestaña ('compras', 'gastos' o 'adelantos') de [limit] en [limit] ({filas, total, hayMas}): lo que
+  /// espera (Pendiente o Urgente) y lo pagado o decidido el último mes. Sólo dueños (lo decide la base).
+  static Future<ApiResponse<Map<String, dynamic>>> finanzasLista(String tipo, {int offset = 0, int limit = 20}) =>
+      _get('finanzas/lista?tipo=${Uri.encodeComponent(tipo)}&offset=$offset&limit=$limit');
+
   /// Compras → Adelantos: los pedidos por aprobar (en la primera página) y los adelantos, del más nuevo al más antiguo.
   static Future<ApiResponse<Map<String, dynamic>>> adelantos({int offset = 0, int limit = 20}) => _get('adelantos?offset=$offset&limit=$limit');
 

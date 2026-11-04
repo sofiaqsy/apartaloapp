@@ -973,6 +973,62 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
   @override
   String get clave => 'finanzas';
 
+  // Cada pestaña: lo que espera (Pendiente o Urgente) y lo del último mes, de 20 en 20 desde el servidor
+  // (General Manager, 3 nov 2026). Se pide recién al abrir la pestaña.
+  static const _tipos = ['compras', 'gastos', 'adelantos'];
+  final _filas = [<Map<String, dynamic>>[], <Map<String, dynamic>>[], <Map<String, dynamic>>[]];
+  final _cargando = [false, false, false];
+  final _hayMas = [true, true, true];
+  final _errores = <String?>[null, null, null];
+  int _vuelta = 0; // al recargar, las respuestas viejas se descartan
+
+  /// Recarga el resumen y vuelve a empezar las listas (después de pagar, aprobar o subir evidencia).
+  @override
+  Future<void> cargar() async {
+    _vuelta++;
+    for (var i = 0; i < 3; i++) {
+      _filas[i].clear();
+      _cargando[i] = false;
+      _hayMas[i] = true;
+      _errores[i] = null;
+    }
+    await Future.wait([super.cargar(), _mas(_pestana)]);
+  }
+
+  Future<void> _mas(int i) async {
+    if (_cargando[i] || !_hayMas[i]) return;
+    _cargando[i] = true;
+    final vuelta = _vuelta;
+    final r = await AdministracionService.finanzasLista(_tipos[i], offset: _filas[i].length);
+    if (!mounted || vuelta != _vuelta) return;
+    setState(() {
+      _cargando[i] = false;
+      if (r.isSuccess) {
+        _filas[i].addAll(_lista(r.data!['filas']));
+        _hayMas[i] = r.data!['hayMas'] == true;
+      } else {
+        _errores[i] = r.error;
+        _hayMas[i] = false;
+      }
+    });
+  }
+
+  static const _coloresEstado = {
+    'Urgente': Colors.red,
+    'Pendiente': Colors.orange,
+    'Pagado': Colors.green,
+    'Pagado en parte': Colors.teal,
+    'Aprobado': Colors.green,
+    'Rechazado': Colors.grey,
+  };
+  static bool _espera(Map<String, dynamic> f) => f['estado'] == 'Pendiente' || f['estado'] == 'Urgente';
+  static _Pildora _estado(Map<String, dynamic> f) => _Pildora('${f['estado'] ?? ''}', _coloresEstado[f['estado']] ?? Colors.grey);
+  static String? _diasEsperando(Map<String, dynamic> f) {
+    final d = (f['espera'] as num?)?.toInt();
+    if (d == null || !_espera(f)) return null;
+    return d == 0 ? 'pedido hoy' : (d == 1 ? 'espera 1 día' : 'espera $d días');
+  }
+
   static int _nEvidencias(Map<String, dynamic> f) => (f['evidencias'] as num?)?.toInt() ?? 0;
   static String _textoEvidencias(Map<String, dynamic> f) => _nEvidencias(f) == 1 ? '1 evidencia' : '${_nEvidencias(f)} evidencias';
 
@@ -982,6 +1038,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
     final n = _nEvidencias(fila);
     final opciones = <(IconData, String, Future<void> Function())>[
       ...pagar,
+      (Icons.info_outline, 'Ver detalle', () => _detalle(tipo, fila)),
       (
         Icons.add_a_photo_outlined,
         'Subir evidencia',
@@ -1010,6 +1067,51 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
       ),
     );
     if (elegido != null && mounted) await opciones[elegido].$3();
+  }
+
+  /// Ver detalle: la compra abre su detalle completo; un gasto o un adelanto, sus datos y su evidencia.
+  Future<void> _detalle(String tipo, Map<String, dynamic> f) async {
+    if (tipo == 'purchase') {
+      var cambio = false;
+      await _abrirPantalla<void>(
+          context, _CompraDetalleScreen(id: '${f['entrega']}', esDueno: true, onCambio: () => cambio = true));
+      if (cambio && mounted) cargar();
+      return;
+    }
+    final gasto = tipo == 'expense';
+    final datos = <(String, String?)>[
+      ('Estado', '${f['estado'] ?? ''}${_diasEsperando(f) != null ? ' · ${_diasEsperando(f)}' : ''}'),
+      ('Monto', _soles(f['monto'])),
+      ('Código', '${f['id']}'),
+      ('Fecha', _fechaCorta(f['fecha'])),
+      if (gasto) ...[
+        ('Categoría', f['categoria']?.toString()),
+        ('Descripción', f['descripcion']?.toString()),
+        ('Área', f['area'] == null ? null : (_areas[f['area']] ?? '${f['area']}')),
+        ('Registrado por', f['por']?.toString()),
+        ('Pagado el', f['pagado_el'] == null ? null : _fechaCorta(f['pagado_el'])),
+        ('Cómo se pagó', f['metodo'] == null ? null : (_metodosPago[f['metodo']] ?? '${f['metodo']}')),
+        ('Pagado por', f['pagado_por']?.toString()),
+      ] else ...[
+        ('Para', f['para']?.toString()),
+        ('Motivo', f['motivo']?.toString()),
+        ('Devuelve en', f['devuelve'] == null ? null : (_devuelveEn[f['devuelve']] ?? '${f['devuelve']}')),
+        ('Pidió', f['por']?.toString()),
+        ('Adelanto entregado', f['adelanto']?.toString()),
+        ('Decidido el', f['decidido_el'] == null ? null : _fechaCorta(f['decidido_el'])),
+        ('Decidido por', f['decidido_por']?.toString()),
+        ('Motivo del rechazo', f['motivo_rechazo']?.toString()),
+      ],
+    ];
+    await _abrirPantalla<void>(
+        context,
+        _FinanzaDetalleScreen(
+          titulo: gasto ? '${f['categoria'] ?? 'Gasto'}' : 'Adelanto · ${f['para'] ?? ''}',
+          datos: datos,
+          tipo: tipo,
+          id: '${f['id']}',
+        ));
+    if (mounted) cargar(); // pudo subir o quitar evidencia
   }
 
   /// Paga (o aprueba) y, si se guardó, ofrece subir la evidencia del pago en el momento: después la fila sale de
@@ -1059,12 +1161,10 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return pantalla('Finanzas', (d) {
+    return pantalla('Finanzas', alFinal: () => _mas(_pestana), (d) {
       if (d['solo_duenos'] == true) return [_vacio('Finanzas es sólo para los dueños.')];
-      final compras = _lista(d['compras_por_pagar']);
-      final gastos = _lista(d['gastos_por_pagar']);
-      final adelantos = _lista(d['adelantos_por_aprobar']);
       int n(String k) => (_mapa(d[k])['n'] as num?)?.toInt() ?? 0;
+      final filas = _filas[_pestana];
       return [
         _CuatroDatos(indicadores: _indicadoresFinanzas(d), grande: true),
         const SizedBox(height: 16),
@@ -1072,92 +1172,153 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
           (Icons.account_balance_wallet, _titulos['retiro']!, () => formulario('retiro')),
           (Icons.receipt_long, _titulos['gasto']!, () => formulario('gasto', fijos: const {'area': 'finance'}, subtitulo: 'Área: Finanzas')),
         ]),
+        // El número de cada pestaña es lo que espera; la lista también trae lo del último mes.
         _Pestanas(
           nombres: ['Compras (${n('compras')})', 'Gastos (${n('gastos')})', 'Adelantos (${n('adelantos')})'],
           elegida: _pestana,
-          onElegir: (i) => setState(() => _pestana = i),
+          onElegir: (i) {
+            setState(() => _pestana = i);
+            if (_filas[i].isEmpty) _mas(i);
+          },
         ),
         const SizedBox(height: 12),
-        if (_pestana == 0) ...[
-          // Sólo las compras con "Solicitar pago"; las demás esperan en Compras.
-          if (compras.isEmpty) _vacio('Ninguna compra pidió pago todavía.'),
-          for (final c in compras)
-            _Ficha(
-              inicio: _Insignia(_fechaCorta(c['fecha']), tono: Colors.green),
-              titulo: '${c['agricultor'] ?? 'Sin nombre'}',
-              detalle: [
-                '${c['id']} · ${_kg(c['kg'])}',
-                c['metodo'] == 'advance' ? 'con el adelanto ${c['adelanto']}' : 'por transferencia',
-                if (((c['pagado'] as num?) ?? 0) > 0) 'pagado ${_soles(c['pagado'])}',
-                if ((c['nota'] ?? '').toString().isNotEmpty) '${c['nota']}',
-                if (_nEvidencias(c) > 0) _textoEvidencias(c),
-              ].join(' · '),
-              // Lo que pidió Compras (puede ser una parte de lo que se debe).
-              fin: _Pildora(_soles(c['monto'] ?? c['debe']), c['metodo'] == 'advance' ? Colors.purple : Colors.blue),
-              onTap: () => _menu('${c['agricultor'] ?? c['id']} · ${_soles(c['monto'] ?? c['debe'])}', 'purchase', '${c['id']}', c, [
-                c['metodo'] == 'advance'
-                    ? (Icons.savings_outlined, 'Pagar con el adelanto', () => _confirmarConAdelanto(c))
-                    : (
-                        Icons.payments_outlined,
-                        _titulos['pago']!,
-                        () => _pagar('pago', 'purchase', '${c['id']}',
-                            fijos: {'compraId': c['id']},
-                            subtitulo: '${c['agricultor'] ?? c['id']} · pidieron ${_soles(c['monto'] ?? c['debe'])}',
-                            iniciales: {if (c['monto'] != null) 'monto': c['monto']})
-                      ),
-              ]),
-            ),
-        ] else if (_pestana == 1) ...[
-          if (gastos.isEmpty) _vacio('No hay gastos por pagar.'),
-          for (final g in gastos)
-            _Ficha(
-              inicio: _Insignia(_fechaCorta(g['fecha']), tono: Colors.orange),
-              titulo: '${g['categoria'] ?? 'Gasto'}',
-              detalle: [
-                if ((g['descripcion'] ?? '').toString().isNotEmpty) '${g['descripcion']}',
-                if (g['area'] != null) _areas[g['area']] ?? '${g['area']}',
-                if (g['por'] != null) '${g['por']}',
-                if (_nEvidencias(g) > 0) _textoEvidencias(g),
-              ].join(' · '),
-              fin: _Pildora(_soles(g['monto']), Colors.orange),
-              onTap: () => _menu('${g['categoria'] ?? 'Gasto'} · ${_soles(g['monto'])}', 'expense', '${g['id']}', g, [
-                (
-                  Icons.payments_outlined,
-                  _titulos['pagoGasto']!,
-                  () => _pagar('pagoGasto', 'expense', '${g['id']}',
-                      fijos: {'gastoId': g['id']}, subtitulo: '${g['categoria']} · ${_soles(g['monto'])}')
-                ),
-              ]),
-            ),
-        ] else ...[
-          if (adelantos.isEmpty) _vacio('No hay adelantos por aprobar.'),
-          for (final a in adelantos)
-            _Ficha(
-              inicio: _Insignia(_fechaCorta(a['fecha']), tono: Colors.purple),
-              titulo: '${a['para'] ?? 'Sin nombre'}',
-              detalle: [
-                if ((a['motivo'] ?? '').toString().isNotEmpty) '${a['motivo']}',
-                if (a['por'] != null) 'pidió ${a['por']}',
-                if (_nEvidencias(a) > 0) _textoEvidencias(a),
-              ].join(' · '),
-              fin: _Pildora(_soles(a['monto']), Colors.purple),
-              onTap: () => _menu('Adelanto · ${a['para'] ?? ''} · ${_soles(a['monto'])}', 'advance_request', '${a['id']}', a, [
-                (
-                  Icons.check_circle_outline,
-                  'Aprobar y entregar',
-                  () => _pagar('aprobarAdelanto', 'advance_request', '${a['id']}',
-                      fijos: {'solicitudId': a['id']}, subtitulo: '${a['para'] ?? ''} · ${_soles(a['monto'])}')
-                ),
-                (
-                  Icons.cancel_outlined,
-                  'Rechazar',
-                  () => formulario('rechazarAdelanto', fijos: {'solicitudId': a['id']}, subtitulo: '${a['para'] ?? ''}')
-                ),
-              ]),
-            ),
-        ],
+        for (final f in filas)
+          if (_pestana == 0) _filaCompra(f) else if (_pestana == 1) _filaGasto(f) else _filaAdelanto(f),
+        if (_errores[_pestana] != null)
+          Padding(padding: const EdgeInsets.all(16), child: Text(_errores[_pestana]!, textAlign: TextAlign.center))
+        else if (_cargando[_pestana] || _hayMas[_pestana])
+          const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
+        else if (filas.isEmpty)
+          _vacio(const ['Ninguna compra pidió pago en el último mes.', 'No hay gastos en el último mes.', 'No hay adelantos en el último mes.'][_pestana]),
       ];
     });
+  }
+
+  // Sólo las compras con "Solicitar pago" o pagadas el último mes; las demás esperan en Compras.
+  Widget _filaCompra(Map<String, dynamic> c) {
+    final espera = _espera(c);
+    final monto = espera ? (c['monto'] ?? c['debe']) : c['total'];
+    return _Ficha(
+      inicio: _Insignia(_fechaCorta(c['fecha']), tono: Colors.green),
+      titulo: '${c['agricultor'] ?? 'Sin nombre'}',
+      detalle: [
+        '${_soles(monto)} · ${c['id']} · ${_kg(c['kg'])}',
+        if (espera) c['metodo'] == 'advance' ? 'con el adelanto ${c['adelanto']}' : 'por transferencia',
+        if (_diasEsperando(c) != null) _diasEsperando(c)!,
+        if (espera && ((c['pagado'] as num?) ?? 0) > 0) 'pagado ${_soles(c['pagado'])}',
+        if (!espera && ((c['debe'] as num?) ?? 0) > 0) 'falta ${_soles(c['debe'])}',
+        if ((c['nota'] ?? '').toString().isNotEmpty) '${c['nota']}',
+        if (_nEvidencias(c) > 0) _textoEvidencias(c),
+      ].join(' · '),
+      fin: _estado(c),
+      onTap: () => _menu('${c['agricultor'] ?? c['id']} · ${_soles(monto)}', 'purchase', '${c['id']}', c, [
+        if (espera)
+          c['metodo'] == 'advance'
+              ? (Icons.savings_outlined, 'Pagar con el adelanto', () => _confirmarConAdelanto(c))
+              : (
+                  Icons.payments_outlined,
+                  _titulos['pago']!,
+                  () => _pagar('pago', 'purchase', '${c['id']}',
+                      fijos: {'compraId': c['id']},
+                      subtitulo: '${c['agricultor'] ?? c['id']} · pidieron ${_soles(c['monto'] ?? c['debe'])}',
+                      iniciales: {if (c['monto'] != null) 'monto': c['monto']})
+                ),
+      ]),
+    );
+  }
+
+  Widget _filaGasto(Map<String, dynamic> g) {
+    final espera = _espera(g);
+    return _Ficha(
+      inicio: _Insignia(_fechaCorta(g['fecha']), tono: Colors.orange),
+      titulo: '${g['categoria'] ?? 'Gasto'}',
+      detalle: [
+        _soles(g['monto']),
+        if ((g['descripcion'] ?? '').toString().isNotEmpty) '${g['descripcion']}',
+        if (g['area'] != null) _areas[g['area']] ?? '${g['area']}',
+        if (_diasEsperando(g) != null) _diasEsperando(g)!,
+        if (!espera && g['pagado_el'] != null) 'pagado el ${_fechaCorta(g['pagado_el'])}',
+        if (_nEvidencias(g) > 0) _textoEvidencias(g),
+      ].join(' · '),
+      fin: _estado(g),
+      onTap: () => _menu('${g['categoria'] ?? 'Gasto'} · ${_soles(g['monto'])}', 'expense', '${g['id']}', g, [
+        if (espera)
+          (
+            Icons.payments_outlined,
+            _titulos['pagoGasto']!,
+            () => _pagar('pagoGasto', 'expense', '${g['id']}', fijos: {'gastoId': g['id']}, subtitulo: '${g['categoria']} · ${_soles(g['monto'])}')
+          ),
+      ]),
+    );
+  }
+
+  Widget _filaAdelanto(Map<String, dynamic> a) {
+    final espera = _espera(a);
+    return _Ficha(
+      inicio: _Insignia(_fechaCorta(a['fecha']), tono: Colors.purple),
+      titulo: '${a['para'] ?? 'Sin nombre'}',
+      detalle: [
+        _soles(a['monto']),
+        if ((a['motivo'] ?? '').toString().isNotEmpty) '${a['motivo']}',
+        if (a['por'] != null) 'pidió ${a['por']}',
+        if (_diasEsperando(a) != null) _diasEsperando(a)!,
+        if (a['estado'] == 'Aprobado' && a['adelanto'] != null) '${a['adelanto']}',
+        if (_nEvidencias(a) > 0) _textoEvidencias(a),
+      ].join(' · '),
+      fin: _estado(a),
+      onTap: () => _menu('Adelanto · ${a['para'] ?? ''} · ${_soles(a['monto'])}', 'advance_request', '${a['id']}', a, [
+        if (espera) ...[
+          (
+            Icons.check_circle_outline,
+            'Aprobar y entregar',
+            () => _pagar('aprobarAdelanto', 'advance_request', '${a['id']}',
+                fijos: {'solicitudId': a['id']}, subtitulo: '${a['para'] ?? ''} · ${_soles(a['monto'])}')
+          ),
+          (Icons.cancel_outlined, 'Rechazar', () => formulario('rechazarAdelanto', fijos: {'solicitudId': a['id']}, subtitulo: '${a['para'] ?? ''}')),
+        ],
+      ]),
+    );
+  }
+}
+
+/// Detalle de un gasto o un adelanto en Finanzas: sólo información y, abajo, su evidencia (se carga al tocar).
+class _FinanzaDetalleScreen extends StatelessWidget {
+  const _FinanzaDetalleScreen({required this.titulo, required this.datos, required this.tipo, required this.id});
+  final String titulo;
+  final List<(String, String?)> datos;
+  final String tipo;
+  final String id;
+
+  @override
+  Widget build(BuildContext context) {
+    final visibles = datos.where((d) => d.$2 != null && d.$2!.isNotEmpty && d.$2 != 'null').toList();
+    return Scaffold(
+      appBar: AppBar(title: Text(titulo)),
+      body: ListView(padding: const EdgeInsets.all(16), children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(16)),
+          child: Column(children: [
+            for (final d in visibles)
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade300))),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  SizedBox(width: 140, child: Text(d.$1, style: TextStyle(color: Colors.grey.shade700))),
+                  Expanded(child: Text(d.$2!, style: const TextStyle(fontWeight: FontWeight.w600))),
+                ]),
+              ),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        _Ficha(
+          inicio: const _InsigniaIcono(Icons.photo_library_outlined, tono: Colors.indigo),
+          titulo: 'Evidencia',
+          detalle: 'Vouchers y recibos',
+          onTap: () => _abrirPantalla<void>(context, _EvidenciasScreen(tipo: tipo, id: id, titulo: titulo)),
+        ),
+      ]),
+    );
   }
 }
 

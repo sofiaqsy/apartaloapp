@@ -183,6 +183,7 @@ const _paraQueCombustible = {
 };
 
 const _metodosPago = {'transfer': 'Transferencia', 'yape': 'Yape', 'plin': 'Plin', 'cash': 'Efectivo'};
+const _devuelveEn = {'coffee': 'Café', 'money': 'Dinero', 'coffee_or_money': 'Café o dinero'};
 // El número de operación nunca se pide: llega con el archivo del BCP y la base lo copia al pago al cruzarlo
 // (General Manager, 1 nov 2026).
 
