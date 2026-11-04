@@ -128,12 +128,8 @@ class _RegistrarState extends State<_Registrar> {
   }
 
   Future<void> _entrar(Widget pantalla) async {
-    final irA = await _abrirPantalla<String>(context, pantalla);
+    await _abrirPantalla<String>(context, pantalla);
     if (!mounted) return;
-    if (irA == 'pendientes') {
-      DefaultTabController.of(context).animateTo(1); // se paga desde Pendientes
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Elige la compra "Por pagar"')));
-    }
     _cargar();
   }
 
@@ -1055,7 +1051,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
         ('Monto', _soles(f['monto'])),
         ('Categoría', f['categoria']?.toString()),
         ('Descripción', f['descripcion']?.toString()),
-        ('Área', f['area'] == null ? null : (_areas[f['area']] ?? '${f['area']}')),
+        ('Área', f['area'] == null ? null : '${_areas[f['area']] ?? f['area']}${f['revisar'] == true ? ' (por revisar)' : ''}'),
         ('Fecha', _fechaCorta(f['fecha'])),
         ('Registrado por', f['por']?.toString()),
         ('Pagado el', f['pagado_el'] == null ? null : _fechaCorta(f['pagado_el'])),
@@ -1095,6 +1091,8 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
           _titulos['pagoGasto']!,
           (ctx) => _pagar(ctx, 'pagoGasto', 'expense', '${f['id']}', fijos: {'gastoId': f['id']}, subtitulo: '${f['categoria']} · ${_soles(f['monto'])}')
         ),
+      // Antes estaba en Pendientes, que se quitó (General Manager, 4 nov 2026).
+      if (tipo == 'expense' && f['revisar'] == true) (Icons.help_outline, 'Elegir para qué fue', (ctx) => _elegirParaQue(ctx, f)),
       if (espera && tipo == 'advance_request') ...[
         (
           Icons.check_circle_outline,
@@ -1146,6 +1144,30 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
     );
     if (subir == true && ctx.mounted) await _subirEvidencia(ctx, tipo, id);
     return true;
+  }
+
+  /// Administración dice para qué fue el gasto (la base no pudo saberlo): queda como corrección; el gasto no se cambia.
+  Future<bool> _elegirParaQue(BuildContext ctx, Map<String, dynamic> g) async {
+    final eleccion = await showModalBottomSheet<String>(
+      context: ctx,
+      builder: (s) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+              title: Text('${g['categoria']} · ${_soles(g['monto'])}', style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: const Text('¿Para qué fue?')),
+          for (final e in _paraQueCombustible.entries.where((e) => e.key != 'otro'))
+            ListTile(title: Text(e.value.$1), subtitle: Text(_areas[e.value.$2] ?? e.value.$2), onTap: () => Navigator.pop(s, e.key)),
+        ]),
+      ),
+    );
+    if (eleccion == null || !ctx.mounted) return false;
+    final p = _paraQueCombustible[eleccion]!;
+    final r = await AdministracionService.registrar('corregirArea', {'gastoId': g['id'], 'area': p.$2, 'centro': p.$3, 'motivo': p.$1},
+        clave: AdministracionService.nuevaClave('corregirArea'));
+    if (!ctx.mounted) return false;
+    ScaffoldMessenger.of(ctx)
+        .showSnackBar(SnackBar(content: Text(r.isSuccess ? 'Área corregida ✓ ${_areas[p.$2]}' : (r.error ?? 'No se guardó'))));
+    return r.isSuccess;
   }
 
   /// Pagar con adelanto no mueve dinero: Finanzas confirma y la base descuenta el adelanto (revisando el saldo otra vez).
@@ -1237,7 +1259,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
       detalle: [
         _soles(g['monto']),
         if ((g['descripcion'] ?? '').toString().isNotEmpty) '${g['descripcion']}',
-        if (g['area'] != null) _areas[g['area']] ?? '${g['area']}',
+        if (g['area'] != null) '${_areas[g['area']] ?? g['area']}${g['revisar'] == true ? ' por revisar' : ''}',
         if (_diasEsperando(g) != null) _diasEsperando(g)!,
         if (!espera && g['pagado_el'] != null) 'pagado el ${_fechaCorta(g['pagado_el'])}',
         if (_nEvidencias(g) > 0) _textoEvidencias(g),

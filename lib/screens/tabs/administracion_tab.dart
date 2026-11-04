@@ -14,7 +14,7 @@ import 'reportes_tab.dart';
 
 part 'administracion_procesos.dart';
 
-/// Pestaña Administración (antes Reportes): Registrar, Pendientes y Resumen.
+/// Pestaña Administración (antes Reportes): Procesos y Resumen (Pendientes se quitó: General Manager, 4 nov 2026).
 /// Los formularios guardan en la base de operaciones (fincas) con el login de la persona.
 /// Los reportes de ventas de siempre siguen dentro de Resumen, sin cambios.
 class AdministracionTab extends StatefulWidget {
@@ -38,7 +38,7 @@ class _AdministracionTabState extends State<AdministracionTab> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: 2,
       child: Column(
         children: [
           const Padding(
@@ -57,13 +57,12 @@ class _AdministracionTabState extends State<AdministracionTab> {
             labelPadding: const EdgeInsets.symmetric(horizontal: 2),
             labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             unselectedLabelStyle: const TextStyle(fontSize: 13),
-            tabs: const [Tab(text: 'Procesos'), Tab(text: 'Pendientes'), Tab(text: 'Resumen')], // Procesos: antes Registrar (3 nov 2026)
+            tabs: const [Tab(text: 'Procesos'), Tab(text: 'Resumen')], // Procesos: antes Registrar (3 nov 2026); sin Pendientes (4 nov 2026)
           ),
           Expanded(
             child: TabBarView(
               children: [
                 _Registrar(esDueno: _esDueno),
-                _Pendientes(esDueno: _esDueno),
                 _Resumen(esDueno: _esDueno),
               ],
             ),
@@ -172,7 +171,7 @@ const _guiaRespaldo = [
   _Categoria('Otro', 'Solo si nada encaja. Escribe siempre qué fue.', null, 'shared', 'coffee', pideDescripcion: true),
 ];
 
-/// "Para qué" fue el combustible: Administración lo elige en "Áreas por revisar" cuando la base no pudo saberlo
+/// "Para qué" fue el combustible: Administración lo elige en el detalle del gasto, en Finanzas, cuando la base no pudo saberlo
 /// (el formulario no lo pregunta: General Manager, 1 nov 2026).
 const _paraQueCombustible = {
   'compra': ('Compra de café', 'sourcing', 'coffee'),
@@ -188,7 +187,7 @@ const _devuelveEn = {'coffee': 'Café', 'money': 'Dinero', 'coffee_or_money': 'C
 // (General Manager, 1 nov 2026).
 
 final Map<String, List<_Campo>> _formularios = {
-  // Un gasto es una solicitud de pago: Administración lo paga (Pendientes ya no ofrece Pagar gasto: 1 nov 2026).
+  // Un gasto es una solicitud de pago: Administración lo paga (se paga desde Finanzas).
   'gasto': [
     // Las categorías y el área sugerida vienen de la base (expense_categories); esta lista es el respaldo.
     const _Campo('categoria', 'Categoría', _Tipo.opcion), // las opciones son la guía de categorías (_guia)
@@ -340,7 +339,7 @@ const _hecho = {
 };
 
 /// Abre un formulario a pantalla completa. Se cierra con la X o deslizando hacia la derecha (como
-/// cualquier pantalla de iPhone). [fijos] van siempre (por ejemplo entregaId o compraId desde Pendientes).
+/// cualquier pantalla de iPhone). [fijos] van siempre (por ejemplo entregaId o compraId desde una compra).
 /// Sólo para las pruebas: el gasto sin área fija (por categoría, combustible automático) ya no tiene botón
 /// propio desde el 3 nov 2026, pero el formulario lo sigue permitiendo.
 @visibleForTesting
@@ -746,340 +745,6 @@ class _FormularioSheetState extends State<_FormularioSheet> {
 // ─── Registrar ───────────────────────────────────────────────────────────────
 
 // _Registrar (tarjetas Compras y Producción) está en administracion_procesos.dart.
-
-// ─── Pendientes ──────────────────────────────────────────────────────────────
-
-class _Pendientes extends StatefulWidget {
-  const _Pendientes({required this.esDueno});
-  final bool esDueno;
-
-  @override
-  State<_Pendientes> createState() => _PendientesState();
-}
-
-/// Una fila de Pendientes: qué es, cuánto, detalles, estado y lo que Administración puede hacer con ella.
-class _Fila {
-  _Fila(
-      {required this.id,
-      required this.tipo,
-      required this.icono,
-      required this.lineas,
-      required this.fecha,
-      required this.estado,
-      this.monto,
-      this.areas = const {}});
-  final String id;
-  final String tipo;
-  final IconData icono;
-  final List<String> lineas;
-  final String fecha;
-  String estado;
-  final num? monto;
-  final List<(String, Future<void> Function())> acciones = [];
-
-  /// Áreas a las que toca la fila; se ve si alguna está marcada en Perfil. Vacío = se ve siempre.
-  final Set<String> areas;
-}
-
-// Qué áreas tocan a cada cosa pendiente: el café y las compras son de Compras y Finanzas (que paga), los
-// adelantos también, el banco es de Finanzas, y un gasto es de su área y de Finanzas.
-const _areasCafe = {'sourcing', 'finance'};
-Set<String> _areasGasto(dynamic area) => {if (area != null) '$area', 'finance'};
-
-class _PendientesState extends State<_Pendientes> {
-  Map<String, dynamic>? _datos;
-  List<dynamic>? _solicitudes;
-  String? _error;
-  Set<String>? _marcadas; // áreas marcadas en Perfil (General Manager, 3 nov 2026: Pendientes también las sigue)
-  bool _verTodas = false; // "Ver también las de otras áreas", para no perder un pago
-
-  @override
-  void initState() {
-    super.initState();
-    cambioDeAreas.addListener(_leerMarcadas);
-    _cargar();
-  }
-
-  @override
-  void dispose() {
-    cambioDeAreas.removeListener(_leerMarcadas);
-    super.dispose();
-  }
-
-  Future<void> _leerMarcadas() async {
-    final m = await _areasMarcadas();
-    if (mounted && m != null) setState(() => _marcadas = m);
-  }
-
-  Future<void> _cargar() async {
-    _leerMarcadas();
-    final rs = await Future.wait([AdministracionService.pendientes(), AdministracionService.solicitudes()]);
-    if (!mounted) return;
-    setState(() {
-      _datos = rs[0].data;
-      _solicitudes = (rs[1].data?['solicitudes'] as List?) ?? [];
-      _error = rs[0].isSuccess ? (rs[1].isSuccess ? null : rs[1].error) : rs[0].error;
-    });
-  }
-
-  String _soles(dynamic v) => 'S/ ${(num.tryParse('${v ?? 0}') ?? 0).toStringAsFixed(2)}';
-
-  /// Administración dice para qué fue: queda como corrección; el gasto no se cambia.
-  Future<void> _revisarArea(Map<String, dynamic> g) async {
-    final eleccion = await showModalBottomSheet<String>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(
-              title: Text('${g['category']} · ${_soles(g['amount'])}', style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: const Text('¿Para qué fue?')),
-          for (final e in _paraQueCombustible.entries.where((e) => e.key != 'otro'))
-            ListTile(title: Text(e.value.$1), subtitle: Text(_areas[e.value.$2] ?? e.value.$2), onTap: () => Navigator.pop(ctx, e.key)),
-        ]),
-      ),
-    );
-    if (eleccion == null || !mounted) return;
-    final p = _paraQueCombustible[eleccion]!;
-    final r = await AdministracionService.registrar('corregirArea', {'gastoId': g['id'], 'area': p.$2, 'centro': p.$3, 'motivo': p.$1},
-        clave: AdministracionService.nuevaClave('corregirArea'));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(r.isSuccess ? 'Área corregida ✓ ${_areas[p.$2]}' : (r.error ?? 'No se guardó'))));
-    if (r.isSuccess) _cargar();
-  }
-
-  Future<void> _formulario(String formulario, Map<String, dynamic> fijos, String subtitulo) async {
-    if (await _abrirFormulario(context, formulario, fijos: fijos, subtitulo: subtitulo)) _cargar();
-  }
-
-  static const _iconos = {'gasto': Icons.receipt_long, 'adelanto': Icons.handshake, 'entrega': Icons.move_to_inbox};
-  // Una sola palabra para el café que se compra (General Manager, 3 nov 2026): Compra, con su estado.
-  static const _nombres = {'gasto': 'Gasto', 'adelanto': 'Adelanto', 'entrega': 'Compra'};
-
-  /// Una sola lista: lo que se pidió o registró (como en Solicitudes) y lo que espera a Administración, sin repetir.
-  List<_Fila> _filas() {
-    List<Map> lista(String k) => ((_datos?[k] as List?) ?? []).cast<Map>();
-    final dueno = widget.esDueno;
-    final filas = <String, _Fila>{};
-    for (final s in (_solicitudes ?? []).cast<Map>()) {
-      final id = '${s['id']}';
-      filas[id] = _Fila(
-        id: id,
-        tipo: _nombres[s['kind']] ?? '${s['kind']}',
-        icono: _iconos[s['kind']] ?? Icons.description,
-        areas: s['kind'] == 'gasto' ? _areasGasto(s['area']) : _areasCafe,
-        monto: num.tryParse('${s['amount'] ?? ''}'),
-        fecha: '${s['request_date'] ?? ''}',
-        estado: '${s['status']}',
-        lineas: [
-          '${s['description'] ?? ''}',
-          '${s['request_date']}${dueno ? ' · ${s['created_by']}' : ''}',
-          if (s['detail'] != null) '${s['detail']}',
-        ].where((t) => t.isNotEmpty).toList(),
-      );
-    }
-    _Fila fila(String id, _Fila Function() nueva) => filas.putIfAbsent(id, nueva);
-
-    for (final d in lista('sinPrecio')) {
-      final id = '${d['id']}';
-      fila(
-              id,
-              () => _Fila(
-                  id: id,
-                  tipo: 'Compra',
-                  icono: Icons.move_to_inbox,
-                  fecha: '${d['delivery_date']}',
-                  estado: 'Sin precio',
-                  areas: _areasCafe,
-                  lineas: ['${d['kg']} kg · ${d['farmer_id']}', '${d['delivery_date']}']))
-          .acciones
-          .add(('Poner precio', () => _formulario('precio', {'entregaId': d['id']}, '$id · ${d['kg']} kg')));
-    }
-    for (final p in lista('porPagar')) {
-      final id = '${p['delivery_id'] ?? p['id']}'; // la compra va en la fila de su entrega
-      // Si ya se pagó algo (de un adelanto o un pago), es "Pagado en parte".
-      final pagadoAlgo = (num.tryParse('${p['paid'] ?? 0}') ?? 0) + (num.tryParse('${p['from_advances'] ?? 0}') ?? 0) > 0;
-      // Se paga en Procesos → Finanzas (General Manager, 3 nov 2026); aquí sólo se ve que espera el pago.
-      fila(
-          id,
-          () => _Fila(
-              id: id,
-              tipo: 'Compra',
-              icono: Icons.shopping_bag,
-              fecha: '${p['purchase_date']}',
-              estado: pagadoAlgo ? 'Pagado en parte' : (p['pago_solicitado'] == true ? 'Pago solicitado' : 'Por pagar'),
-              areas: _areasCafe,
-              monto: num.tryParse('${p['still_owed']}'),
-              lineas: ['${p['id']} · ${p['farmer_id']}', 'Falta ${_soles(p['still_owed'])}']));
-    }
-    if (dueno) {
-      for (final q in lista('adelantosPorAprobar')) {
-        final id = '${q['id']}';
-        // Se aprueba o rechaza en Procesos → Finanzas (General Manager, 3 nov 2026).
-        fila(
-            id,
-            () => _Fila(
-                id: id,
-                tipo: 'Adelanto',
-                icono: Icons.handshake,
-                fecha: '${q['request_date']}',
-                estado: 'Por aprobar',
-                areas: _areasCafe,
-                monto: num.tryParse('${q['amount']}'),
-                lineas: ['${q['party']}${q['reason'] != null ? ' · ${q['reason']}' : ''}', '${q['request_date']} · ${q['created_by']}']));
-      }
-      // Los gastos por pagar se ven con su estado, pero Pendientes no ofrece pagarlos (General Manager, 1 nov 2026).
-      for (final g in lista('gastosPorPagar')) {
-        final id = '${g['id']}';
-        fila(
-            id,
-            () => _Fila(
-                    id: id,
-                    tipo: 'Gasto',
-                    icono: Icons.receipt_long,
-                    fecha: '${g['expense_date']}',
-                    estado: 'Pendiente de pago',
-                    areas: _areasGasto(g['area']),
-                    monto: num.tryParse('${g['amount']}'),
-                    lineas: [
-                      '${g['category']}${g['description'] != null ? ' · ${g['description']}' : ''}',
-                      '${g['expense_date']} · ${g['created_by']}'
-                    ]));
-      }
-      for (final g in lista('porRevisar')) {
-        final id = '${g['id']}';
-        final f = fila(
-            id,
-            () => _Fila(
-                    id: id,
-                    tipo: 'Gasto',
-                    icono: Icons.receipt_long,
-                    fecha: '${g['expense_date']}',
-                    estado: 'Área por revisar',
-                    areas: _areasGasto(g['area']),
-                    monto: num.tryParse('${g['amount']}'),
-                    lineas: [
-                      '${g['category']}${g['description'] != null ? ' · ${g['description']}' : ''}',
-                      '${g['expense_date']} · ${g['created_by']}'
-                    ]));
-        final sug = g['suggestion'];
-        if (sug is Map && sug['source'] != 'to_review') f.lineas.add('Sugerido: ${_areas[sug['area']] ?? sug['area']}');
-        f.acciones.add(('Elegir para qué fue', () => _revisarArea(Map<String, dynamic>.from(g))));
-      }
-    }
-    for (final a in lista('adelantos')) {
-      final id = '${a['id']}';
-      fila(
-          id,
-          () => _Fila(
-              id: id,
-              tipo: 'Adelanto',
-              icono: Icons.handshake,
-              fecha: '${a['advance_date']}',
-              estado: 'Abierto',
-              areas: _areasCafe,
-              monto: num.tryParse('${a['open_balance']}'),
-              lineas: ['$id · ${a['party_id']}', 'Desde ${a['advance_date']}']));
-    }
-    if (dueno) {
-      for (final b in lista('banco')) {
-        final id = 'banco-${b['id'] ?? b['operation_number'] ?? b['movement_date']}-${b['amount']}';
-        fila(
-            id,
-            () => _Fila(
-                id: id,
-                tipo: 'Banco',
-                icono: Icons.account_balance,
-                fecha: '${b['movement_date']}',
-                estado: 'Por cruzar',
-                areas: const {'finance'},
-                monto: num.tryParse('${b['amount']}'),
-                lineas: ['${b['description']}', '${b['movement_date']} · op. ${b['operation_number'] ?? '—'}']));
-      }
-    }
-    final todas = filas.values.toList()..sort((x, y) => y.fecha.compareTo(x.fecha));
-    return todas;
-  }
-
-  Color _color(String estado) {
-    if (estado == 'Pagado' || estado == 'Pagada' || estado == 'Entregado') return Colors.green.shade700;
-    if (estado == 'Rechazado') return Colors.red.shade700;
-    return Colors.orange.shade800;
-  }
-
-  Future<void> _tocar(_Fila f) async {
-    if (f.acciones.isEmpty) return;
-    if (f.acciones.length == 1) return f.acciones.first.$2();
-    final elegida = await showModalBottomSheet<int>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(title: Text('${f.tipo}${f.monto != null ? ' · ${_soles(f.monto)}' : ''}', style: const TextStyle(fontWeight: FontWeight.w600))),
-          for (var i = 0; i < f.acciones.length; i++) ListTile(title: Text(f.acciones[i].$1), onTap: () => Navigator.pop(ctx, i)),
-        ]),
-      ),
-    );
-    if (elegida != null) await f.acciones[elegida].$2();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_error != null) return _Mensaje(texto: _error!, onReintentar: _cargar);
-    if (_datos == null || _solicitudes == null) return const Center(child: CircularProgressIndicator());
-    final todas = _filas();
-    final marcadas = _marcadas;
-    bool deMisAreas(_Fila f) => marcadas == null || f.areas.isEmpty || f.areas.any(marcadas.contains);
-    final filas = _verTodas ? todas : todas.where(deMisAreas).toList();
-    final ocultas = todas.length - filas.length;
-    // Al final: cuántas son de otras áreas, para no perder un pago.
-    final pie = ocultas > 0 || _verTodas
-        ? Padding(
-            padding: const EdgeInsets.all(12),
-            child: Center(
-              child: TextButton(
-                onPressed: () => setState(() => _verTodas = !_verTodas),
-                child: Text(_verTodas ? 'Ver sólo mis áreas' : 'Ver también $ocultas de otras áreas'),
-              ),
-            ),
-          )
-        : null;
-    return RefreshIndicator(
-      onRefresh: _cargar,
-      child: filas.isEmpty
-          ? ListView(children: [
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(ocultas > 0 ? 'Nada pendiente en tus áreas' : 'No hay nada pendiente', textAlign: TextAlign.center),
-              ),
-              if (pie != null) pie,
-            ])
-          : ListView.separated(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: filas.length + (pie != null ? 1 : 0),
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (_, i) {
-                if (i == filas.length) return pie!;
-                final f = filas[i];
-                return ListTile(
-                  leading: Icon(f.icono),
-                  title: Text('${f.tipo}${f.monto != null ? ' · ${_soles(f.monto)}' : ''}'),
-                  subtitle: Text(f.lineas.join('\n')),
-                  isThreeLine: f.lineas.length > 2,
-                  trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(color: _color(f.estado).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                      child: Text(f.estado, style: TextStyle(color: _color(f.estado), fontWeight: FontWeight.w600, fontSize: 12)),
-                    ),
-                    if (f.acciones.isNotEmpty) Icon(Icons.chevron_right, size: 18, color: Colors.grey.shade500),
-                  ]),
-                  onTap: f.acciones.isEmpty ? null : () => _tocar(f),
-                );
-              },
-            ),
-    );
-  }
-}
 
 class _Seccion extends StatelessWidget {
   const _Seccion({required this.titulo, required this.items, required this.vacio});

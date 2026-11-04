@@ -138,7 +138,7 @@ void main() {
           {'id': 'PU-0003', 'entrega': 'DL-0003', 'fecha': '2026-10-20', 'agricultor': 'Agricultor Pagado', 'kg': 20, 'total': 400, 'pagado': 400, 'debe': 0, 'estado': 'Pagado'},
         ],
         'gastos': [
-          {'id': 'EX-0001', 'fecha': '2026-11-01', 'categoria': 'Gas', 'descripcion': 'Gasolina', 'area': 'fulfillment', 'monto': 120, 'por': 'staff@x', 'estado': 'Pendiente', 'espera': 2},
+          {'id': 'EX-0001', 'fecha': '2026-11-01', 'categoria': 'Gas', 'descripcion': 'Gasolina', 'area': 'fulfillment', 'monto': 120, 'por': 'staff@x', 'estado': 'Pendiente', 'espera': 2, 'revisar': true},
           {'id': 'EX-0002', 'fecha': '2026-10-25', 'categoria': 'Mano de obra', 'descripcion': 'Jornal', 'area': 'farm', 'monto': 80, 'por': 'staff@x',
            'estado': 'Pagado', 'pagado_el': '2026-10-26', 'metodo': 'transfer', 'pagado_por': 'owner@x'},
         ],
@@ -272,12 +272,13 @@ void main() {
     }, () => MockClient((req) async => responder(req)));
   }
 
-  testWidgets('three parts (Solicitudes is inside Pendientes); staff ask, only the owner sees money buttons', (tester) async {
+  testWidgets('two parts (Pendientes was removed on 4 Nov 2026); staff ask, only the owner sees money buttons', (tester) async {
     await abrir(tester, rol: 'staff');
     expect(find.text('Administración'), findsOneWidget);
-    for (final t in ['Procesos', 'Pendientes', 'Resumen']) {
+    for (final t in ['Procesos', 'Resumen']) {
       expect(find.text(t), findsOneWidget);
     }
+    expect(find.text('Pendientes'), findsNothing);
     expect(find.text('Solicitudes'), findsNothing);
     // Registrar: one card per process, with its summary, and Registrar gasto below.
     // Each card shows its 2 most important data; the other 2 are inside.
@@ -357,19 +358,6 @@ void main() {
     final r = pedidos.lastWhere((r) => r.url.path.contains('/registrar/'));
     expect(r.url.path, endsWith('/registrar/aprobarAdelanto'));
     expect(jsonDecode(r.body)['solicitudId'], 'SOL-0001');
-  });
-
-  testWidgets('Pendientes is one list: each movement with its status, like Solicitudes was', (tester) async {
-    await abrir(tester, rol: 'staff');
-    await http.runWithClient(() async {
-      await tester.tap(find.text('Pendientes'));
-      await tester.pumpAndSettle();
-    }, () => MockClient((req) async => responder(req)));
-    expect(find.text('Entregado'), findsOneWidget);
-    expect(find.text('Por pagar'), findsWidgets);
-    expect(find.text('Pendiente de pago'), findsOneWidget);
-    expect(find.textContaining('Falta S/ 300.00'), findsWidgets);
-    expect(find.text('Sin precio (1)'), findsNothing); // no separate sections any more
   });
 
   testWidgets('Finanzas pays a compra by transfer without asking for the operation number (the bank fills it in)', (tester) async {
@@ -531,14 +519,35 @@ void main() {
     expect(find.textContaining('Área: Compras (automático)'), findsOneWidget);
   });
 
-  testWidgets('the owner reviews fuel nobody could place, with the suggestion', (tester) async {
+  testWidgets('the owner says what fuel nobody could place was for, from its detail in Finanzas', (tester) async {
     await abrir(tester, rol: 'owner');
+    await entrarFinanzas(tester);
     await http.runWithClient(() async {
-      await tester.tap(find.text('Pendientes'));
+      await tester.tap(find.textContaining('Gastos ('));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Logística por revisar'), findsOneWidget);
+      await tester.tap(find.text('Gas'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Elegir para qué fue'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Compra de café'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    await tester.scrollUntilVisible(find.text('Área por revisar'), 300, scrollable: find.byType(Scrollable).last);
-    expect(find.textContaining('Sugerido: Compras'), findsOneWidget);
+    final r = pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/corregirArea'));
+    expect(jsonDecode(r.body), containsPair('area', 'sourcing'));
+    expect(jsonDecode(r.body), containsPair('gastoId', 'EX-0001'));
+  });
+
+  testWidgets('a gasto whose area is known has no Elegir para qué fue', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await entrarFinanzas(tester);
+    await http.runWithClient(() async {
+      await tester.tap(find.textContaining('Gastos ('));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Mano de obra'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Elegir para qué fue'), findsNothing);
   });
 
   testWidgets('choosing a farmer: a search screen in pages, closed with the X, nothing chosen', (tester) async {
@@ -771,47 +780,6 @@ void main() {
     expect(pedidos.where((r) => r.url.path.contains('/registrar/')), isEmpty);
   });
 
-  testWidgets('pendientes lists what waits for a price, a payment and open advances', (tester) async {
-    await abrir(tester, rol: 'owner');
-    await http.runWithClient(() async {
-      await tester.tap(find.text('Pendientes'));
-      await tester.pumpAndSettle();
-    }, () => MockClient((req) async => responder(req)));
-    expect(find.text('Compra · S/ 300.00'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Pendiente de pago'), 200, scrollable: find.byType(Scrollable).last);
-    expect(find.text('Pendiente de pago'), findsOneWidget);
-    await tester.scrollUntilVisible(find.textContaining('ADV-002'), 300, scrollable: find.byType(Scrollable).last);
-    expect(find.textContaining('ADV-002'), findsOneWidget);
-    expect(find.text('Abierto'), findsOneWidget);
-  });
-
-  testWidgets('Pendientes shows expenses to pay with their status, without Pagar gasto', (tester) async {
-    await abrir(tester, rol: 'owner');
-    await http.runWithClient(() async {
-      await tester.tap(find.text('Pendientes'));
-      await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.text('Gasto · S/ 120.00'), 200, scrollable: find.byType(Scrollable).last);
-      await tester.pumpAndSettle();
-      expect(find.text('Pendiente de pago'), findsOneWidget);
-      await tester.tap(find.text('Gasto · S/ 120.00'));
-      await tester.pumpAndSettle();
-    }, () => MockClient((req) async => responder(req)));
-    expect(find.text('Pagar gasto'), findsNothing);
-    expect(find.text('Cómo se pagó'), findsNothing);
-    expect(pedidos.where((r) => r.url.path.contains('/registrar/')), isEmpty);
-  });
-
-  testWidgets('staff do not see expenses to pay', (tester) async {
-    await abrir(tester, rol: 'staff');
-    await http.runWithClient(() async {
-      await tester.tap(find.text('Pendientes'));
-      await tester.pumpAndSettle();
-    }, () => MockClient((req) async => responder(req)));
-    await tester.tap(find.text('Gasto · S/ 120.00')); // their own request: they see it, but cannot pay it
-    await tester.pumpAndSettle();
-    expect(find.text('Cómo se pagó'), findsNothing);
-  });
-
   test('each send has its own retry key, long enough for the database', () {
     final a = AdministracionService.nuevaClave('gasto');
     final b = AdministracionService.nuevaClave('gasto');
@@ -953,21 +921,6 @@ void main() {
     await abrir(tester, rol: 'staff');
     expect(find.text('Compras'), findsOneWidget);
     expect(find.text('Comercialización'), findsNothing);
-  });
-
-  testWidgets('Pendientes follows the ticked areas, with a way to see the others', (tester) async {
-    marcadas = ['farm'];
-    await abrir(tester, rol: 'owner');
-    await http.runWithClient(() async {
-      await tester.tap(find.text('Pendientes'));
-      await tester.pumpAndSettle();
-    }, () => MockClient((req) async => responder(req)));
-    expect(find.textContaining('Compra'), findsNothing); // compras belong to Compras and Finanzas
-    expect(find.textContaining('de otras áreas'), findsOneWidget);
-    expect(find.text('Nada pendiente en tus áreas'), findsOneWidget);
-    await tester.tap(find.textContaining('de otras áreas'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('Compra'), findsWidgets);
   });
 
   testWidgets('Compras lists the farmers in pages of 20, searchable, each opening its detail', (tester) async {
