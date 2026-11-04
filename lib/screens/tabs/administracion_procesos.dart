@@ -590,10 +590,11 @@ abstract class _ProcesoState<T extends StatefulWidget> extends State<T> {
     if (await _abrirFormulario(context, form, fijos: fijos, subtitulo: subtitulo, iniciales: iniciales)) cargar();
   }
 
-  Widget pantalla(String titulo, List<Widget> Function(Map<String, dynamic> d) contenido, {VoidCallback? alFinal}) {
+  Widget pantalla(String titulo, List<Widget> Function(Map<String, dynamic> d) contenido, {VoidCallback? alFinal, Widget? botonFlotante}) {
     final d = datos;
     return Scaffold(
       appBar: AppBar(title: Text(titulo)),
+      floatingActionButton: botonFlotante,
       body: NotificationListener<ScrollNotification>(
         // Cerca del final de la lista se pide la página siguiente (listas largas, como los proveedores).
         onNotification: (n) {
@@ -609,7 +610,10 @@ abstract class _ProcesoState<T extends StatefulWidget> extends State<T> {
                     child: error != null ? Text(error!, textAlign: TextAlign.center) : const Center(child: CircularProgressIndicator()),
                   ),
                 ])
-              : ListView(padding: const EdgeInsets.all(16), children: contenido(d)),
+              : ListView(
+                  // Con botón flotante, espacio al final para que no tape la última fila.
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, botonFlotante == null ? 16 : 88),
+                  children: contenido(d)),
         ),
       ),
     );
@@ -1686,7 +1690,72 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
         else
           ..._listaAdelantos(),
       ];
-    }, alFinal: _pestana == 3 ? null : (_pestana == 2 ? masProveedores : (_pestana == 0 ? _masCompras : _masAdelantos)));
+    },
+        alFinal: _pestana == 3 ? null : (_pestana == 2 ? masProveedores : (_pestana == 0 ? _masCompras : _masAdelantos)),
+        // Reporte en PDF, mensual o anual (General Manager, 4 nov 2026); el contenido lo decidió el área de Compras.
+        botonFlotante: FloatingActionButton(
+          tooltip: 'Generar reporte',
+          onPressed: _generando ? null : _elegirReporte,
+          child: _generando
+              ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5))
+              : const Icon(Icons.picture_as_pdf_outlined),
+        ));
+  }
+
+  bool _generando = false;
+
+  /// Elige mensual (los últimos 12 meses) o anual (este año y el anterior), con un toque cada uno.
+  Future<void> _elegirReporte() async {
+    final hoy = DateTime.now();
+    final meses = [for (var i = 0; i < 12; i++) DateTime(hoy.year, hoy.month - i)];
+    final eleccion = await showModalBottomSheet<(int, int?)>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
+          child: ListView(shrinkWrap: true, children: [
+            const ListTile(title: Text('Generar reporte', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+            const ListTile(dense: true, title: Text('Reporte anual')),
+            for (final a in [hoy.year, hoy.year - 1])
+              ListTile(leading: const Icon(Icons.calendar_today_outlined), title: Text('Año $a'), onTap: () => Navigator.pop(ctx, (a, null))),
+            const ListTile(dense: true, title: Text('Reporte mensual')),
+            for (final m in meses)
+              ListTile(
+                  leading: const Icon(Icons.calendar_month_outlined),
+                  title: Text('${ComprasPdfService.nombreMes(m.month)} ${m.year}'),
+                  onTap: () => Navigator.pop(ctx, (m.year, m.month))),
+          ]),
+        ),
+      ),
+    );
+    if (eleccion == null || !mounted) return;
+    await _generarReporte(eleccion.$1, eleccion.$2);
+  }
+
+  /// Pide el reporte recién ahora y muestra el PDF para compartir, como el del proveedor.
+  Future<void> _generarReporte(int anio, int? mes) async {
+    setState(() => _generando = true);
+    final r = await AdministracionService.reporteCompras(anio, mes);
+    if (!mounted) return;
+    if (!r.isSuccess) {
+      setState(() => _generando = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.error ?? 'No se pudo generar el reporte')));
+      return;
+    }
+    try {
+      final bytes = await ComprasPdfService.generarBytes(_mapa(r.data!['reporte']));
+      if (!mounted) return;
+      final nombre = mes == null ? 'compras_$anio.pdf' : 'compras_${anio}_${mes.toString().padLeft(2, '0')}.pdf';
+      await _abrirPantalla<void>(
+          context, _ReportePdfScreen(bytes: bytes, archivo: nombre, titulo: mes == null ? 'Compras · año $anio' : 'Compras · ${ComprasPdfService.nombreMes(mes)} $anio'));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo generar el PDF: revisa la señal.')));
+      }
+    } finally {
+      if (mounted) setState(() => _generando = false);
+    }
   }
 }
 
@@ -1938,16 +2007,17 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
 
 /// El reporte de un proveedor en PDF, con el botón de compartir (como el PDF del detalle de pedido).
 class _ReportePdfScreen extends StatelessWidget {
-  const _ReportePdfScreen({required this.bytes, required this.archivo});
+  const _ReportePdfScreen({required this.bytes, required this.archivo, this.titulo = 'Reporte del proveedor'});
   final Uint8List bytes;
   final String archivo;
+  final String titulo;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
-        title: const Text('Reporte del proveedor'),
+        title: Text(titulo),
         actions: [
           IconButton(
             tooltip: 'Compartir',

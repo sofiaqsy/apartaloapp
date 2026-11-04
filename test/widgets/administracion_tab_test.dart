@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:apartalo_app/screens/tabs/administracion_tab.dart';
 import 'package:apartalo_app/screens/perfil_screen.dart';
 import 'package:apartalo_app/services/administracion_service.dart';
+import 'package:apartalo_app/services/proveedor_pdf_service.dart';
 
 void main() {
   final pedidos = <http.Request>[];
@@ -103,6 +104,8 @@ void main() {
         {'codigo': 'prod-blend', 'nombre': 'Blend de Caturra, Pache, typica', 'categoria': 'Café', 'estado': 'ACTIVO'},
       ], 'total': 3}), 200);
     }
+    // The report is checked up to the request; building the PDF needs the fonts from the internet (tested apart).
+    if (p.endsWith('/compras/reporte')) return http.Response(jsonEncode({'error': 'Sin señal'}), 503);
     if (p.endsWith('/compras')) {
       final offset = int.parse(req.url.queryParameters['offset'] ?? '0');
       final todas = [
@@ -1235,6 +1238,31 @@ void main() {
     expect(find.textContaining('30 · Lobato'), findsOneWidget);
     expect(find.text('Flete'), findsNothing); // only the Compras area
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Compras has a PDF button: monthly or annual report, asked to the server only when chosen', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
+      expect(pedidos.any((r) => r.url.path.endsWith('/compras/reporte')), isFalse);
+      await tester.tap(find.byIcon(Icons.picture_as_pdf_outlined));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final hoy = DateTime.now();
+    for (final t in ['Reporte anual', 'Reporte mensual', 'Año ${hoy.year}', 'Año ${hoy.year - 1}']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    expect(find.text('${ComprasPdfService.nombreMes(hoy.month)} ${hoy.year}'), findsOneWidget);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Año ${hoy.year - 1}'));
+      await tester.pump();
+    }, () => MockClient((req) async => responder(req)));
+    final r = pedidos.lastWhere((r) => r.url.path.endsWith('/compras/reporte'));
+    expect(r.url.queryParameters, {'anio': '${hoy.year - 1}'});
+    await tester.pumpAndSettle();
+    expect(find.byType(SnackBar), findsOneWidget); // the error is said, nothing is left half done
   });
 
   testWidgets('lists end without a text: no "en total" and no "Se ven los…" at the bottom', (tester) async {

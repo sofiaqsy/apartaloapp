@@ -305,3 +305,259 @@ class ProveedorPdfService {
         ]),
       );
 }
+
+/// Reporte de Compras, mensual o anual (General Manager, 4 nov 2026), con el mismo diseño del reporte del proveedor.
+/// Qué muestra lo decidió el área de Compras: franja de 4 datos, las compras del mes (o una tabla por mes en el
+/// anual), por agricultor, por tipo de café, lo que espera, pagos, adelantos y los gastos de Compras. [reporte] es lo
+/// que da /compras/reporte; el dinero sólo viene para dueños (lo decide la base).
+class ComprasPdfService {
+  static const _meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+  static String nombreMes(int mes) => _meses[(mes - 1).clamp(0, 11)];
+
+  static String _n(dynamic v) => '${(v is num) ? v.toInt() : int.tryParse('${v ?? ''}') ?? 0}';
+  static String _cuantos(dynamic v, String uno, String varios) => '${_n(v)} ${_n(v) == '1' ? uno : varios}';
+  static String _pct(dynamic v) => v == null ? '—' : '${v is num ? v.toStringAsFixed(1) : v}%';
+
+  static Future<Uint8List> generarBytes(Map<String, dynamic> reporte, {String? businessName, pw.Font? base, pw.Font? bold}) async {
+    final doc = pw.Document();
+    final font = base ?? await PdfGoogleFonts.notoSansRegular();
+    final fontBold = bold ?? await PdfGoogleFonts.notoSansBold();
+
+    final negocio = businessName ?? ApiService.businessName;
+    final anual = reporte['tipo'] == 'anual';
+    final anio = _n(reporte['anio']);
+    final mes = int.tryParse('${reporte['mes'] ?? ''}');
+    final periodo = anual || mes == null ? 'Año $anio' : '${nombreMes(mes)} $anio';
+    final esDueno = reporte['dueno'] == true;
+    final franja = ProveedorPdfService._mapa(reporte['franja']);
+    final esperan = ProveedorPdfService._mapa(reporte['esperan']);
+    final compras = ProveedorPdfService._lista(reporte['compras']);
+    final porMes = ProveedorPdfService._lista(reporte['por_mes']);
+    final porAgricultor = ProveedorPdfService._lista(reporte['por_agricultor']);
+    final porEstado = ProveedorPdfService._lista(reporte['por_estado']);
+    final pagos = ProveedorPdfService._lista(reporte['pagos']);
+    final adelantos = ProveedorPdfService._lista(reporte['adelantos']);
+    final solicitudes = ProveedorPdfService._mapa(reporte['solicitudes']);
+    final gastos = ProveedorPdfService._lista(reporte['gastos']);
+    String cafe(dynamic e) => ProveedorPdfService._cafe[e] ?? '${e ?? ''}';
+    String soles(dynamic v) => v == null ? '—' : ProveedorPdfService.soles(v);
+    const tabla = ProveedorPdfService._tabla;
+    pw.Widget espacio() => pw.SizedBox(height: 12);
+    pw.Widget nada(String t) => pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 6),
+        child: pw.Text(t, style: const pw.TextStyle(fontSize: 9, color: ProveedorPdfService._textGrey)));
+
+    doc.addPage(pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(28),
+      maxPages: 40,
+      theme: pw.ThemeData.withFont(base: font, bold: fontBold),
+      footer: (ctx) => pw.Column(children: [
+        pw.Divider(thickness: 0.5, color: ProveedorPdfService._cardBorder),
+        pw.Row(children: [
+          pw.Expanded(
+              child: pw.Text(esDueno ? 'Documento interno: tiene precios y pagos.' : 'Documento interno.',
+                  style: const pw.TextStyle(fontSize: 7.5, color: ProveedorPdfService._textGrey))),
+          pw.Text('Página ${ctx.pageNumber} de ${ctx.pagesCount}', style: const pw.TextStyle(fontSize: 7.5, color: ProveedorPdfService._textGrey)),
+        ]),
+      ]),
+      build: (ctx) => [
+        // ── CABECERA ──
+        pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+          pw.Expanded(
+            child: pw.Row(children: [
+              pw.Flexible(
+                  child: pw.Text(negocio.toUpperCase(),
+                      style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._brown, letterSpacing: 1.5))),
+              pw.SizedBox(width: 10),
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: ProveedorPdfService._brown, width: 1), borderRadius: pw.BorderRadius.circular(3)),
+                child: pw.Text('COMPRAS',
+                    style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._brown, letterSpacing: 2)),
+              ),
+            ]),
+          ),
+          pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+            pw.Text(anual ? 'Reporte anual' : 'Reporte mensual',
+                style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._brown)),
+            pw.SizedBox(height: 3),
+            pw.Text(periodo, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._textDark)),
+            pw.SizedBox(height: 4),
+            pw.Text('Fecha de emisión: ${ProveedorPdfService.fecha(reporte['generado'] ?? DateTime.now().toIso8601String())}',
+                style: const pw.TextStyle(fontSize: 8.5, color: ProveedorPdfService._textGrey)),
+          ]),
+        ]),
+        pw.SizedBox(height: 10),
+        pw.Divider(height: 1, thickness: 1.5, color: ProveedorPdfService._brown),
+        pw.SizedBox(height: 12),
+
+        // ── FRANJA ──
+        pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: pw.BoxDecoration(
+              color: ProveedorPdfService._warmBg,
+              borderRadius: pw.BorderRadius.circular(6),
+              border: pw.Border.all(color: ProveedorPdfService._cardBorder)),
+          child: pw.Row(children: [
+            pw.Expanded(child: ProveedorPdfService._metaChip('Kilos comprados', ProveedorPdfService.kg(franja['kg']))),
+            pw.Expanded(child: ProveedorPdfService._metaChip('Compras recibidas', _n(franja['compras']))),
+            pw.Expanded(child: ProveedorPdfService._metaChip('Agricultores', _n(franja['agricultores']))),
+            pw.Expanded(
+                child: esDueno
+                    ? ProveedorPdfService._metaChip('Le debemos', soles(franja['debe']))
+                    : ProveedorPdfService._metaChip('Sin precio', _cuantos(franja['sin_precio'], 'compra', 'compras'))),
+            if (anual) pw.Expanded(child: ProveedorPdfService._metaChip('Mayor parte de un agricultor', _pct(franja['mayor_parte']))),
+          ]),
+        ),
+        espacio(),
+
+        // ── COMPRAS DEL MES / POR MES ──
+        if (!anual) ...[
+          if (compras.isEmpty)
+            pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [ProveedorPdfService._sectionHeader('  COMPRAS DEL MES'), nada('No hubo compras este mes.')])
+          else
+            ...tabla(
+              'COMPRAS DEL MES',
+              ['Fecha', 'Agricultor', 'Café', 'Kilos', if (esDueno) ...['Precio/kg', 'Total', 'Pagado', 'De adelantos', 'Debe'], 'Estado'],
+              [
+                for (final c in compras)
+                  [
+                    ProveedorPdfService.fecha(c['fecha']),
+                    '${c['agricultor'] ?? ''}',
+                    cafe(c['estado']),
+                    ProveedorPdfService.kg(c['kg']),
+                    if (esDueno) ...[soles(c['precio']), soles(c['total']), soles(c['pagado']), soles(c['de_adelantos']), soles(c['debe'])],
+                    '${c['situacion'] ?? ''}',
+                  ],
+              ],
+              esDueno ? {3, 4, 5, 6, 7, 8} : {3},
+            ),
+        ] else
+          ...tabla(
+            'POR MES',
+            ['Mes', 'Compras', 'Kilos', 'Agricultores', if (esDueno) ...['Total', 'Precio medio/kg', 'Debe']],
+            [
+              for (final m in porMes)
+                [
+                  nombreMes(int.tryParse('${m['mes']}') ?? 1),
+                  _n(m['compras']),
+                  ProveedorPdfService.kg(m['kg']),
+                  _n(m['agricultores']),
+                  if (esDueno) ...[soles(m['total']), soles(m['precio_medio']), soles(m['debe'])],
+                ],
+              if (porMes.isEmpty) ['Sin compras este año', '', '', '', if (esDueno) ...['', '', '']],
+            ],
+            esDueno ? {1, 2, 3, 4, 5, 6} : {1, 2, 3},
+          ),
+        espacio(),
+
+        // ── POR AGRICULTOR ──
+        if (porAgricultor.isNotEmpty) ...[
+          ...tabla(
+            'POR AGRICULTOR',
+            ['Agricultor', 'Comunidad', 'Compras', 'Kilos', 'Parte', if (anual) 'Meses', if (esDueno) ...['Total', 'Precio medio/kg']],
+            [
+              for (final a in porAgricultor)
+                [
+                  '${a['agricultor'] ?? ''}',
+                  '${a['comunidad'] ?? '—'}',
+                  _n(a['compras']),
+                  ProveedorPdfService.kg(a['kg']),
+                  _pct(a['parte']),
+                  if (anual) _n(a['meses']),
+                  if (esDueno) ...[soles(a['total']), soles(a['precio_medio'])],
+                ],
+            ],
+            {2, 3, 4, if (anual) 5, if (esDueno) ...[anual ? 6 : 5, anual ? 7 : 6]},
+          ),
+          espacio(),
+        ],
+
+        // ── POR TIPO DE CAFÉ / LO QUE ESPERA ──
+        pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+          pw.Expanded(
+            child: ProveedorPdfService._caja(
+                'POR TIPO DE CAFÉ',
+                ProveedorPdfService._filas([
+                  for (final e in porEstado)
+                    (
+                      '${cafe(e['estado'])}:',
+                      '${_cuantos(e['compras'], 'compra', 'compras')} · ${ProveedorPdfService.kg(e['kg'])}${esDueno ? ' · ${soles(e['total'])}' : ''}'
+                    ),
+                ])),
+          ),
+          pw.SizedBox(width: 10),
+          pw.Expanded(
+            child: ProveedorPdfService._caja(
+                'LO QUE ESPERA',
+                ProveedorPdfService._filas([
+                  ('Sin precio:', '${_cuantos(esperan['sin_precio'], 'compra', 'compras')} · ${ProveedorPdfService.kg(esperan['sin_precio_kg'])}'),
+                  ('Por pagar:', '${_cuantos(esperan['por_pagar'], 'compra', 'compras')}${esDueno ? ' · ${soles(esperan['por_pagar_monto'])}' : ''}'),
+                  if (esDueno) ('Adelantos:', '${_cuantos(solicitudes['aprobadas'], 'aprobado', 'aprobados')} · ${_cuantos(solicitudes['rechazadas'], 'rechazado', 'rechazados')}'),
+                ])),
+          ),
+        ]),
+
+        // ── PAGOS ──
+        if (esDueno && pagos.isNotEmpty) ...[
+          espacio(),
+          ...tabla(
+            'PAGOS',
+            ['Fecha', 'Agricultor', 'Compra', 'Cómo', 'Monto'],
+            [
+              for (final p in pagos)
+                [ProveedorPdfService.fecha(p['fecha']), '${p['agricultor'] ?? ''}', '${p['compra'] ?? ''}', '${p['tipo'] ?? ''}', soles(p['monto'])],
+            ],
+            {4},
+          ),
+        ],
+
+        // ── ADELANTOS ──
+        if (esDueno && adelantos.isNotEmpty) ...[
+          espacio(),
+          ...tabla(
+            'ADELANTOS',
+            ['Fecha', 'Adelanto', 'Agricultor', 'Monto', 'Usado en café', 'Devuelto', 'Saldo'],
+            [
+              for (final a in adelantos)
+                [
+                  ProveedorPdfService.fecha(a['fecha']),
+                  '${a['id']}',
+                  '${a['agricultor'] ?? ''}',
+                  soles(a['monto']),
+                  soles(a['usado']),
+                  soles(a['devuelto']),
+                  soles(a['saldo'])
+                ],
+            ],
+            {3, 4, 5, 6},
+          ),
+        ],
+
+        // ── GASTOS DE COMPRAS ──
+        if (gastos.isNotEmpty) ...[
+          espacio(),
+          ...tabla(
+            'GASTOS DE COMPRAS',
+            ['Fecha', 'Categoría', 'Descripción', if (esDueno) 'Monto', 'Estado'],
+            [
+              for (final g in gastos)
+                [
+                  ProveedorPdfService.fecha(g['fecha']),
+                  '${g['categoria'] ?? ''}',
+                  '${g['descripcion'] ?? ''}',
+                  if (esDueno) soles(g['monto']),
+                  '${g['estado'] ?? ''}',
+                ],
+            ],
+            esDueno ? {3} : <int>{},
+          ),
+        ],
+      ],
+    ));
+    return doc.save();
+  }
+}

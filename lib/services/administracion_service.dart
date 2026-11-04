@@ -62,6 +62,10 @@ class AdministracionService {
   static Future<ApiResponse<Map<String, dynamic>>> proveedor(String id) => _get('proveedores/${Uri.encodeComponent(id)}');
 
   /// Reporte de un proveedor para el PDF ({reporte}): se pide sólo al tocar Generar reporte.
+  /// Reporte de Compras: un mes ([mes] 1 a 12) o el año entero ([mes] null). El dinero sólo llega a dueños.
+  static Future<ApiResponse<Map<String, dynamic>>> reporteCompras(int anio, [int? mes]) =>
+      _get('compras/reporte?anio=$anio${mes == null ? '' : '&mes=$mes'}');
+
   static Future<ApiResponse<Map<String, dynamic>>> reporteProveedor(String id) => _get('proveedores/${Uri.encodeComponent(id)}/reporte');
 
   /// Subir evidencia (dueños): una foto o PDF del voucher o recibo de una compra (purchase), un gasto (expense),
