@@ -3129,6 +3129,49 @@ class _TostadoDetalleScreenState extends State<_TostadoDetalleScreen> {
   }
 }
 
+/// Una línea del estado de cuenta de un lote verde: qué fue y cuándo a la izquierda; a la derecha los kilos con su signo
+/// (+ entra, − sale) y, debajo, el saldo después de esa línea. Sólo información: sin caja ni flecha.
+class _LineaCuenta extends StatelessWidget {
+  const _LineaCuenta({required this.linea});
+  final Map<String, dynamic> linea;
+
+  @override
+  Widget build(BuildContext context) {
+    final kg = num.tryParse('${linea['kg']}') ?? 0;
+    final entra = kg > 0;
+    final iconos = {
+      'inicio': Icons.flag_outlined,
+      'compra': Icons.add_shopping_cart,
+      'anulada': Icons.remove_shopping_cart_outlined,
+      'tueste': Icons.local_fire_department_outlined,
+      'venta': Icons.storefront_outlined,
+      'cierre': Icons.inventory_2_outlined,
+      'diferencia': Icons.help_outline,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade200))),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _InsigniaIcono(iconos[linea['tipo']] ?? Icons.circle_outlined, tono: entra ? Colors.green : Colors.grey),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${linea['titulo'] ?? ''}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
+            Text([_fechaLarga(linea['fecha']), if (linea['detalle'] != null) '${linea['detalle']}'].where((t) => t.isNotEmpty).join(' · '),
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade700), maxLines: 2, overflow: TextOverflow.ellipsis),
+          ]),
+        ),
+        const SizedBox(width: 8),
+        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Text('${entra ? '+' : '−'}${_kg(kg.abs())}',
+              style: TextStyle(fontWeight: FontWeight.w700, color: entra ? Colors.green.shade800 : Colors.grey.shade900)), // sin rojo: salir no es malo
+          Text('Saldo ${_kg(linea['saldo'])}', style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+        ]),
+      ]),
+    );
+  }
+}
+
 /// Cerrar lote (General Manager, 4 nov 2026, tras la reunión de lotes): sólo después del conteo. El lote se cierra
 /// (archivado, nunca borrado) sólo si el conteo encontró 0 kg; los kilos que mostraba quedan escritos con el motivo.
 class _CerrarLoteDialog extends StatefulWidget {
@@ -3323,11 +3366,25 @@ class _LoteVerdeDetalleScreenState extends State<_LoteVerdeDetalleScreen> {
   Map<String, dynamic>? _l;
   String? _error;
   bool _cambio = false;
+  int _visibles = 20; // el estado de cuenta se ve de 20 en 20, al llegar al final
+  final _scroll = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _cargar();
+    _scroll.addListener(() {
+      final total = _lista(_mapa(_l?['cuenta'])['lineas']).length;
+      if (_visibles < total && _scroll.position.pixels > _scroll.position.maxScrollExtent - 200) {
+        setState(() => _visibles += 20);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
   }
 
   Future<void> _cargar() async {
@@ -3373,8 +3430,8 @@ class _LoteVerdeDetalleScreenState extends State<_LoteVerdeDetalleScreen> {
   @override
   Widget build(BuildContext context) {
     final l = _l;
-    final movimientos = l == null ? const <Map<String, dynamic>>[] : _lista(l['movimientos']);
-    final tuestes = l == null ? const <Map<String, dynamic>>[] : _lista(l['tuestes']);
+    final cuenta = l == null ? const <String, dynamic>{} : _mapa(l['cuenta']);
+    final lineas = _lista(cuenta['lineas']);
     final abierto = l != null && l['estado'] == 'available';
     final puedeCerrar = widget.esDueno && abierto && l['crece'] != true && l['producto'] == null;
     return PopScope(
@@ -3393,7 +3450,7 @@ class _LoteVerdeDetalleScreenState extends State<_LoteVerdeDetalleScreen> {
                     child: _error != null ? Text(_error!, textAlign: TextAlign.center) : const Center(child: CircularProgressIndicator()),
                   ),
                 ])
-              : ListView(padding: const EdgeInsets.all(16), children: [
+              : ListView(controller: _scroll, padding: const EdgeInsets.all(16), children: [
                   Row(children: [
                     Expanded(
                         child: Text('${l['producto'] ?? 'Sin producto'}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
@@ -3416,58 +3473,20 @@ class _LoteVerdeDetalleScreenState extends State<_LoteVerdeDetalleScreen> {
                     ),
                   ],
                   _panel([
-                    _dato('Café verde ahora', _kg(l['kg_ahora'])),
-                    _dato('Entró en total', _kg(l['kg_inicial'])),
+                    // Como un estado de cuenta (General Manager, 4 nov 2026): el saldo es el café verde de ahora.
+                    _dato('Saldo', _kg(cuenta['saldo'] ?? l['kg_ahora'])),
+                    _dato('Entradas', cuenta['entradas'] == null ? null : '+${_kg(cuenta['entradas'])}'),
+                    _dato('Salidas', cuenta['salidas'] == null ? null : '−${_kg(cuenta['salidas'])}'),
                     _dato('Variedad', l['variedad']?.toString()),
                     _dato('Cosecha', l['cosecha']?.toString()),
                     _dato('Origen', l['origen']?.toString()),
                     _dato('Llegó', l['llego'] == null ? null : _fechaLarga(l['llego'])),
                   ]),
-                  // Las compras del lote (General Manager, 4 nov 2026): cada compra de pergamino del Blend suma sola el 80% de
-                  // sus kilos como café verde estimado, al registrarla; aquí sólo se listan.
-                  if (_lista(l['compras']).isNotEmpty) ...[
-                    _encabezado('Compras del lote', '${_lista(l['compras']).length}'),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-                      child: Text('Cada compra suma el ${_lista(l['compras']).first['factor_pct'] ?? 80}% de su pergamino como verde estimado.',
-                          style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
-                    ),
-                    for (final c in _lista(l['compras']))
-                      _Ficha(
-                        inicio: const _InsigniaIcono(Icons.inventory_2_outlined, tono: Colors.brown),
-                        titulo: '${c['agricultor'] ?? c['id']}',
-                        detalle: ['${c['id']}', _fechaLarga(c['fecha']), '${_kg(c['pergamino'])} de pergamino'].where((t) => t.isNotEmpty).join(' · '),
-                        fin: Text('+${_kg(c['verde'])}', style: const TextStyle(fontWeight: FontWeight.w600)),
-                      ),
-                  ],
-                  if (movimientos.isNotEmpty) ...[
-                    _encabezado('Agregado y cierre', '${movimientos.length}'),
-                    for (final m in movimientos)
-                      _Ficha(
-                        inicio: _InsigniaIcono(m['tipo'] == 'Agregado' ? Icons.add : Icons.inventory_2_outlined,
-                            tono: m['tipo'] == 'Agregado' ? Colors.green : Colors.grey),
-                        titulo: m['tipo'] == 'Agregado'
-                            ? '${_fechaLarga(m['fecha'])} · +${_kg(m['kg'])}'
-                            : '${_fechaLarga(m['fecha'])} · cerrado',
-                        detalle: m['tipo'] == 'Agregado'
-                            ? [
-                                '${_kg(m['pergamino'])} de pergamino · rendimiento ${m['rendimiento_pct']}%',
-                                _lista(m['compras']).map((c) => '${c['id']} ${c['agricultor'] ?? ''}'.trim()).join(', '),
-                                if (m['costo'] != null) _soles(m['costo']),
-                              ].where((t) => t.isNotEmpty).join(' · ')
-                            : 'Mostraba ${_kg(-(num.tryParse('${m['kg']}') ?? 0))} · ${m['nota'] ?? ''}',
-                      ),
-                  ],
-                  _encabezado('Tuestes con este lote', '${l['tuestes_total'] ?? tuestes.length}'),
-                  if (tuestes.isEmpty) _vacio('Todavía no se tostó café de este lote.'),
-                  for (final t in tuestes)
-                    _Ficha(
-                      inicio: _Insignia(_fechaCorta(t['fecha']), tono: Colors.orange),
-                      titulo: '${t['producto'] ?? 'Sin producto'}',
-                      detalle: t['estado'] == 'completed'
-                          ? '${_kg(t['kg_verde'])} verde → ${_kg(t['kg_tostado'])} tostado'
-                          : '${t['estado'] == 'in_progress' ? 'Tostando' : 'Programado'} · ${_kg(t['kg_verde'])} verde',
-                    ),
+                  // Una sola lista, como un estado de cuenta (General Manager, 4 nov 2026): las compras suman (+) y los tuestes,
+                  // las ventas de verde y el cierre restan (−), con el saldo después de cada línea; lo más nuevo arriba.
+                  _encabezado('Estado de cuenta', '${lineas.length}'),
+                  if (lineas.isEmpty) _vacio('Este lote todavía no tiene movimientos.'),
+                  for (final m in lineas.take(_visibles)) _LineaCuenta(linea: m),
                   const SizedBox(height: 24),
                 ]),
         ),

@@ -121,6 +121,17 @@ void main() {
           ],
           'tuestes': [{'id': 'e9', 'fecha': '2026-11-02T15:00:00Z', 'estado': 'completed', 'kg_verde': 100, 'kg_tostado': 80, 'producto': 'Blend de Caturra'}],
           'tuestes_total': 2,
+          // The lot as an account statement, newest first, with the balance after each line (4 Nov 2026).
+          'cuenta': {
+            'saldo': 484.96, 'entradas': 1070.96, 'salidas': 586,
+            'lineas': [
+              {'fecha': '2026-11-04', 'tipo': 'compra', 'titulo': 'Compra DL-0008 · José Luis Gamboa Villano', 'detalle': '72 kg de pergamino al 80%', 'kg': 57.6, 'saldo': 484.96},
+              {'fecha': '2026-11-04', 'tipo': 'compra', 'titulo': 'Compra DL-0009 · Jhonatan', 'detalle': '16.7 kg de pergamino al 80%', 'kg': 13.36, 'saldo': 427.36},
+              {'fecha': '2026-11-03', 'tipo': 'venta', 'titulo': 'Venta de café verde · pedido ORD-1', 'kg': -72, 'saldo': 414},
+              {'fecha': '2026-11-02', 'tipo': 'tueste', 'titulo': 'Tueste · Blend de Caturra', 'detalle': '80 kg tostado', 'kg': -100, 'saldo': 486},
+              {'fecha': '2026-09-17', 'tipo': 'inicio', 'titulo': 'Entrada inicial', 'kg': 1000, 'saldo': 1000},
+            ],
+          },
         }
       }), 200);
     }
@@ -964,22 +975,29 @@ void main() {
     expect(jsonDecode(cierre.body)['motivo'], 'Conteo del 5 nov: sin sacos');
     expect(find.text('Lote L-1'), findsNothing); // a closed lot goes back to the list
 
-    // L-7, the Blend lot: its data, what was added and its roasts, and Agregar café al lote.
+    // L-7, the Blend lot: its data and its account statement.
     await tocar(find.text('L-7'));
-    for (final t in ['Compras del lote', 'Cada compra suma el 80% de su pergamino como verde estimado.', 'José Luis Gamboa Villano', 'Jhonatan', '+57.6 kg']) {
-      expect(find.text(t), findsOneWidget, reason: t);
-    }
-    expect(find.textContaining('72 kg de pergamino'), findsOneWidget);
-    // No Agregar café al lote any more: the estimate is added by itself (4 Nov 2026).
-    expect(find.text('Agregar café al lote'), findsNothing);
     for (final t in ['Lote L-7', 'Lote del Blend: crece con café pilado']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
+    // One list, like an account statement: compras +, roasts and green sales −, with the balance after each line.
+    for (final t in ['Saldo', 'Entradas', '+1,071.0 kg', 'Salidas', '−586 kg']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
     final lista = find.byType(Scrollable).last;
-    await tester.scrollUntilVisible(find.text('Martes 3 de noviembre · +240 kg'), 200, scrollable: lista);
-    expect(find.textContaining('rendimiento 80%'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('100 kg verde → 80 kg tostado'), 200, scrollable: lista);
-    expect(find.text('Tuestes con este lote'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Compra DL-0008 · José Luis Gamboa Villano'), 200, scrollable: lista);
+    for (final t in ['Estado de cuenta', '+57.6 kg', 'Saldo 485.0 kg']) {
+      expect(find.text(t), findsWidgets, reason: t);
+    }
+    await tester.scrollUntilVisible(find.text('Entrada inicial'), 200, scrollable: lista);
+    for (final t in ['Tueste · Blend de Caturra', '−100 kg', 'Venta de café verde · pedido ORD-1', '−72 kg', '+1,000 kg', 'Saldo 1,000 kg']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    expect(find.text('Compras del lote'), findsNothing);
+    expect(find.text('Tuestes con este lote'), findsNothing);
+    // No Agregar café al lote any more: the estimate is added by itself (4 Nov 2026).
+    expect(find.text('Agregar café al lote'), findsNothing);
+    expect(find.text('Cerrar lote'), findsNothing); // the Blend lot stays open
     expect(tester.takeException(), isNull);
   });
 
