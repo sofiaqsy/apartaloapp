@@ -882,3 +882,172 @@ class ProduccionPdfService {
     return doc.save();
   }
 }
+
+/// Reporte de Logística (General Manager, 4 nov 2026), con el mismo diseño del de Compras y Producción. Qué muestra lo
+/// decidió el área de Logística, sólo con lo que se registra: pedidos creados, entregados y cancelados en el periodo y
+/// abiertos hoy (o una tabla por mes); pedidos por canal; tiempo de entrega; envío cobrado al cliente (el monto sólo
+/// para dueños); gastos de Logística (sólo dueños). [reporte] es lo que da /logistica/reporte.
+class LogisticaPdfService {
+  static const _canales = {'manual': 'Manual', 'web': 'Web'};
+  static String _dias(dynamic v) => v == null ? '—' : '${v is num ? v.toStringAsFixed(1) : v} días';
+
+  static Future<Uint8List> generarBytes(Map<String, dynamic> reporte, {String? businessName, pw.Font? base, pw.Font? bold}) async {
+    final doc = pw.Document();
+    final font = base ?? await PdfGoogleFonts.notoSansRegular();
+    final fontBold = bold ?? await PdfGoogleFonts.notoSansBold();
+    const tabla = ProveedorPdfService._tabla;
+
+    final negocio = businessName ?? ApiService.businessName;
+    final desde = DateTime.tryParse('${reporte['desde'] ?? ''}') ?? DateTime.now();
+    final hasta = DateTime.tryParse('${reporte['hasta'] ?? ''}') ?? desde;
+    final variosMeses = (int.tryParse('${reporte['meses'] ?? 1}') ?? 1) > 1;
+    final anual = reporte['anual'] == true;
+    final titulo = anual ? 'Reporte anual' : (variosMeses ? 'Reporte por meses' : 'Reporte mensual');
+    final esDueno = reporte['dueno'] == true;
+    final franja = ProveedorPdfService._mapa(reporte['franja']);
+    final porMes = ProveedorPdfService._lista(reporte['por_mes']);
+    final canales = ProveedorPdfService._lista(reporte['canales']);
+    final tiempo = ProveedorPdfService._mapa(reporte['tiempo']);
+    final envio = ProveedorPdfService._mapa(reporte['envio']);
+    final costos = ProveedorPdfService._lista(reporte['costos']);
+    final hoy = ProveedorPdfService.fecha(reporte['generado'] ?? DateTime.now().toIso8601String());
+    String soles(dynamic v) => v == null ? '—' : ProveedorPdfService.soles(v);
+    pw.Widget espacio() => pw.SizedBox(height: 12);
+    pw.Widget nada(String titulo, String t) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+          ProveedorPdfService._sectionHeader('  $titulo'),
+          pw.Padding(
+              padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+              child: pw.Text(t, style: const pw.TextStyle(fontSize: 9, color: ProveedorPdfService._textGrey))),
+        ]);
+    doc.addPage(pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(28),
+      maxPages: 20,
+      theme: pw.ThemeData.withFont(base: font, bold: fontBold),
+      footer: (ctx) => pw.Column(children: [
+        pw.Divider(thickness: 0.5, color: ProveedorPdfService._cardBorder),
+        pw.Row(children: [
+          pw.Expanded(
+              child: pw.Text(esDueno ? 'Documento interno: tiene montos.' : 'Documento interno.',
+                  style: const pw.TextStyle(fontSize: 7.5, color: ProveedorPdfService._textGrey))),
+          pw.Text('Página ${ctx.pageNumber} de ${ctx.pagesCount}', style: const pw.TextStyle(fontSize: 7.5, color: ProveedorPdfService._textGrey)),
+        ]),
+      ]),
+      build: (ctx) => [
+        // ── CABECERA ──
+        pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+          pw.Expanded(
+            child: pw.Row(children: [
+              pw.Flexible(
+                  child: pw.Text(negocio.toUpperCase(),
+                      style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._brown, letterSpacing: 1.5))),
+              pw.SizedBox(width: 10),
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: ProveedorPdfService._brown, width: 1), borderRadius: pw.BorderRadius.circular(3)),
+                child: pw.Text('LOGÍSTICA',
+                    style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._brown, letterSpacing: 2)),
+              ),
+            ]),
+          ),
+          pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+            pw.Text(titulo, style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._brown)),
+            pw.SizedBox(height: 3),
+            pw.Text(ComprasPdfService.periodo(desde, hasta),
+                style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._textDark)),
+            pw.SizedBox(height: 4),
+            pw.Text('Fecha de emisión: $hoy', style: const pw.TextStyle(fontSize: 8.5, color: ProveedorPdfService._textGrey)),
+          ]),
+        ]),
+        pw.SizedBox(height: 10),
+        pw.Divider(height: 1, thickness: 1.5, color: ProveedorPdfService._brown),
+        pw.SizedBox(height: 12),
+
+        // ── 1. PEDIDOS ──
+        pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: pw.BoxDecoration(
+              color: ProveedorPdfService._warmBg,
+              borderRadius: pw.BorderRadius.circular(6),
+              border: pw.Border.all(color: ProveedorPdfService._cardBorder)),
+          child: pw.Row(children: [
+            pw.Expanded(child: ProveedorPdfService._metaChip('Pedidos creados', ComprasPdfService._n(franja['creados']))),
+            pw.Expanded(child: ProveedorPdfService._metaChip('Entregados', ComprasPdfService._n(franja['entregados']))),
+            pw.Expanded(child: ProveedorPdfService._metaChip('Cancelados', ComprasPdfService._n(franja['cancelados']))),
+            pw.Expanded(child: ProveedorPdfService._metaChip('Abiertos hoy', ComprasPdfService._n(franja['abiertos_hoy']))),
+          ]),
+        ),
+        if (variosMeses && porMes.isNotEmpty) ...[
+          espacio(),
+          ...tabla(
+            'PEDIDOS POR MES',
+            ['Mes', 'Creados', 'Entregados', 'Cancelados'],
+            [
+              for (final m in porMes)
+                [ComprasPdfService._etiquetaMes(m['mes']), ComprasPdfService._n(m['creados']), ComprasPdfService._n(m['entregados']), ComprasPdfService._n(m['cancelados'])],
+            ],
+            {1, 2, 3},
+          ),
+        ],
+        espacio(),
+
+        // ── 2. CANALES ──
+        if (canales.isEmpty)
+          nada('PEDIDOS POR CANAL', 'No hubo pedidos en el periodo.')
+        else
+          ...tabla(
+            'PEDIDOS POR CANAL',
+            ['Canal', 'Pedidos'],
+            [for (final c in canales) [_canales[c['canal']] ?? '${c['canal'] ?? '—'}', ComprasPdfService._n(c['pedidos'])]],
+            {1},
+          ),
+        espacio(),
+
+        // ── 3. TIEMPO DE ENTREGA ──
+        ...tabla(
+          'TIEMPO DE ENTREGA',
+          ['Dato', 'Valor'],
+          [
+            ['Pedidos entregados con fecha de entrega', ComprasPdfService._n(tiempo['entregados_con_fecha'] ?? 0)],
+            ['Pedidos con fecha de envío', ComprasPdfService._n(tiempo['con_envio'] ?? 0)],
+            ['Promedio del pedido al envío', _dias(tiempo['dias_a_envio'])],
+            ['Promedio del pedido a la entrega', _dias(tiempo['dias_a_entrega'])],
+          ],
+          {1},
+        ),
+        espacio(),
+
+        // ── 4. ENVÍO COBRADO AL CLIENTE ──
+        ...tabla(
+          'ENVÍO COBRADO AL CLIENTE',
+          esDueno ? ['Pedidos con envío cobrado', 'Monto'] : ['Pedidos con envío cobrado'],
+          [
+            [ComprasPdfService._n(envio['pedidos'] ?? 0), if (esDueno) soles(envio['monto'] ?? 0)],
+          ],
+          esDueno ? {0, 1} : {0},
+        ),
+
+        // ── 5. GASTOS DE LOGÍSTICA (sólo dueños) ──
+        if (esDueno) ...[
+          espacio(),
+          if (costos.isEmpty)
+            nada('GASTOS DE LOGÍSTICA', 'No se registraron gastos de Logística en el periodo.')
+          else
+            ...tabla(
+              'GASTOS DE LOGÍSTICA',
+              ['Categoría', 'Pendiente', 'Pagado', 'Total'],
+              [for (final c in costos) ['${c['categoria'] ?? ''}', soles(c['pendiente']), soles(c['pagado']), soles(c['total'])]],
+              {1, 2, 3},
+            ),
+        ],
+        pw.Padding(
+          padding: const pw.EdgeInsets.only(top: 10),
+          child: pw.Text('No se muestran costo por kilo entregado, stock por lugar, empaques, daños ni devoluciones: todavía no se registran.',
+              style: const pw.TextStyle(fontSize: 8.5, color: ProveedorPdfService._textGrey)),
+        ),
+      ],
+    ));
+    return doc.save();
+  }
+}

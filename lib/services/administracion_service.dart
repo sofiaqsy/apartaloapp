@@ -112,6 +112,12 @@ class AdministracionService {
   /// notas, fotos y kilos por producto.
   static Future<ApiResponse<Map<String, dynamic>>> tostado(String id) => _get('produccion/tostados/${Uri.encodeComponent(id)}');
 
+  /// Reporte de Logística (General Manager, 4 nov 2026): el mismo formulario que Compras y Producción.
+  static Future<ApiResponse<Map<String, dynamic>>> reporteLogistica(DateTime desde, DateTime hasta) {
+    String mes(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}';
+    return _get('logistica/reporte?desde=${mes(desde)}&hasta=${mes(hasta)}');
+  }
+
   static Future<ApiResponse<Map<String, dynamic>>> reporteProveedor(String id) => _get('proveedores/${Uri.encodeComponent(id)}/reporte');
 
   /// Subir evidencia (dueños): una foto o PDF del voucher o recibo de una compra (purchase), un gasto (expense),

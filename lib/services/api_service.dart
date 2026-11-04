@@ -796,11 +796,13 @@ class ApiService {
     String? tipo,
     int pagina = 1,
     int limite = 50,
+    String? orden, // 'antiguos': los más antiguos primero (Logística, Por despachar)
   }) async {
     try {
       var url = '$baseUrl/api/pedidos/$businessId';
       final params = <String, String>{};
       if (vista != null) params['vista'] = vista;
+      if (orden != null) params['orden'] = orden;
       if (estado != null) params['estado'] = estado;
       if (cliente != null) params['cliente'] = cliente;
       if (tipo != null) params['tipo'] = tipo;

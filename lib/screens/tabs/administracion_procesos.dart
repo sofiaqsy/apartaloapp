@@ -917,8 +917,10 @@ class _LogisticaScreen extends StatefulWidget {
   State<_LogisticaScreen> createState() => _LogisticaScreenState();
 }
 
-class _LogisticaScreenState extends _ProcesoState<_LogisticaScreen> with _ProveedoresDelProceso {
-  int _pestana = 0; // 0 Por despachar, 1 Proveedores
+class _LogisticaScreenState extends _ProcesoState<_LogisticaScreen> with _ProveedoresDelProceso, _GastosDelArea, _ReporteDelProceso {
+  // Las mismas buenas prácticas de Compras y Producción (General Manager, 4 nov 2026; las pestañas y el reporte los
+  // propuso el área de Logística): sin datos arriba, pestañas Por despachar | Entregados | Proveedores | Gastos.
+  int _pestana = 0; // 0 Por despachar, 1 Entregados, 2 Proveedores, 3 Gastos
 
   @override
   String get clave => 'logistica';
@@ -926,19 +928,121 @@ class _LogisticaScreenState extends _ProcesoState<_LogisticaScreen> with _Provee
   String? get areaProveedores => 'fulfillment';
   @override
   String get vacioProveedores => 'Todavía no hay proveedores de logística (empaque, transporte).';
+  @override
+  String get areaGastos => 'fulfillment';
+  @override
+  String get vacioGastos => 'Todavía no hay gastos de Logística.';
 
-  static const _estados = {'pending': 'Pendiente', 'confirmed': 'Confirmado', 'preparing': 'Preparando', 'shipped': 'En camino'};
+  @override
+  String get nombreReporte => 'Logística';
+  @override
+  Future<ApiResponse<Map<String, dynamic>>> pedirReporte(DateTime desde, DateTime hasta) => AdministracionService.reporteLogistica(desde, hasta);
+  @override
+  Future<Uint8List> armarPdf(Map<String, dynamic> reporte) => LogisticaPdfService.generarBytes(reporte);
+
+  // Los pedidos, de 20 en 20 desde el servidor, como la pestaña Pedidos: por despachar los más antiguos primero (son
+  // los siguientes); entregados y cancelados, los más nuevos primero. Cada pedido abre su detalle completo.
+  static const _vistas = ['PENDIENTES', 'HISTORIAL'];
+  final _pedidos = [<Map<String, dynamic>>[], <Map<String, dynamic>>[]];
+  final _paginas = [0, 0];
+  final _hayMas = [true, true];
+  final _cargandoPedidos = [false, false];
+  final _errores = <String?>[null, null];
+  int _vuelta = 0;
+
+  static const _estados = {
+    'PENDIENTE': 'Pendiente',
+    'CONFIRMADO': 'Confirmado',
+    'EN_PREPARACION': 'Preparando',
+    'LISTO': 'Listo',
+    'ENVIADO': 'En camino',
+    'ENTREGADO': 'Entregado',
+    'CANCELADO': 'Cancelado',
+  };
+
+  @override
+  Future<void> cargar() async {
+    _vuelta++;
+    for (var i = 0; i < 2; i++) {
+      _pedidos[i].clear();
+      _paginas[i] = 0;
+      _hayMas[i] = true;
+      _cargandoPedidos[i] = false;
+      _errores[i] = null;
+    }
+    await Future.wait([super.cargar(), _masPedidos(_pestana < 2 ? _pestana : 0)]);
+  }
+
+  Future<void> _masPedidos(int i) async {
+    if (_cargandoPedidos[i] || !_hayMas[i]) return;
+    final vuelta = _vuelta;
+    setState(() => _cargandoPedidos[i] = true);
+    final r = await ApiService.getPedidos(vista: _vistas[i], pagina: _paginas[i] + 1, limite: 20, orden: i == 0 ? 'antiguos' : null);
+    if (!mounted || vuelta != _vuelta) return;
+    setState(() {
+      _cargandoPedidos[i] = false;
+      if (r.isSuccess && r.data != null) {
+        _pedidos[i].addAll(r.data!.pedidos);
+        _paginas[i]++;
+        _hayMas[i] = r.data!.hayMas;
+      } else {
+        _errores[i] = r.error ?? 'No se pudieron cargar los pedidos.';
+        _hayMas[i] = false;
+      }
+    });
+  }
+
+  /// "4/11/2026" (como llega del servidor) a "4 nov".
+  static String _fechaPedido(dynamic f) {
+    final p = '${f ?? ''}'.split('/');
+    if (p.length != 3) return '${f ?? ''}';
+    final d = DateTime.tryParse('${p[2]}-${p[1].padLeft(2, '0')}-${p[0].padLeft(2, '0')}');
+    return d == null ? '${f ?? ''}' : _fechaCorta(d.toIso8601String());
+  }
+
+  void _abrirPedido(Map<String, dynamic> pedido) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DetallePedidoSheet(pedido: pedido, onActualizado: cargar),
+    );
+  }
+
+  List<Widget> _listaPedidos(int i) {
+    final pedidos = _pedidos[i];
+    return [
+      if (pedidos.isEmpty && !_cargandoPedidos[i])
+        _vacio(_errores[i] ?? (i == 0 ? 'No hay pedidos por despachar.' : 'Todavía no hay pedidos entregados.')),
+      for (final p in pedidos)
+        _Ficha(
+          inicio: _Insignia(_fechaPedido(p['fecha']), tono: p['estado'] == 'ENVIADO' ? Colors.blue : (i == 0 ? Colors.orange : Colors.grey)),
+          titulo: '${(p['cliente'] ?? '').toString().isEmpty ? 'Sin nombre' : p['cliente']}',
+          detalle: 'Pedido ${p['id'] ?? ''}',
+          fin: _Pildora(
+              _estados[p['estado']] ?? '${p['estado'] ?? ''}',
+              p['estado'] == 'ENTREGADO'
+                  ? Colors.green
+                  : p['estado'] == 'CANCELADO'
+                      ? Colors.grey
+                      : p['estado'] == 'ENVIADO'
+                          ? Colors.blue
+                          : Colors.orange),
+          onTap: () => _abrirPedido(p),
+        ),
+      // Sin texto al final de la lista: sólo la carga mientras llega la siguiente página.
+      if (_cargandoPedidos[i]) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
-    return pantalla('Logística', alFinal: () {
-      if (_pestana == 1) masProveedores();
+    return pantalla('Logística', botonFlotante: botonReporte(), alFinal: () {
+      if (_pestana < 2) _masPedidos(_pestana);
+      if (_pestana == 2) masProveedores();
     }, (d) {
-      final pedidos = _lista(d['pedidos']);
-      final abiertos = (d['abiertos'] as num?)?.toInt() ?? pedidos.length;
       return [
-        _CuatroDatos(indicadores: _indicadoresLogistica(d, widget.esDueno), grande: true), // los mismos 4 de la tarjeta
-        const SizedBox(height: 16),
+        // Sin datos arriba, como Compras y Producción: la tarjeta de Procesos ya los muestra (4 nov 2026).
         _Acciones(acciones: [
           (
             Icons.receipt_long,
@@ -947,27 +1051,22 @@ class _LogisticaScreenState extends _ProcesoState<_LogisticaScreen> with _Provee
           ),
         ]),
         _Pestanas(
-          nombres: const ['Por despachar', 'Proveedores'],
+          nombres: const ['Por despachar', 'Entregados', 'Proveedores', 'Gastos'],
+          anchoPorNombre: true,
           elegida: _pestana,
           onElegir: (i) {
             setState(() => _pestana = i);
-            if (i == 1) abrirProveedores();
+            if (i < 2 && _pedidos[i].isEmpty) _masPedidos(i);
+            if (i == 2) abrirProveedores();
+            if (i == 3) cargarGastos();
           },
         ),
-        if (_pestana == 1)
+        if (_pestana == 3)
+          ...listaGastos()
+        else if (_pestana == 2)
           ..._listaProveedores()
-        else ...[
-          // Los más antiguos primero: son los siguientes por despachar. A lo más 30; el total a la derecha.
-          _encabezado('Pedidos abiertos', '$abiertos ${abiertos == 1 ? 'pedido' : 'pedidos'}'),
-          if (pedidos.isEmpty) _vacio('No hay pedidos por despachar.'),
-          for (final p in pedidos)
-            _Ficha(
-              inicio: _Insignia(_fechaCorta(p['fecha']), tono: p['estado'] == 'shipped' ? Colors.blue : Colors.orange),
-              titulo: '${p['cliente'] ?? 'Sin nombre'}',
-              detalle: 'Pedido ${p['numero'] ?? ''}',
-              fin: _Pildora(_estados[p['estado']] ?? '${p['estado']}', p['estado'] == 'shipped' ? Colors.blue : Colors.orange),
-            ),
-        ],
+        else
+          ..._listaPedidos(_pestana),
       ];
     });
   }

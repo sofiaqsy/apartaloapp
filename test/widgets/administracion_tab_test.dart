@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:apartalo_app/screens/tabs/administracion_tab.dart';
+import 'package:apartalo_app/screens/tabs/pedidos/widgets/detalle_pedido/detalle_pedido_sheet.dart';
 import 'package:apartalo_app/screens/perfil_screen.dart';
 import 'package:apartalo_app/services/administracion_service.dart';
 import 'package:apartalo_app/services/proveedor_pdf_service.dart';
@@ -106,6 +107,19 @@ void main() {
     }
     // The report is checked up to the request; building the PDF needs the fonts from the internet (tested apart).
     if (p.endsWith('/compras/reporte') || p.endsWith('/produccion/reporte')) return http.Response(jsonEncode({'error': 'Sin señal'}), 503);
+    if (p.contains('/api/pedidos/') && ['PENDIENTES', 'HISTORIAL'].contains(req.url.queryParameters['vista']) && req.url.queryParameters['limite'] == '20') {
+      // The store orders, 20 a page, as the Pedidos tab gets them (Logística, 4 Nov 2026).
+      final vista = req.url.queryParameters['vista'];
+      final pagina = int.tryParse(req.url.queryParameters['pagina'] ?? '1') ?? 1;
+      Map<String, dynamic> pedido(String id, String cliente, String estado, String fecha) =>
+          {'id': id, 'cliente': cliente, 'estado': estado, 'fecha': fecha, 'productos': [], 'total': 50, 'estadoPago': 'PAGADO', 'evidencias': [], 'pagos': []};
+      final todos = vista == 'PENDIENTES'
+          ? [pedido('ORD-101', 'Cafe Uno', 'PENDIENTE', '1/11/2026'), pedido('ORD-102', 'Cafe Dos', 'ENVIADO', '2/11/2026')]
+          : [for (var i = 0; i < 22; i++) pedido('ORD-${200 + i}', 'Cliente $i', i == 0 ? 'CANCELADO' : 'ENTREGADO', '${20 - i % 20}/10/2026')];
+      final pagina20 = todos.skip((pagina - 1) * 20).take(20).toList();
+      return http.Response(jsonEncode({'pedidos': pagina20, 'total': todos.length, 'pagina': pagina, 'totalPaginas': (todos.length / 20).ceil(), 'hayMas': pagina * 20 < todos.length}), 200);
+    }
+    if (p.endsWith('/logistica/reporte')) return http.Response(jsonEncode({'error': 'Sin señal'}), 503);
     if (p.endsWith('/lotes-verdes/g7/cuenta')) {
       // The lot as an account statement, newest first, 20 lines a page (4 Nov 2026): 5 recent lines, 19 older roasts and
       // the Entrada inicial, 25 in all.
@@ -1258,17 +1272,51 @@ void main() {
     expect(tamanos, hasLength(1));
   });
 
-  testWidgets('Logística: orders to dispatch first, its gasto with the Logística area, and its providers', (tester) async {
+  testWidgets('Logística with the practices of Compras and Producción: no data on top, 4 tabs, orders 20 a page, Gastos and the PDF button', (tester) async {
     await abrir(tester, rol: 'staff');
     await tester.scrollUntilVisible(find.text('Logística'), 200, scrollable: find.byType(Scrollable).last);
-    expect(find.text('Por despachar'), findsOneWidget);
-    expect(find.text('2 pedidos'), findsOneWidget);
+    expect(find.text('Por despachar'), findsOneWidget); // the Procesos card keeps its indicators
     await http.runWithClient(() async {
       await tester.tap(find.text('Logística'));
       await tester.pumpAndSettle();
-      expect(find.text('Cafe Uno'), findsOneWidget); // the oldest open order first
-      expect(find.text('En camino'), findsWidgets);
-      expect(find.textContaining('Se ven los'), findsNothing); // no text at the end of a list
+    }, () => MockClient((req) async => responder(req)));
+    // No data on top: the card's numbers are not repeated here.
+    expect(find.text('2 pedidos'), findsNothing);
+    for (final t in ['Registrar gasto', 'Por despachar', 'Entregados', 'Proveedores', 'Gastos']) {
+      expect(find.text(t), findsWidgets, reason: t);
+    }
+    expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
+    // Por despachar: the oldest first, asked with orden=antiguos.
+    final abiertos = pedidos.lastWhere((r) => r.url.path.contains('/api/pedidos/') && r.url.queryParameters['vista'] == 'PENDIENTES');
+    expect(abiertos.url.queryParameters['orden'], 'antiguos');
+    expect(abiertos.url.queryParameters['limite'], '20');
+    expect(tester.getTopLeft(find.text('Cafe Uno')).dy, lessThan(tester.getTopLeft(find.text('Cafe Dos')).dy));
+    expect(find.text('En camino'), findsOneWidget);
+    expect(find.text('Pedido ORD-101'), findsOneWidget);
+    // Entregados: 20 a page; the second page only near the end.
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Entregados').last);
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final historial = () => pedidos.where((r) => r.url.path.contains('/api/pedidos/') && r.url.queryParameters['vista'] == 'HISTORIAL').toList();
+    expect(historial().map((r) => r.url.queryParameters['pagina']), ['1']);
+    expect(find.text('Cancelado'), findsOneWidget);
+    await http.runWithClient(() async {
+      await tester.scrollUntilVisible(find.text('Cliente 21'), 300, scrollable: find.byType(Scrollable).last);
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(historial().map((r) => r.url.queryParameters['pagina']), ['1', '2']);
+    expect(find.textContaining('en total'), findsNothing); // no text at the end of a list
+    // Gastos: the Logística gastos.
+    await http.runWithClient(() async {
+      await tester.drag(find.byType(Scrollable).last, const Offset(0, 5000)); // back to the top, where the tabs are
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Gastos').last);
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(pedidos.any((r) => r.url.path.endsWith('/mi-area') && r.url.queryParameters['area'] == 'fulfillment'), isTrue);
+    // Registrar gasto keeps the Logística area.
+    await http.runWithClient(() async {
       await tester.tap(find.text('Registrar gasto'));
       await tester.pumpAndSettle();
       await tester.enterText(find.widgetWithText(TextField, 'Monto (S/)'), '35');
@@ -1277,6 +1325,26 @@ void main() {
     }, () => MockClient((req) async => responder(req)));
     final req = pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/gasto'));
     expect(jsonDecode(req.body)['area'], 'fulfillment');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Logística: an order opens its full detail, the same as in Pedidos', (tester) async {
+    // The order detail is Apartalo's own screen; with this short test order its layout may overflow, which is not what
+    // this test checks: only that the order opens it.
+    final antes = FlutterError.onError;
+    FlutterError.onError = (d) {
+      if (!d.toString().contains('overflowed')) antes?.call(d);
+    };
+    addTearDown(() => FlutterError.onError = antes);
+    await abrir(tester, rol: 'owner');
+    await tester.scrollUntilVisible(find.text('Logística'), 200, scrollable: find.byType(Scrollable).last);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Logística'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cafe Uno'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.byType(DetallePedidoSheet), findsOneWidget);
   });
 
   testWidgets('Registrar compra links a product: the Blend ticked by default, coffee first, and it is sent', (tester) async {

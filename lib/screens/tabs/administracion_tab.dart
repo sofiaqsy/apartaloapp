@@ -12,6 +12,7 @@ import '../../services/proveedor_pdf_service.dart';
 import '../../theme/fincas_tokens.dart';
 import '../detalle_producto_screen.dart' show abrirProgramarTueste;
 import 'reportes_tab.dart';
+import 'pedidos/widgets/detalle_pedido/detalle_pedido_sheet.dart';
 
 part 'administracion_procesos.dart';
 

@@ -139,6 +139,39 @@ void main() {
     }
   });
 
+  test('builds the Logística report for one month and for a range, for owners and for staff (4 Nov 2026)', () async {
+    Map<String, dynamic> r({required bool dueno, required bool rango}) => {
+          'desde': rango ? '2026-01-01' : '2026-10-01',
+          'hasta': rango ? '2026-10-31' : '2026-10-31',
+          'meses': rango ? 10 : 1,
+          'generado': '2026-11-04T15:00:00Z',
+          'dueno': dueno,
+          'franja': {'creados': 311, 'entregados': 292, 'cancelados': 19, 'abiertos_hoy': 0},
+          'por_mes': rango
+              ? [
+                  {'mes': '2026-01', 'creados': 20, 'entregados': 19, 'cancelados': 1},
+                  {'mes': '2026-02', 'creados': 31, 'entregados': 30, 'cancelados': 1},
+                ]
+              : [],
+          'canales': [
+            {'canal': 'manual', 'pedidos': 286},
+            {'canal': 'web', 'pedidos': 6},
+          ],
+          'tiempo': {'entregados_con_fecha': 185, 'con_envio': 200, 'dias_a_envio': 1.8, 'dias_a_entrega': 1.9},
+          'envio': {'pedidos': 7, if (dueno) 'monto': 82},
+          if (dueno) 'costos': [],
+        };
+    for (final rango in [false, true]) {
+      for (final dueno in [true, false]) {
+        final bytes = await LogisticaPdfService.generarBytes(r(dueno: dueno, rango: rango),
+            businessName: 'Negocio Ejemplo', base: pw.Font.helvetica(), bold: pw.Font.helveticaBold());
+        expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+        final salida = Platform.environment['COMPRAS_PDF_DIR'];
+        if (salida != null) File('$salida/logistica_${rango ? 'rango' : 'mes'}_${dueno ? 'dueno' : 'staff'}.pdf').writeAsBytesSync(bytes);
+      }
+    }
+  });
+
   test('month names are in Spanish', () {
     expect(ComprasPdfService.nombreMes(1), 'Enero');
     expect(ComprasPdfService.nombreMes(11), 'Noviembre');
