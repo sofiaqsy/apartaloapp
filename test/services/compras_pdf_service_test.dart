@@ -217,14 +217,35 @@ void main() {
           {'producto': 'Blend de Caturra, Pache, typica', 'presentacion': '1 kg', 'pedidos': 12, 'unidades': 40, if (dueno) 'total': 3200},
           {'producto': 'Geisha', 'presentacion': '250 g', 'pedidos': 5, 'unidades': 9, if (dueno) 'total': 450},
         ],
-        'clientes': {'activos': 23, 'nuevos': 3, 'silenciosos': 23},
-        'silenciosos': [{'nombre': 'Cafe Viejo', 'ultimo': '2026-07-01', 'pedidos': 4}],
+        'clientes': {'activos': 23, 'nuevos': 3},
+        'pendientes_total': {'pedidos': 2, if (dueno) 'debe': 140},
+        'pendientes': [
+          {'fecha': '2026-10-05', 'pedido': 'ORD-20261005-a1', 'cliente': 'Cafe Uno', if (dueno) 'total': 200, if (dueno) 'pagado': 100, if (dueno) 'debe': 100},
+          {'fecha': '2026-10-20', 'pedido': 'ORD-20261020-b2', 'cliente': 'Cafe Dos', if (dueno) 'total': 40, if (dueno) 'pagado': 0, if (dueno) 'debe': 40},
+        ],
         'canales': [{'canal': 'manual', 'pedidos': 28, if (dueno) 'vendido': 25851}, {'canal': 'web', 'pedidos': 1, if (dueno) 'vendido': 50}],
         if (dueno) 'costos': [{'categoria': 'Combustible', 'pendiente': 0, 'pagado': 150, 'total': 150}],
       }, businessName: 'Negocio Ejemplo', base: pw.Font.helvetica(), bold: pw.Font.helveticaBold());
       expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
       if (salida != null) File('$salida/comercial_${dueno ? 'dueno' : 'staff'}.pdf').writeAsBytesSync(bytes);
     }
+  });
+
+  test('the annual Comercialización report shows the pending orders by month (4 Nov 2026)', () async {
+    final bytes = await ComercialPdfService.generarBytes({
+      'desde': '2026-01-01', 'hasta': '2026-12-31', 'meses': 12, 'anual': true, 'generado': '2026-11-04T15:00:00Z', 'dueno': true,
+      'franja': {'pedidos': 300, 'pedidos_antes': 0, 'vendido': 300000, 'ticket': 1000, 'vendido_antes': 0, 'vendido_anio': 300000},
+      'por_mes': [{'mes': '2026-01', 'pedidos': 20, 'vendido': 20000}],
+      'productos': [],
+      'clientes': {'activos': 58, 'nuevos': 58},
+      'pendientes_total': {'pedidos': 36, 'debe': 30904.2},
+      'pendientes_por_mes': [{'mes': '2026-09', 'pedidos': 20, 'debe': 17551}, {'mes': '2026-10', 'pedidos': 16, 'debe': 13353.2}],
+      'canales': [],
+      'costos': [],
+    }, businessName: 'Negocio Ejemplo', base: pw.Font.helvetica(), bold: pw.Font.helveticaBold());
+    expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+    final salida = Platform.environment['COMPRAS_PDF_DIR'];
+    if (salida != null) File('$salida/comercial_anual.pdf').writeAsBytesSync(bytes);
   });
 
   test('month names are in Spanish', () {

@@ -1283,9 +1283,9 @@ class FinanzasPdfService {
   }
 }
 
-/// Reporte de Comercialización (General Manager, 4 nov 2026; lo decidió el área Comercial): ventas del periodo y del
-/// periodo anterior, ventas por mes, productos más vendidos, clientes (activos, nuevos y silenciosos: sin pedido en 60
-/// días), canales y gastos comerciales. El dinero sólo para dueños; sin "Por cobrar" mientras el estado de pago no cuadre.
+/// Reporte de Comercialización (General Manager, 4 nov 2026; lo decidió el área Comercial y ella lo ajustó): ventas del
+/// periodo y del periodo anterior, ventas por mes, productos más vendidos, clientes (activos y nuevos), pedidos pendientes
+/// de pago (por los pagos registrados; por mes en un rango), canales y gastos comerciales. El dinero sólo para dueños.
 class ComercialPdfService {
   static const _canales = {'manual': 'Manual', 'web': 'Web'};
 
@@ -1297,7 +1297,9 @@ class ComercialPdfService {
     final porMes = ProveedorPdfService._lista(reporte['por_mes']);
     final productos = ProveedorPdfService._lista(reporte['productos']);
     final clientes = ProveedorPdfService._mapa(reporte['clientes']);
-    final silenciosos = ProveedorPdfService._lista(reporte['silenciosos']);
+    final pendientes = ProveedorPdfService._lista(reporte['pendientes']);
+    final pendientesMes = ProveedorPdfService._lista(reporte['pendientes_por_mes']);
+    final pendientesTotal = ProveedorPdfService._mapa(reporte['pendientes_total']);
     final canales = ProveedorPdfService._lista(reporte['canales']);
     final costos = ProveedorPdfService._lista(reporte['costos']);
     String soles(dynamic v) => v == null ? '—' : ProveedorPdfService.soles(v);
@@ -1345,19 +1347,44 @@ class ComercialPdfService {
           [
             ['Compraron en el periodo', n(clientes['activos'])],
             ['Nuevos (primer pedido en el periodo)', n(clientes['nuevos'])],
-            ['Silenciosos hoy (sin pedido en 60 días)', n(clientes['silenciosos'])],
           ],
           {1},
         ),
-        if (silenciosos.isNotEmpty) ...[
-          pw.SizedBox(height: 12),
+        // Pedidos pendientes de pago (General Manager, 4 nov 2026): en el mes cada pedido; en un rango, por mes.
+        pw.SizedBox(height: 12),
+        if ((pendientesTotal['pedidos'] ?? 0) == 0)
+          _ReporteBase.nada('PEDIDOS PENDIENTES DE PAGO', 'Todos los pedidos del periodo tienen sus pagos registrados.')
+        else if (!variosMeses)
           ...tabla(
-            'CLIENTES SILENCIOSOS',
-            ['Cliente', 'Último pedido', 'Pedidos'],
-            [for (final c in silenciosos) ['${c['nombre'] ?? ''}', ProveedorPdfService.fecha(c['ultimo']), n(c['pedidos'])]],
-            {2},
+            'PEDIDOS PENDIENTES DE PAGO',
+            esDueno ? ['Fecha', 'Pedido', 'Cliente', 'Total', 'Pagado', 'Debe'] : ['Fecha', 'Pedido', 'Cliente'],
+            [
+              for (final p in pendientes)
+                [
+                  ProveedorPdfService.fecha(p['fecha']),
+                  '${p['pedido'] ?? ''}',
+                  '${p['cliente'] ?? ''}',
+                  if (esDueno) ...[soles(p['total']), soles(p['pagado']), soles(p['debe'])],
+                ],
+              [
+                'Total',
+                '${n(pendientesTotal['pedidos'])} pedidos',
+                '',
+                if (esDueno) ...['', '', soles(pendientesTotal['debe'])],
+              ],
+            ],
+            esDueno ? {3, 4, 5} : <int>{},
+          )
+        else
+          ...tabla(
+            'PEDIDOS PENDIENTES DE PAGO POR MES',
+            esDueno ? ['Mes', 'Pedidos', 'Debe'] : ['Mes', 'Pedidos'],
+            [
+              for (final m in pendientesMes) [ComprasPdfService._etiquetaMes(m['mes']), n(m['pedidos']), if (esDueno) soles(m['debe'])],
+              ['Total', n(pendientesTotal['pedidos']), if (esDueno) soles(pendientesTotal['debe'])],
+            ],
+            esDueno ? {1, 2} : {1},
           ),
-        ],
         pw.SizedBox(height: 12),
         // 5. Canales
         if (canales.isEmpty)
@@ -1382,8 +1409,9 @@ class ComercialPdfService {
               {1, 2, 3},
             ),
         ],
-        _ReporteBase.nota('Las ventas suman los productos de cada pedido, sin el envío. No se muestra "Por cobrar": el estado de pago de los '
-            'pedidos todavía no cuadra. Tampoco listas de precios, cotizaciones, contratos ni margen: todavía no se registran.'),
+        _ReporteBase.nota('Las ventas suman los productos de cada pedido, sin el envío. Un pedido está pendiente de pago cuando los pagos '
+            'registrados en él (los de Últimos pagos) suman menos que su total. No se muestran listas de precios, cotizaciones, contratos ni '
+            'margen: todavía no se registran.'),
       ],
       conMontos: esDueno,
       base: base,
