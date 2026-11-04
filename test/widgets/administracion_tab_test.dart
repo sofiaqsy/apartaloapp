@@ -1240,29 +1240,64 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Compras has a PDF button: monthly or annual report, asked to the server only when chosen', (tester) async {
+  testWidgets('Compras PDF button opens Generar reporte: Mensual with Desde and Hasta, or Anual; the server is asked only then', (tester) async {
     await abrir(tester, rol: 'owner');
+    final hoy = DateTime.now();
     await http.runWithClient(() async {
       await tester.tap(find.text('Compras'));
       await tester.pumpAndSettle();
-      expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
-      expect(pedidos.any((r) => r.url.path.endsWith('/compras/reporte')), isFalse);
       await tester.tap(find.byIcon(Icons.picture_as_pdf_outlined));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    final hoy = DateTime.now();
-    for (final t in ['Reporte anual', 'Reporte mensual', 'Año ${hoy.year}', 'Año ${hoy.year - 1}']) {
-      expect(find.text(t), findsOneWidget, reason: t);
+    // A short form, not a list of every month.
+    for (final t in ['Generar reporte', 'Mensual', 'Anual', 'Desde', 'Hasta', 'Generar PDF']) {
+      expect(find.text(t), findsWidgets, reason: t);
     }
-    expect(find.text('${ComprasPdfService.nombreMes(hoy.month)} ${hoy.year}'), findsOneWidget);
+    expect(find.text('${ComprasPdfService.nombreMes(hoy.month)} ${hoy.year}'), findsOneWidget); // this month by default
+    expect(pedidos.any((r) => r.url.path.endsWith('/compras/reporte')), isFalse);
+    // A future month cannot be chosen.
+    if (hoy.month < 12) {
+      final futuro = tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, ComprasPdfService.mesCorto(hoy.month + 1)).first);
+      expect(futuro.onSelected, isNull);
+    }
+    // Anual: the year with arrows; the next year is not offered.
+    await tester.tap(find.text('Anual'));
+    await tester.pumpAndSettle();
+    expect(find.text('Año ${hoy.year}'), findsOneWidget);
+    expect(tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.chevron_right)).onPressed, isNull);
+    await tester.tap(find.byIcon(Icons.chevron_left));
+    await tester.pumpAndSettle();
     await http.runWithClient(() async {
-      await tester.tap(find.text('Año ${hoy.year - 1}'));
-      await tester.pump();
+      await tester.tap(find.text('Generar PDF'));
+      await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     final r = pedidos.lastWhere((r) => r.url.path.endsWith('/compras/reporte'));
-    expect(r.url.queryParameters, {'anio': '${hoy.year - 1}'});
-    await tester.pumpAndSettle();
+    expect(r.url.queryParameters, {'desde': '${hoy.year - 1}-01', 'hasta': '${hoy.year - 1}-12'});
     expect(find.byType(SnackBar), findsOneWidget); // the error is said, nothing is left half done
+  });
+
+  testWidgets('Generar reporte: Hasta follows Desde, and more than 12 months is refused next to the button', (tester) async {
+    await abrir(tester, rol: 'owner');
+    final hoy = DateTime.now();
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.picture_as_pdf_outlined));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    // Desde: January of last year. Hasta moves only if it was before; here Hasta stays this month: more than 12 months.
+    await tester.tap(find.byIcon(Icons.chevron_left).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Ene').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Un reporte cubre como máximo 12 meses.'), findsOneWidget);
+    expect(tester.widget<ElevatedButton>(find.ancestor(of: find.text('Generar PDF'), matching: find.byWidgetPredicate((w) => w is ElevatedButton))).onPressed, isNull);
+    expect(find.text('Ene ${hoy.year - 1} – ${ComprasPdfService.mesCorto(hoy.month)} ${hoy.year}'), findsOneWidget);
+    // The X closes without asking anything.
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pumpAndSettle();
+    expect(find.text('Generar reporte'), findsNothing);
+    expect(pedidos.any((r) => r.url.path.endsWith('/compras/reporte')), isFalse);
   });
 
   testWidgets('lists end without a text: no "en total" and no "Se ven los…" at the bottom', (tester) async {

@@ -1704,39 +1704,17 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
 
   bool _generando = false;
 
-  /// Elige mensual (los últimos 12 meses) o anual (este año y el anterior), con un toque cada uno.
+  /// Abre el formulario Generar reporte (Mensual con Desde y Hasta, o Anual); devuelve el rango elegido.
   Future<void> _elegirReporte() async {
-    final hoy = DateTime.now();
-    final meses = [for (var i = 0; i < 12; i++) DateTime(hoy.year, hoy.month - i)];
-    final eleccion = await showModalBottomSheet<(int, int?)>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => SafeArea(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
-          child: ListView(shrinkWrap: true, children: [
-            const ListTile(title: Text('Generar reporte', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-            const ListTile(dense: true, title: Text('Reporte anual')),
-            for (final a in [hoy.year, hoy.year - 1])
-              ListTile(leading: const Icon(Icons.calendar_today_outlined), title: Text('Año $a'), onTap: () => Navigator.pop(ctx, (a, null))),
-            const ListTile(dense: true, title: Text('Reporte mensual')),
-            for (final m in meses)
-              ListTile(
-                  leading: const Icon(Icons.calendar_month_outlined),
-                  title: Text('${ComprasPdfService.nombreMes(m.month)} ${m.year}'),
-                  onTap: () => Navigator.pop(ctx, (m.year, m.month))),
-          ]),
-        ),
-      ),
-    );
-    if (eleccion == null || !mounted) return;
-    await _generarReporte(eleccion.$1, eleccion.$2);
+    final rango = await _abrirPantalla<(DateTime, DateTime)>(context, const _ReporteComprasForm());
+    if (rango == null || !mounted) return;
+    await _generarReporte(rango.$1, rango.$2);
   }
 
   /// Pide el reporte recién ahora y muestra el PDF para compartir, como el del proveedor.
-  Future<void> _generarReporte(int anio, int? mes) async {
+  Future<void> _generarReporte(DateTime desde, DateTime hasta) async {
     setState(() => _generando = true);
-    final r = await AdministracionService.reporteCompras(anio, mes);
+    final r = await AdministracionService.reporteCompras(desde, hasta);
     if (!mounted) return;
     if (!r.isSuccess) {
       setState(() => _generando = false);
@@ -1746,9 +1724,10 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
     try {
       final bytes = await ComprasPdfService.generarBytes(_mapa(r.data!['reporte']));
       if (!mounted) return;
-      final nombre = mes == null ? 'compras_$anio.pdf' : 'compras_${anio}_${mes.toString().padLeft(2, '0')}.pdf';
+      String m(DateTime d) => '${d.year}_${d.month.toString().padLeft(2, '0')}';
+      final nombre = desde == hasta ? 'compras_${m(desde)}.pdf' : 'compras_${m(desde)}_a_${m(hasta)}.pdf';
       await _abrirPantalla<void>(
-          context, _ReportePdfScreen(bytes: bytes, archivo: nombre, titulo: mes == null ? 'Compras · año $anio' : 'Compras · ${ComprasPdfService.nombreMes(mes)} $anio'));
+          context, _ReportePdfScreen(bytes: bytes, archivo: nombre, titulo: 'Compras · ${ComprasPdfService.periodo(desde, hasta)}'));
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo generar el PDF: revisa la señal.')));
@@ -2006,6 +1985,150 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
 }
 
 /// El reporte de un proveedor en PDF, con el botón de compartir (como el PDF del detalle de pedido).
+/// Generar reporte (General Manager, 4 nov 2026; reunión con Compras, Finanzas y Tecnología): Mensual con Desde y
+/// Hasta (un mes, o un rango de hasta 12 meses, como la cosecha de mayo a septiembre) o Anual (el año). Cada mes es un
+/// toque: una fila con el año y flechas, y los 12 meses debajo; los meses futuros no se pueden elegir. Pantalla
+/// completa con X arriba a la izquierda, como los otros formularios; el aviso va justo encima del botón.
+class _ReporteComprasForm extends StatefulWidget {
+  const _ReporteComprasForm();
+
+  @override
+  State<_ReporteComprasForm> createState() => _ReporteComprasFormState();
+}
+
+class _ReporteComprasFormState extends State<_ReporteComprasForm> {
+  static final _hoy = DateTime(DateTime.now().year, DateTime.now().month);
+  bool _anual = false;
+  late DateTime _desde = _hoy;
+  late DateTime _hasta = _hoy;
+  late int _anio = _hoy.year;
+
+  int get _meses => (_hasta.year * 12 + _hasta.month) - (_desde.year * 12 + _desde.month) + 1;
+
+  String? get _aviso {
+    if (_anual) return null;
+    if (_hasta.isBefore(_desde)) return 'El mes Hasta no puede ser antes del mes Desde.';
+    if (_meses > 12) return 'Un reporte cubre como máximo 12 meses.';
+    return null;
+  }
+
+  void _elegirDesde(DateTime m) => setState(() {
+        _desde = m;
+        if (_hasta.isBefore(m)) _hasta = m; // Hasta sigue a Desde
+      });
+
+  @override
+  Widget build(BuildContext context) {
+    final aviso = _aviso;
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.close), tooltip: 'Cancelar', onPressed: () => Navigator.of(context).pop()),
+        title: const Text('Generar reporte'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        children: [
+          Row(children: [
+            for (final (anual, texto) in [(false, 'Mensual'), (true, 'Anual')])
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(label: Text(texto), selected: _anual == anual, onSelected: (_) => setState(() => _anual = anual)),
+              ),
+          ]),
+          const SizedBox(height: 16),
+          if (_anual)
+            _FilaAnio(
+              titulo: 'Año',
+              anio: _anio,
+              maximo: _hoy.year,
+              onCambio: (a) => setState(() => _anio = a),
+            )
+          else ...[
+            _SelectorMes(titulo: 'Desde', valor: _desde, maximo: _hoy, onCambio: _elegirDesde),
+            const SizedBox(height: 20),
+            _SelectorMes(titulo: 'Hasta', valor: _hasta, maximo: _hoy, onCambio: (m) => setState(() => _hasta = m)),
+          ],
+          const SizedBox(height: 20),
+          Text(
+            _anual ? 'Año $_anio' : ComprasPdfService.periodo(_desde, _hasta),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (aviso != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(aviso, style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.w600)),
+              ),
+            ElevatedButton.icon(
+              onPressed: aviso != null
+                  ? null
+                  : () => Navigator.of(context).pop(_anual ? (DateTime(_anio, 1), DateTime(_anio, 12)) : (_desde, _hasta)),
+              style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+              icon: const Icon(Icons.picture_as_pdf_outlined),
+              label: const Text('Generar PDF'),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// Un año con flechas: ‹ 2026 ›. No pasa del año [maximo].
+class _FilaAnio extends StatelessWidget {
+  const _FilaAnio({required this.titulo, required this.anio, required this.maximo, required this.onCambio});
+  final String titulo;
+  final int anio;
+  final int maximo;
+  final ValueChanged<int> onCambio;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(children: [
+      Expanded(child: Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+      IconButton(tooltip: 'Año anterior', icon: const Icon(Icons.chevron_left), onPressed: () => onCambio(anio - 1)),
+      Text('$anio', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+      IconButton(tooltip: 'Año siguiente', icon: const Icon(Icons.chevron_right), onPressed: anio >= maximo ? null : () => onCambio(anio + 1)),
+    ]);
+  }
+}
+
+/// Elegir un mes con un toque: el año con flechas y los 12 meses debajo; los meses después de [maximo] no se eligen.
+class _SelectorMes extends StatefulWidget {
+  const _SelectorMes({required this.titulo, required this.valor, required this.maximo, required this.onCambio});
+  final String titulo;
+  final DateTime valor;
+  final DateTime maximo;
+  final ValueChanged<DateTime> onCambio;
+
+  @override
+  State<_SelectorMes> createState() => _SelectorMesState();
+}
+
+class _SelectorMesState extends State<_SelectorMes> {
+  late int _anio = widget.valor.year;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _FilaAnio(titulo: widget.titulo, anio: _anio, maximo: widget.maximo.year, onCambio: (a) => setState(() => _anio = a)),
+      Wrap(spacing: 6, runSpacing: 6, children: [
+        for (var m = 1; m <= 12; m++)
+          ChoiceChip(
+            label: SizedBox(width: 34, child: Text(ComprasPdfService.mesCorto(m), textAlign: TextAlign.center)),
+            selected: widget.valor.year == _anio && widget.valor.month == m,
+            onSelected: DateTime(_anio, m).isAfter(widget.maximo) ? null : (_) => widget.onCambio(DateTime(_anio, m)),
+          ),
+      ]),
+    ]);
+  }
+}
+
 class _ReportePdfScreen extends StatelessWidget {
   const _ReportePdfScreen({required this.bytes, required this.archivo, this.titulo = 'Reporte del proveedor'});
   final Uint8List bytes;

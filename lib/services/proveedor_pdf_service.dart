@@ -311,11 +311,29 @@ class ProveedorPdfService {
 /// anual), por agricultor, por tipo de café, lo que espera, pagos, adelantos y los gastos de Compras. [reporte] es lo
 /// que da /compras/reporte; el dinero sólo viene para dueños (lo decide la base).
 class ComprasPdfService {
+  static const _cortos = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  static String mesCorto(int mes) => _cortos[(mes - 1).clamp(0, 11)];
+
+  /// "Mayo 2026", "Año 2026" o "May 2026 – Sep 2026": el periodo del reporte, para el título y el nombre del archivo.
+  static String periodo(DateTime desde, DateTime hasta) {
+    final meses = (hasta.year * 12 + hasta.month) - (desde.year * 12 + desde.month) + 1;
+    if (meses == 12 && desde.month == 1) return 'Año ${desde.year}';
+    if (meses == 1) return '${nombreMes(desde.month)} ${desde.year}';
+    return '${mesCorto(desde.month)} ${desde.year} – ${mesCorto(hasta.month)} ${hasta.year}';
+  }
+
   static const _meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
   static String nombreMes(int mes) => _meses[(mes - 1).clamp(0, 11)];
 
   static String _n(dynamic v) => '${(v is num) ? v.toInt() : int.tryParse('${v ?? ''}') ?? 0}';
+  /// "2026-05" → "Mayo 2026" (en el anual, sólo "Mayo").
+  static String _etiquetaMes(dynamic v) {
+    final t = '${v ?? ''}'.split('-');
+    if (t.length < 2) return nombreMes(int.tryParse(t.first) ?? 1);
+    return '${nombreMes(int.tryParse(t[1]) ?? 1)} ${t[0]}';
+  }
+
   static String _cuantos(dynamic v, String uno, String varios) => '${_n(v)} ${_n(v) == '1' ? uno : varios}';
   static String _pct(dynamic v) => v == null ? '—' : '${v is num ? v.toStringAsFixed(1) : v}%';
 
@@ -325,10 +343,14 @@ class ComprasPdfService {
     final fontBold = bold ?? await PdfGoogleFonts.notoSansBold();
 
     final negocio = businessName ?? ApiService.businessName;
-    final anual = reporte['tipo'] == 'anual';
-    final anio = _n(reporte['anio']);
-    final mes = int.tryParse('${reporte['mes'] ?? ''}');
-    final periodo = anual || mes == null ? 'Año $anio' : '${nombreMes(mes)} $anio';
+    // Un rango de meses (purchasing_report_v2): un mes lista cada compra; varios traen la tabla por mes.
+    final desde = DateTime.tryParse('${reporte['desde'] ?? ''}') ?? DateTime.now();
+    final hasta = DateTime.tryParse('${reporte['hasta'] ?? ''}') ?? desde;
+    final variosMeses = (int.tryParse('${reporte['meses'] ?? 1}') ?? 1) > 1;
+    final anual = reporte['anual'] == true;
+    final titulo = anual ? 'Reporte anual' : (variosMeses ? 'Reporte por meses' : 'Reporte mensual');
+    final rango = periodo(desde, hasta);
+    final cierre = ProveedorPdfService.fecha(reporte['cierre'] ?? reporte['hasta']);
     final esDueno = reporte['dueno'] == true;
     final franja = ProveedorPdfService._mapa(reporte['franja']);
     final esperan = ProveedorPdfService._mapa(reporte['esperan']);
@@ -339,6 +361,7 @@ class ComprasPdfService {
     final pagos = ProveedorPdfService._lista(reporte['pagos']);
     final adelantos = ProveedorPdfService._lista(reporte['adelantos']);
     final solicitudes = ProveedorPdfService._mapa(reporte['solicitudes']);
+    final totalesAdelantos = ProveedorPdfService._mapa(reporte['adelantos_totales']);
     final gastos = ProveedorPdfService._lista(reporte['gastos']);
     String cafe(dynamic e) => ProveedorPdfService._cafe[e] ?? '${e ?? ''}';
     String soles(dynamic v) => v == null ? '—' : ProveedorPdfService.soles(v);
@@ -381,10 +404,10 @@ class ComprasPdfService {
             ]),
           ),
           pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
-            pw.Text(anual ? 'Reporte anual' : 'Reporte mensual',
+            pw.Text(titulo,
                 style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._brown)),
             pw.SizedBox(height: 3),
-            pw.Text(periodo, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._textDark)),
+            pw.Text(rango, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._textDark)),
             pw.SizedBox(height: 4),
             pw.Text('Fecha de emisión: ${ProveedorPdfService.fecha(reporte['generado'] ?? DateTime.now().toIso8601String())}',
                 style: const pw.TextStyle(fontSize: 8.5, color: ProveedorPdfService._textGrey)),
@@ -409,13 +432,27 @@ class ComprasPdfService {
                 child: esDueno
                     ? ProveedorPdfService._metaChip('Le debemos', soles(franja['debe']))
                     : ProveedorPdfService._metaChip('Sin precio', _cuantos(franja['sin_precio'], 'compra', 'compras'))),
-            if (anual) pw.Expanded(child: ProveedorPdfService._metaChip('Mayor parte de un agricultor', _pct(franja['mayor_parte']))),
+            if (variosMeses) pw.Expanded(child: ProveedorPdfService._metaChip('Mayor parte de un agricultor', _pct(franja['mayor_parte']))),
           ]),
         ),
+        // Finanzas: lo comprado y lo pagado en el periodo, lado a lado (pueden ser distintos: se paga después).
+        if (esDueno) ...[
+          pw.SizedBox(height: 8),
+          pw.Container(
+            padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: pw.BoxDecoration(borderRadius: pw.BorderRadius.circular(6), border: pw.Border.all(color: ProveedorPdfService._cardBorder)),
+            child: pw.Row(children: [
+              pw.Expanded(child: ProveedorPdfService._metaChip('Comprado en el periodo', soles(franja['comprado']))),
+              pw.Expanded(child: ProveedorPdfService._metaChip('Pagado en el periodo', soles(franja['pagado']))),
+              pw.Expanded(child: ProveedorPdfService._metaChip('Adelantos dados', soles(totalesAdelantos['dados']))),
+              pw.Expanded(child: ProveedorPdfService._metaChip('Adelantos abiertos al $cierre', soles(totalesAdelantos['abiertos_al_cierre']))),
+            ]),
+          ),
+        ],
         espacio(),
 
         // ── COMPRAS DEL MES / POR MES ──
-        if (!anual) ...[
+        if (!variosMeses) ...[
           if (compras.isEmpty)
             pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [ProveedorPdfService._sectionHeader('  COMPRAS DEL MES'), nada('No hubo compras este mes.')])
           else
@@ -442,13 +479,13 @@ class ComprasPdfService {
             [
               for (final m in porMes)
                 [
-                  nombreMes(int.tryParse('${m['mes']}') ?? 1),
+                  _etiquetaMes(m['mes']),
                   _n(m['compras']),
                   ProveedorPdfService.kg(m['kg']),
                   _n(m['agricultores']),
                   if (esDueno) ...[soles(m['total']), soles(m['precio_medio']), soles(m['debe'])],
                 ],
-              if (porMes.isEmpty) ['Sin compras este año', '', '', '', if (esDueno) ...['', '', '']],
+              if (porMes.isEmpty) ['Sin compras en el periodo', '', '', '', if (esDueno) ...['', '', '']],
             ],
             esDueno ? {1, 2, 3, 4, 5, 6} : {1, 2, 3},
           ),
@@ -458,7 +495,7 @@ class ComprasPdfService {
         if (porAgricultor.isNotEmpty) ...[
           ...tabla(
             'POR AGRICULTOR',
-            ['Agricultor', 'Comunidad', 'Compras', 'Kilos', 'Parte', if (anual) 'Meses', if (esDueno) ...['Total', 'Precio medio/kg']],
+            ['Agricultor', 'Comunidad', 'Compras', 'Kilos', 'Parte', if (variosMeses) 'Meses', if (esDueno) ...['Total', 'Precio medio/kg']],
             [
               for (final a in porAgricultor)
                 [
@@ -467,11 +504,11 @@ class ComprasPdfService {
                   _n(a['compras']),
                   ProveedorPdfService.kg(a['kg']),
                   _pct(a['parte']),
-                  if (anual) _n(a['meses']),
+                  if (variosMeses) _n(a['meses']),
                   if (esDueno) ...[soles(a['total']), soles(a['precio_medio'])],
                 ],
             ],
-            {2, 3, 4, if (anual) 5, if (esDueno) ...[anual ? 6 : 5, anual ? 7 : 6]},
+            {2, 3, 4, if (variosMeses) 5, if (esDueno) ...[variosMeses ? 6 : 5, variosMeses ? 7 : 6]},
           ),
           espacio(),
         ],
@@ -520,7 +557,7 @@ class ComprasPdfService {
           espacio(),
           ...tabla(
             'ADELANTOS',
-            ['Fecha', 'Adelanto', 'Agricultor', 'Monto', 'Usado en café', 'Devuelto', 'Saldo'],
+            ['Fecha', 'Adelanto', 'Agricultor', 'Monto', 'Usado en café', 'Devuelto', 'Saldo al $cierre'],
             [
               for (final a in adelantos)
                 [
