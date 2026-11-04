@@ -598,3 +598,249 @@ class ComprasPdfService {
     return doc.save();
   }
 }
+
+/// Reporte de Producción (General Manager, 4 nov 2026), con el mismo diseño del de Compras. Qué muestra lo decidió el
+/// área de Producción: franja (tuestes, verde que entró, tostado que salió, merma media); los tuestes del mes (o una
+/// tabla por mes); merma por lote verde; stock de verde y de tostado hoy; café por procesar hoy; costos (sólo dueños).
+/// [reporte] es lo que da /produccion/reporte.
+class ProduccionPdfService {
+  static String _kg(dynamic v) => v == null ? '—' : ProveedorPdfService.kg(v);
+  static String _pct(dynamic v) => v == null ? '—' : '${v is num ? v.toStringAsFixed(1) : v}%';
+  static const _cafe = {'cherry': 'Cereza', 'parchment': 'Pergamino', 'green': 'Verde'};
+
+  static Future<Uint8List> generarBytes(Map<String, dynamic> reporte, {String? businessName, pw.Font? base, pw.Font? bold}) async {
+    final doc = pw.Document();
+    final font = base ?? await PdfGoogleFonts.notoSansRegular();
+    final fontBold = bold ?? await PdfGoogleFonts.notoSansBold();
+    const tabla = ProveedorPdfService._tabla;
+
+    final negocio = businessName ?? ApiService.businessName;
+    final desde = DateTime.tryParse('${reporte['desde'] ?? ''}') ?? DateTime.now();
+    final hasta = DateTime.tryParse('${reporte['hasta'] ?? ''}') ?? desde;
+    final variosMeses = (int.tryParse('${reporte['meses'] ?? 1}') ?? 1) > 1;
+    final anual = reporte['anual'] == true;
+    final titulo = anual ? 'Reporte anual' : (variosMeses ? 'Reporte por meses' : 'Reporte mensual');
+    final esDueno = reporte['dueno'] == true;
+    final franja = ProveedorPdfService._mapa(reporte['franja']);
+    final enCurso = ProveedorPdfService._mapa(reporte['en_curso']);
+    final tuestes = ProveedorPdfService._lista(reporte['tuestes']);
+    final porMes = ProveedorPdfService._lista(reporte['por_mes']);
+    final porLote = ProveedorPdfService._lista(reporte['por_lote']);
+    final verde = ProveedorPdfService._lista(reporte['verde_hoy']);
+    final tostado = ProveedorPdfService._lista(reporte['tostado_hoy']);
+    final porProcesar = ProveedorPdfService._lista(reporte['por_procesar']);
+    final costos = ProveedorPdfService._lista(reporte['costos']);
+    final costosMes = ProveedorPdfService._lista(reporte['costos_por_mes']);
+    final hoy = ProveedorPdfService.fecha(reporte['generado'] ?? DateTime.now().toIso8601String());
+    String soles(dynamic v) => v == null ? '—' : ProveedorPdfService.soles(v);
+    pw.Widget espacio() => pw.SizedBox(height: 12);
+    pw.Widget nada(String titulo, String t) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+          ProveedorPdfService._sectionHeader('  $titulo'),
+          pw.Padding(
+              padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+              child: pw.Text(t, style: const pw.TextStyle(fontSize: 9, color: ProveedorPdfService._textGrey))),
+        ]);
+    doc.addPage(pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(28),
+      maxPages: 40,
+      theme: pw.ThemeData.withFont(base: font, bold: fontBold),
+      footer: (ctx) => pw.Column(children: [
+        pw.Divider(thickness: 0.5, color: ProveedorPdfService._cardBorder),
+        pw.Row(children: [
+          pw.Expanded(
+              child: pw.Text(esDueno ? 'Documento interno: tiene costos.' : 'Documento interno.',
+                  style: const pw.TextStyle(fontSize: 7.5, color: ProveedorPdfService._textGrey))),
+          pw.Text('Página ${ctx.pageNumber} de ${ctx.pagesCount}', style: const pw.TextStyle(fontSize: 7.5, color: ProveedorPdfService._textGrey)),
+        ]),
+      ]),
+      build: (ctx) => [
+        // ── CABECERA ──
+        pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+          pw.Expanded(
+            child: pw.Row(children: [
+              pw.Flexible(
+                  child: pw.Text(negocio.toUpperCase(),
+                      style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._brown, letterSpacing: 1.5))),
+              pw.SizedBox(width: 10),
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: ProveedorPdfService._brown, width: 1), borderRadius: pw.BorderRadius.circular(3)),
+                child: pw.Text('PRODUCCIÓN',
+                    style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._brown, letterSpacing: 2)),
+              ),
+            ]),
+          ),
+          pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+            pw.Text(titulo, style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._brown)),
+            pw.SizedBox(height: 3),
+            pw.Text(ComprasPdfService.periodo(desde, hasta),
+                style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._textDark)),
+            pw.SizedBox(height: 4),
+            pw.Text('Fecha de emisión: $hoy', style: const pw.TextStyle(fontSize: 8.5, color: ProveedorPdfService._textGrey)),
+          ]),
+        ]),
+        pw.SizedBox(height: 10),
+        pw.Divider(height: 1, thickness: 1.5, color: ProveedorPdfService._brown),
+        pw.SizedBox(height: 12),
+
+        // ── FRANJA ──
+        pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: pw.BoxDecoration(
+              color: ProveedorPdfService._warmBg,
+              borderRadius: pw.BorderRadius.circular(6),
+              border: pw.Border.all(color: ProveedorPdfService._cardBorder)),
+          child: pw.Row(children: [
+            pw.Expanded(child: ProveedorPdfService._metaChip('Tuestes terminados', ComprasPdfService._n(franja['tuestes']))),
+            pw.Expanded(child: ProveedorPdfService._metaChip('Café verde que entró', _kg(franja['kg_verde']))),
+            pw.Expanded(child: ProveedorPdfService._metaChip('Café tostado que salió', _kg(franja['kg_tostado']))),
+            pw.Expanded(child: ProveedorPdfService._metaChip('Merma media', _pct(franja['merma_pct']))),
+          ]),
+        ),
+        espacio(),
+
+        // ── A. TUESTES DEL MES / POR MES ──
+        if (!variosMeses)
+          if (tuestes.isEmpty)
+            nada('TUESTES DEL MES', 'No hubo tuestes este mes.')
+          else
+            ...tabla(
+              'TUESTES DEL MES',
+              ['Fecha', 'Producto', 'Lote verde', 'Verde', 'Tostado', 'Merma', 'Estado'],
+              [
+                for (final t in tuestes)
+                  [
+                    ProveedorPdfService.fecha(t['fecha']),
+                    '${t['producto'] ?? '—'}',
+                    '${t['lote'] ?? '—'}',
+                    _kg(t['kg_verde']),
+                    _kg(t['kg_tostado']),
+                    _pct(t['merma_pct']),
+                    '${t['estado'] ?? ''}',
+                  ],
+              ],
+              {3, 4, 5},
+            )
+        else if (porMes.isEmpty)
+          nada('POR MES', 'No hubo tuestes terminados en el periodo.')
+        else
+          ...tabla(
+            'POR MES',
+            ['Mes', 'Tuestes', 'Verde', 'Tostado', 'Merma'],
+            [
+              for (final m in porMes)
+                [ComprasPdfService._etiquetaMes(m['mes']), ComprasPdfService._n(m['tuestes']), _kg(m['kg_verde']), _kg(m['kg_tostado']), _pct(m['merma_pct'])],
+            ],
+            {1, 2, 3, 4},
+          ),
+        pw.Padding(
+          padding: const pw.EdgeInsets.only(top: 6),
+          child: pw.Text(
+              'Hoy: ${ComprasPdfService._cuantos(enCurso['programados'], 'tueste programado', 'tuestes programados')} · '
+              '${ComprasPdfService._cuantos(enCurso['tostando'], 'tostando', 'tostando')}',
+              style: const pw.TextStyle(fontSize: 8.5, color: ProveedorPdfService._textGrey)),
+        ),
+        espacio(),
+
+        // ── B. MERMA POR LOTE VERDE ──
+        if (porLote.isNotEmpty) ...[
+          ...tabla(
+            'MERMA POR LOTE VERDE',
+            ['Lote', 'Variedad', 'Cosecha', 'Tuestes', 'Verde', 'Tostado', 'Merma'],
+            [
+              for (final l in porLote)
+                [
+                  '${l['lote'] ?? '—'}',
+                  '${l['variedad'] ?? '—'}',
+                  '${l['cosecha'] ?? '—'}',
+                  ComprasPdfService._n(l['tuestes']),
+                  _kg(l['kg_verde']),
+                  _kg(l['kg_tostado']),
+                  _pct(l['merma_pct']),
+                ],
+            ],
+            {3, 4, 5, 6},
+          ),
+          espacio(),
+        ],
+
+        // ── C. CAFÉ VERDE HOY ──
+        if (verde.isEmpty)
+          nada('CAFÉ VERDE EN STOCK HOY ($hoy)', 'No hay café verde en stock.')
+        else
+          ...tabla(
+            'CAFÉ VERDE EN STOCK HOY ($hoy)',
+            ['Lote', 'Variedad', 'Cosecha', 'Entró', 'Queda'],
+            [
+              for (final g in verde)
+                ['${g['lote'] ?? '—'}', '${g['variedad'] ?? '—'}', '${g['cosecha'] ?? '—'}', _kg(g['kg_inicial']), _kg(g['kg_ahora'])],
+            ],
+            {3, 4},
+          ),
+        espacio(),
+
+        // ── D. CAFÉ TOSTADO HOY ──
+        if (tostado.isEmpty)
+          nada('CAFÉ TOSTADO DISPONIBLE HOY ($hoy)', 'No hay café tostado disponible.')
+        else
+          ...tabla(
+            'CAFÉ TOSTADO DISPONIBLE HOY ($hoy)',
+            ['Tostado el', 'Producto', 'Lote', 'Disponible'],
+            [
+              for (final t in tostado) [ProveedorPdfService.fecha(t['fecha']), '${t['producto'] ?? '—'}', '${t['lote'] ?? '—'}', _kg(t['kg'])],
+            ],
+            {3},
+          ),
+
+        // ── E. POR PROCESAR HOY ──
+        if (porProcesar.isNotEmpty) ...[
+          espacio(),
+          ...tabla(
+            'CAFÉ COMPRADO POR PROCESAR HOY ($hoy)',
+            ['Café', 'Lotes', 'Kilos', 'Calidad'],
+            [
+              for (final p in porProcesar)
+                [
+                  _cafe[p['estado']] ?? '${p['estado'] ?? ''}',
+                  ComprasPdfService._n(p['lotes']),
+                  _kg(p['kg']),
+                  p['calidad'] == 'pending' ? 'Por revisar' : '${p['calidad'] ?? ''}',
+                ],
+            ],
+            {1, 2},
+          ),
+        ],
+
+        // ── F. COSTOS (sólo dueños) ──
+        if (esDueno) ...[
+          espacio(),
+          if (costos.isEmpty)
+            nada('COSTOS DE PRODUCCIÓN', 'No hubo gastos de Producción en el periodo.')
+          else
+            ...tabla(
+              'COSTOS DE PRODUCCIÓN',
+              ['Categoría', 'Pendiente', 'Pagado', 'Total'],
+              [
+                for (final c in costos) ['${c['categoria'] ?? ''}', soles(c['pendiente']), soles(c['pagado']), soles(c['total'])],
+              ],
+              {1, 2, 3},
+            ),
+          if (variosMeses && costosMes.isNotEmpty) ...[
+            espacio(),
+            ...tabla(
+              'COSTOS POR MES',
+              ['Mes', 'Pendiente', 'Pagado', 'Total'],
+              [
+                for (final c in costosMes) [ComprasPdfService._etiquetaMes(c['mes']), soles(c['pendiente']), soles(c['pagado']), soles(c['total'])],
+              ],
+              {1, 2, 3},
+            ),
+          ],
+        ],
+      ],
+    ));
+    return doc.save();
+  }
+}

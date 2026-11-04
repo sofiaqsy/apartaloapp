@@ -78,6 +78,57 @@ void main() {
     expect(ComprasPdfService.periodo(DateTime(2026, 5), DateTime(2026, 9)), 'May 2026 – Sep 2026');
   });
 
+  test('builds the Producción report for one month and for a range, for owners and for staff', () async {
+    Map<String, dynamic> r({required bool dueno, required bool rango}) => {
+          'desde': rango ? '2026-05-01' : '2026-11-01',
+          'hasta': rango ? '2026-09-30' : '2026-11-30',
+          'meses': rango ? 5 : 1,
+          'generado': '2026-11-04T15:00:00Z',
+          'dueno': dueno,
+          'franja': {'tuestes': 2, 'kg_verde': 60, 'kg_tostado': 49.8, 'merma_pct': 17.0},
+          'en_curso': {'programados': 1, 'tostando': 0},
+          'tuestes': rango
+              ? []
+              : [
+                  {'fecha': '2026-11-03', 'producto': 'Omagua 250 g', 'lote': 'GV-1', 'kg_verde': 20, 'kg_tostado': 16.6, 'merma_pct': 17.0, 'estado': 'Terminado'},
+                  {'fecha': '2026-11-05', 'producto': 'Omagua 1 kg', 'lote': 'GV-1', 'kg_verde': 10, 'estado': 'Programado'},
+                ],
+          'por_mes': rango
+              ? [
+                  {'mes': '2026-05', 'tuestes': 1, 'kg_verde': 20, 'kg_tostado': 16.6, 'merma_pct': 17.0},
+                  {'mes': '2026-07', 'tuestes': 1, 'kg_verde': 40, 'kg_tostado': 33.2, 'merma_pct': 17.0},
+                ]
+              : [],
+          'por_lote': [
+            {'lote': 'GV-1', 'variedad': 'Catimor', 'cosecha': 2026, 'tuestes': 2, 'kg_verde': 60, 'kg_tostado': 49.8, 'merma_pct': 17.0}
+          ],
+          'verde_hoy': [
+            {'lote': 'GV-1', 'variedad': 'Catimor', 'cosecha': 2026, 'kg_inicial': 100, 'kg_ahora': 40}
+          ],
+          'tostado_hoy': [
+            {'fecha': '2026-07-02', 'producto': 'Omagua 250 g', 'lote': 'TT-1', 'kg': 12}
+          ],
+          'por_procesar': [
+            {'estado': 'parchment', 'calidad': 'pending', 'lotes': 2, 'kg': 120}
+          ],
+          if (dueno) 'costos': [
+            {'categoria': 'Mantenimiento', 'pendiente': 90, 'pagado': 0, 'total': 90}
+          ],
+          if (dueno && rango) 'costos_por_mes': [
+            {'mes': '2026-07', 'pendiente': 90, 'pagado': 0, 'total': 90}
+          ],
+        };
+    for (final rango in [false, true]) {
+      for (final dueno in [true, false]) {
+        final bytes = await ProduccionPdfService.generarBytes(r(dueno: dueno, rango: rango),
+            businessName: 'Negocio Ejemplo', base: pw.Font.helvetica(), bold: pw.Font.helveticaBold());
+        expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+        final salida = Platform.environment['COMPRAS_PDF_DIR'];
+        if (salida != null) File('$salida/produccion_${rango ? 'rango' : 'mes'}_${dueno ? 'dueno' : 'staff'}.pdf').writeAsBytesSync(bytes);
+      }
+    }
+  });
+
   test('month names are in Spanish', () {
     expect(ComprasPdfService.nombreMes(1), 'Enero');
     expect(ComprasPdfService.nombreMes(11), 'Noviembre');

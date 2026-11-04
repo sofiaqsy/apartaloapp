@@ -1457,25 +1457,63 @@ class _FincaScreenState extends _ProcesoState<_FincaScreen> with _ProveedoresDel
   }
 }
 
-// ─── Compras ─────────────────────────────────────────────────────────────────
+/// Botón flotante de reporte en PDF de un proceso (General Manager, 4 nov 2026: Compras, luego Producción): abre
+/// Generar reporte (Mensual con fecha de inicio y de fin, o Anual), pide el reporte recién entonces y muestra el PDF
+/// para compartir. Cada proceso dice su nombre, cómo pedir su reporte y cómo armar su PDF.
+mixin _ReporteDelProceso<T extends StatefulWidget> on State<T> {
+  String get nombreReporte;
+  Future<ApiResponse<Map<String, dynamic>>> pedirReporte(DateTime desde, DateTime hasta);
+  Future<Uint8List> armarPdf(Map<String, dynamic> reporte);
+  bool _generando = false;
 
-class _ComprasScreen extends StatefulWidget {
-  const _ComprasScreen({required this.esDueno});
-  final bool esDueno;
+  Widget botonReporte() => FloatingActionButton(
+        tooltip: 'Generar reporte',
+        onPressed: _generando ? null : _elegirReporte,
+        child: _generando
+            ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5))
+            : const Icon(Icons.picture_as_pdf_outlined),
+      );
 
-  @override
-  State<_ComprasScreen> createState() => _ComprasScreenState();
+  Future<void> _elegirReporte() async {
+    final rango = await _abrirPantalla<(DateTime, DateTime)>(context, const _ReporteComprasForm());
+    if (rango == null || !mounted) return;
+    final (desde, hasta) = rango;
+    setState(() => _generando = true);
+    final r = await pedirReporte(desde, hasta);
+    if (!mounted) return;
+    if (!r.isSuccess) {
+      setState(() => _generando = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.error ?? 'No se pudo generar el reporte')));
+      return;
+    }
+    try {
+      final bytes = await armarPdf(_mapa(r.data!['reporte']));
+      if (!mounted) return;
+      String m(DateTime d) => '${d.year}_${d.month.toString().padLeft(2, '0')}';
+      final base = nombreReporte.toLowerCase().replaceAll('ó', 'o');
+      final nombre = desde == hasta ? '${base}_${m(desde)}.pdf' : '${base}_${m(desde)}_a_${m(hasta)}.pdf';
+      await _abrirPantalla<void>(
+          context, _ReportePdfScreen(bytes: bytes, archivo: nombre, titulo: '$nombreReporte · ${ComprasPdfService.periodo(desde, hasta)}'));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo generar el PDF: revisa la señal.')));
+      }
+    } finally {
+      if (mounted) setState(() => _generando = false);
+    }
+  }
 }
 
-class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _ProveedoresDelProceso {
-  int _pestana = 0; // 0 Compras, 1 Adelantos, 2 Proveedores, 3 Gastos
-
-  // Pestaña Gastos (General Manager, 4 nov 2026): los gastos del área Compras con su estado (los últimos 30).
+/// Pestaña Gastos de un proceso (General Manager, 4 nov 2026: Compras, luego Producción): los gastos de su área con su
+/// estado, los últimos 30 (de Mi área, que ya respeta las áreas de la persona); el monto lo dice la base.
+mixin _GastosDelArea<T extends StatefulWidget> on State<T> {
+  String get areaGastos; // 'sourcing', 'production'
+  String get vacioGastos;
   List<Map<String, dynamic>>? _gastos;
   String? _errorGastos;
 
-  Future<void> _cargarGastos() async {
-    final r = await AdministracionService.miArea('sourcing');
+  Future<void> cargarGastos() async {
+    final r = await AdministracionService.miArea(areaGastos);
     if (!mounted) return;
     setState(() {
       _errorGastos = r.isSuccess ? null : (r.error ?? 'No se pudo cargar');
@@ -1483,11 +1521,11 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
     });
   }
 
-  List<Widget> _listaGastos() {
+  List<Widget> listaGastos() {
     final gastos = _gastos;
     if (_errorGastos != null) return [Padding(padding: const EdgeInsets.all(16), child: Text(_errorGastos!, textAlign: TextAlign.center))];
     if (gastos == null) return [const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))];
-    if (gastos.isEmpty) return [_vacio('Todavía no hay gastos de Compras.')];
+    if (gastos.isEmpty) return [_vacio(vacioGastos)];
     return [
       const SizedBox(height: 8),
       for (final g in gastos)
@@ -1504,6 +1542,20 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
         ),
     ];
   }
+}
+
+// ─── Compras ─────────────────────────────────────────────────────────────────
+
+class _ComprasScreen extends StatefulWidget {
+  const _ComprasScreen({required this.esDueno});
+  final bool esDueno;
+
+  @override
+  State<_ComprasScreen> createState() => _ComprasScreenState();
+}
+
+class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _ProveedoresDelProceso, _GastosDelArea, _ReporteDelProceso {
+  int _pestana = 0; // 0 Compras, 1 Adelantos, 2 Proveedores, 3 Gastos
 
   // Pestaña Compras: todas las compras, de 20 en 20 desde el servidor al llegar al final; cada una abre su detalle.
   final List<Map<String, dynamic>> _compras = [];
@@ -1654,6 +1706,11 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
   String get clave => 'compras';
 
   @override
+  String get areaGastos => 'sourcing';
+  @override
+  String get vacioGastos => 'Todavía no hay gastos de Compras.';
+
+  @override
   String? get rolProveedores => 'agricultor'; // en Compras, sólo quienes nos venden café
   @override
   String get vacioProveedores => 'Todavía no hay agricultores.';
@@ -1677,12 +1734,12 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
           onElegir: (i) {
             setState(() => _pestana = i);
             if (i == 2) abrirProveedores();
-            if (i == 3) _cargarGastos();
+            if (i == 3) cargarGastos();
             if (i == 1 && _adelantos.isEmpty && _hayMasAdelantos) _masAdelantos();
           },
         ),
         if (_pestana == 3)
-          ..._listaGastos()
+          ...listaGastos()
         else if (_pestana == 2)
           ..._listaProveedores()
         else if (_pestana == 0)
@@ -1693,49 +1750,15 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
     },
         alFinal: _pestana == 3 ? null : (_pestana == 2 ? masProveedores : (_pestana == 0 ? _masCompras : _masAdelantos)),
         // Reporte en PDF, mensual o anual (General Manager, 4 nov 2026); el contenido lo decidió el área de Compras.
-        botonFlotante: FloatingActionButton(
-          tooltip: 'Generar reporte',
-          onPressed: _generando ? null : _elegirReporte,
-          child: _generando
-              ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5))
-              : const Icon(Icons.picture_as_pdf_outlined),
-        ));
+        botonFlotante: botonReporte());
   }
 
-  bool _generando = false;
-
-  /// Abre el formulario Generar reporte (Mensual con Desde y Hasta, o Anual); devuelve el rango elegido.
-  Future<void> _elegirReporte() async {
-    final rango = await _abrirPantalla<(DateTime, DateTime)>(context, const _ReporteComprasForm());
-    if (rango == null || !mounted) return;
-    await _generarReporte(rango.$1, rango.$2);
-  }
-
-  /// Pide el reporte recién ahora y muestra el PDF para compartir, como el del proveedor.
-  Future<void> _generarReporte(DateTime desde, DateTime hasta) async {
-    setState(() => _generando = true);
-    final r = await AdministracionService.reporteCompras(desde, hasta);
-    if (!mounted) return;
-    if (!r.isSuccess) {
-      setState(() => _generando = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.error ?? 'No se pudo generar el reporte')));
-      return;
-    }
-    try {
-      final bytes = await ComprasPdfService.generarBytes(_mapa(r.data!['reporte']));
-      if (!mounted) return;
-      String m(DateTime d) => '${d.year}_${d.month.toString().padLeft(2, '0')}';
-      final nombre = desde == hasta ? 'compras_${m(desde)}.pdf' : 'compras_${m(desde)}_a_${m(hasta)}.pdf';
-      await _abrirPantalla<void>(
-          context, _ReportePdfScreen(bytes: bytes, archivo: nombre, titulo: 'Compras · ${ComprasPdfService.periodo(desde, hasta)}'));
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo generar el PDF: revisa la señal.')));
-      }
-    } finally {
-      if (mounted) setState(() => _generando = false);
-    }
-  }
+  @override
+  String get nombreReporte => 'Compras';
+  @override
+  Future<ApiResponse<Map<String, dynamic>>> pedirReporte(DateTime desde, DateTime hasta) => AdministracionService.reporteCompras(desde, hasta);
+  @override
+  Future<Uint8List> armarPdf(Map<String, dynamic> reporte) => ComprasPdfService.generarBytes(reporte);
 }
 
 /// Detalle de un proveedor: quién es, qué vende, sus procesos y lo que le compramos. DNI o RUC, teléfono, cuentas
@@ -2765,8 +2788,21 @@ class _ProduccionScreen extends StatefulWidget {
   State<_ProduccionScreen> createState() => _ProduccionScreenState();
 }
 
-class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _ProveedoresDelProceso {
-  int? _pestana; // 0 Tuestes, 1 Lotes, 2 Proveedores; al abrir: Tuestes si hay alguno, si no Lotes
+class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _ProveedoresDelProceso, _GastosDelArea, _ReporteDelProceso {
+  int? _pestana; // 0 Tuestes, 1 Lotes, 2 Proveedores, 3 Gastos; al abrir: Tuestes si hay alguno, si no Lotes
+
+  @override
+  String get nombreReporte => 'Producción';
+  @override
+  Future<ApiResponse<Map<String, dynamic>>> pedirReporte(DateTime desde, DateTime hasta) =>
+      AdministracionService.reporteProduccion(desde, hasta);
+  @override
+  Future<Uint8List> armarPdf(Map<String, dynamic> reporte) => ProduccionPdfService.generarBytes(reporte);
+
+  @override
+  String get areaGastos => 'production';
+  @override
+  String get vacioGastos => 'Todavía no hay gastos de Producción.';
 
   @override
   String? get areaProveedores => 'production';
@@ -2815,7 +2851,8 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
 
   @override
   Widget build(BuildContext context) {
-    return pantalla('Producción', alFinal: () {
+    // Reporte en PDF como Compras (General Manager, 4 nov 2026); el contenido lo decidió el área de Producción.
+    return pantalla('Producción', botonFlotante: botonReporte(), alFinal: () {
       if (_pestana == 2) masProveedores();
     }, (d) {
       final lotes = _lista(d['lotes_verdes']);
@@ -2823,8 +2860,7 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
       final porProcesar = _lista(d['por_procesar']);
       final pestana = _pestana ?? (tuestes.isNotEmpty ? 0 : 1);
       return [
-        _CuatroDatos(indicadores: _indicadoresProduccion(d), grande: true), // los mismos 4 de la tarjeta
-        const SizedBox(height: 16),
+        // Sin resumen arriba, como Compras (General Manager, 4 nov 2026): la tarjeta de Procesos ya lo muestra.
         _Acciones(acciones: [
           (Icons.local_fire_department, 'Tostar café', _tostar),
           (
@@ -2834,14 +2870,17 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
           ),
         ]),
         _Pestanas(
-          nombres: const ['Tuestes', 'Lotes', 'Proveedores'],
+          nombres: const ['Tuestes', 'Lotes', 'Proveedores', 'Gastos'], // Gastos: General Manager, 4 nov 2026
           elegida: pestana,
           onElegir: (i) {
             setState(() => _pestana = i);
             if (i == 2) abrirProveedores();
+            if (i == 3) cargarGastos();
           },
         ),
-        if (pestana == 2)
+        if (pestana == 3)
+          ...listaGastos()
+        else if (pestana == 2)
           ..._listaProveedores()
         else if (pestana == 0) ...[
           _encabezado('Tuestes en curso y programados', '${tuestes.length}'),

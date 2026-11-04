@@ -68,6 +68,12 @@ class AdministracionService {
     return _get('compras/reporte?desde=${mes(desde)}&hasta=${mes(hasta)}');
   }
 
+  /// Reporte de Producción de [desde] a [hasta] (meses; a lo más 12). Los costos sólo llegan a dueños.
+  static Future<ApiResponse<Map<String, dynamic>>> reporteProduccion(DateTime desde, DateTime hasta) {
+    String mes(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}';
+    return _get('produccion/reporte?desde=${mes(desde)}&hasta=${mes(hasta)}');
+  }
+
   static Future<ApiResponse<Map<String, dynamic>>> reporteProveedor(String id) => _get('proveedores/${Uri.encodeComponent(id)}/reporte');
 
   /// Subir evidencia (dueños): una foto o PDF del voucher o recibo de una compra (purchase), un gasto (expense),

@@ -105,7 +105,7 @@ void main() {
       ], 'total': 3}), 200);
     }
     // The report is checked up to the request; building the PDF needs the fonts from the internet (tested apart).
-    if (p.endsWith('/compras/reporte')) return http.Response(jsonEncode({'error': 'Sin señal'}), 503);
+    if (p.endsWith('/compras/reporte') || p.endsWith('/produccion/reporte')) return http.Response(jsonEncode({'error': 'Sin señal'}), 503);
     if (p.endsWith('/compras')) {
       final offset = int.parse(req.url.queryParameters['offset'] ?? '0');
       final todas = [
@@ -807,8 +807,12 @@ void main() {
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     // Opens on Tuestes because there are roasts; Lotes and Proveedores are the other tabs.
-    for (final t in ['Tostar café', 'Registrar gasto', 'Omagua 250 g', 'Omagua 1 kg', '16.7%', '820 kg → 683 kg', '1 tostando ahora']) {
+    for (final t in ['Tostar café', 'Registrar gasto', 'Omagua 250 g', 'Omagua 1 kg']) {
       expect(find.text(t), findsOneWidget, reason: t);
+    }
+    // No data on top, like Compras (4 Nov 2026): the Procesos card already shows it.
+    for (final t in ['16.7%', '820 kg → 683 kg', '1 tostando ahora']) {
+      expect(find.text(t), findsNothing, reason: t);
     }
     expect(find.text('Finalizar'), findsOneWidget); // the roast in progress
     expect(find.text('Iniciar'), findsOneWidget); // the planned one
@@ -818,6 +822,33 @@ void main() {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     expect(find.text('Finalizar'), findsNothing);
+  });
+
+  testWidgets('Producción copies Compras: a Gastos tab after Proveedores, and the PDF button with its own report', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Producción'));
+      await tester.pumpAndSettle();
+      final tabs = ['Tuestes', 'Lotes', 'Proveedores', 'Gastos'].map((t) => tester.getCenter(find.text(t).last).dx).toList();
+      for (var i = 1; i < tabs.length; i++) {
+        expect(tabs[i], greaterThan(tabs[i - 1]));
+      }
+      await tester.tap(find.text('Gastos').last);
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(pedidos.any((r) => r.url.path.endsWith('/mi-area') && r.url.queryParameters['area'] == 'production'), isTrue);
+    await http.runWithClient(() async {
+      await tester.tap(find.byIcon(Icons.picture_as_pdf_outlined));
+      await tester.pumpAndSettle();
+      expect(find.text('Generar reporte'), findsWidgets);
+      await tester.tap(find.text('Generar PDF'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final hoy = DateTime.now();
+    final mes = '${hoy.year}-${hoy.month.toString().padLeft(2, '0')}';
+    final r = pedidos.lastWhere((r) => r.url.path.endsWith('/produccion/reporte'));
+    expect(r.url.queryParameters, {'desde': mes, 'hasta': mes});
+    expect(pedidos.any((r) => r.url.path.endsWith('/compras/reporte')), isFalse);
   });
 
   testWidgets('Finalizar asks the roasted kilos and never more than the green coffee', (tester) async {
