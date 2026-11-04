@@ -2916,7 +2916,7 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
             for (final l in _lista(p['lotes']))
               _Ficha(
                 inicio: _Insignia('${l['lote'] ?? '—'}', tono: Colors.orange),
-                titulo: 'Tostado el ${_fechaCorta(l['fecha'])}',
+                titulo: _fechaCorta(l['fecha']), // sólo la fecha: en esta pestaña todo es tostado (General Manager, 4 nov 2026)
                 fin: Text(_kg(l['kg']), style: const TextStyle(fontWeight: FontWeight.w600)),
                 // Cada lote tostado abre su detalle (General Manager, 4 nov 2026).
                 onTap: l['id'] == null ? null : () => _abrirPantalla<void>(context, _TostadoDetalleScreen(id: '${l['id']}', producto: '${p['nombre'] ?? ''}')),
