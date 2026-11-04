@@ -106,6 +106,16 @@ void main() {
     }
     // The report is checked up to the request; building the PDF needs the fonts from the internet (tested apart).
     if (p.endsWith('/compras/reporte') || p.endsWith('/produccion/reporte')) return http.Response(jsonEncode({'error': 'Sin señal'}), 503);
+    if (p.endsWith('/produccion/tostados/r8')) {
+      return http.Response(jsonEncode({
+        'tostado': {
+          'id': 'r8', 'lote': 'L-8', 'tostado_el': '2026-10-20T15:00:00Z', 'terminado_el': '2026-10-20T15:14:00Z', 'kg_verde': 100, 'kg_tostado': 80,
+          'merma_pct': 20, 'tostadora': 'Tostadora Villa Rica', 'tiempo_s': 780, 'notas': 'Buen desarrollo',
+          'verde': {'lote': 'L-8', 'variedad': 'Geisha', 'cosecha': 2026, 'origen': 'Finca Rosal'},
+          'productos': [{'nombre': 'Essential', 'asignado': 380, 'vendido': 40, 'disponible': 340}],
+        }
+      }), 200);
+    }
     if (p.endsWith('/compras')) {
       final offset = int.parse(req.url.queryParameters['offset'] ?? '0');
       final todas = [
@@ -203,7 +213,7 @@ void main() {
           'tostado_kg': 385, 'por_procesar': [],
           // By product, as the product screen counts it (production_summary_v2, 4 Nov 2026).
           'productos': [
-            {'id': 'p3', 'nombre': 'Essential', 'kg_tostado': 340, 'lotes': [{'lote': 'L-8', 'fecha': '2026-10-20', 'kg': 340}], 'tuestes': []},
+            {'id': 'p3', 'nombre': 'Essential', 'kg_tostado': 340, 'lotes': [{'id': 'r8', 'lote': 'L-8', 'fecha': '2026-10-20', 'kg': 340}], 'tuestes': []},
             {'id': 'p1', 'nombre': 'Omagua 250 g', 'kg_tostado': 45, 'lotes': [{'lote': 'L-7', 'fecha': '2026-11-02', 'kg': 45}],
               'tuestes': [{'id': 'e1', 'estado': 'in_progress', 'fecha': '2026-11-03T15:00:00Z', 'kg_verde': 20, 'lote': 'L-1'}]},
             {'id': 'p2', 'nombre': 'Omagua 1 kg', 'kg_tostado': 0, 'lotes': [],
@@ -820,13 +830,32 @@ void main() {
     expect(find.text('Lotes'), findsNothing);
     // Roasted coffee by product, the same as the product screen (4 Nov 2026): each product with its kilos, its lots
     // and its roasts in progress or planned.
-    for (final t in ['Tostar café', 'Registrar gasto', 'Café tostado por producto', 'Essential', 'Omagua 250 g', 'Omagua 1 kg',
+    for (final t in ['Tostar café', 'Registrar gasto', 'Essential', 'Omagua 250 g', 'Omagua 1 kg',
         'Tostado el 20 oct', 'Tostado el 2 nov', 'L-8', 'L-7', 'Tostando', 'Programado']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
-    expect(find.text('340 kg'), findsNWidgets(2)); // the product and its lot
+    // No title or total on top, and the kilos only once: on the lot (4 Nov 2026).
+    expect(find.text('Café tostado por producto'), findsNothing);
+    expect(find.text('385 kg'), findsNothing);
+    expect(find.text('340 kg'), findsOneWidget);
+    // In the order the database sends: the order of the Productos tab.
     final orden = ['Essential', 'Omagua 250 g', 'Omagua 1 kg'].map((t) => tester.getTopLeft(find.text(t)).dy).toList();
-    expect(orden[0] < orden[1] && orden[1] < orden[2], isTrue); // most roasted coffee first, as the database sends it
+    expect(orden[0] < orden[1] && orden[1] < orden[2], isTrue);
+    // A roasted lot opens its detail.
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Tostado el 20 oct'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    for (final t in ['Lote de tostado', 'Café verde que entró', '100 kg', '80 kg', '20%', 'Asignado', '380 kg', 'Vendido', '40 kg', 'Disponible',
+        'Tostadora Villa Rica', '13:00 min']) {
+      expect(find.text(t), findsWidgets, reason: t);
+    }
+    await tester.scrollUntilVisible(find.text('Buen desarrollo'), 200, scrollable: find.byType(Scrollable).last);
+    expect(find.text('Finca Rosal'), findsWidgets);
+    expect(find.text('Temperatura de carga'), findsNothing); // not recorded, so not shown
+    expect(tester.takeException(), isNull);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
     // No data on top, like Compras (4 Nov 2026): the Procesos card already shows it.
     for (final t in ['16.7%', '820 kg → 683 kg', '1 tostando ahora']) {
       expect(find.text(t), findsNothing, reason: t);

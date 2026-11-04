@@ -2907,16 +2907,19 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
         else if (pestana == 2)
           ..._listaProveedores()
         else if (pestana == 0) ...[
-          _encabezado('Café tostado por producto', _kg(d['tostado_kg'])),
+          // Sin título ni total arriba (General Manager, 4 nov 2026): los productos en el orden de la pestaña Productos.
           if (productos.isEmpty && sinProducto.isEmpty) _vacio('No hay café tostado ni lotes de tostado programados. Toca "Tostar café".'),
           for (final p in productos) ...[
-            _NombreProducto(nombre: '${p['nombre'] ?? 'Producto'}', kg: _kg(p['kg_tostado'])),
+            // Los kilos una sola vez: en cada lote; el total del producto sólo si tiene más de un lote.
+            _NombreProducto(nombre: '${p['nombre'] ?? 'Producto'}', kg: _lista(p['lotes']).length > 1 ? _kg(p['kg_tostado']) : null),
             if (_lista(p['lotes']).isEmpty && _lista(p['tuestes']).isEmpty) _vacio('Sin lotes tostados disponibles.'),
             for (final l in _lista(p['lotes']))
               _Ficha(
                 inicio: _Insignia('${l['lote'] ?? '—'}', tono: Colors.orange),
                 titulo: 'Tostado el ${_fechaCorta(l['fecha'])}',
                 fin: Text(_kg(l['kg']), style: const TextStyle(fontWeight: FontWeight.w600)),
+                // Cada lote tostado abre su detalle (General Manager, 4 nov 2026).
+                onTap: l['id'] == null ? null : () => _abrirPantalla<void>(context, _TostadoDetalleScreen(id: '${l['id']}', producto: '${p['nombre'] ?? ''}')),
               ),
             for (final t in _lista(p['tuestes'])) _filaTueste(t, conProducto: true),
           ],
@@ -2942,6 +2945,167 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
         ],
       ];
     });
+  }
+}
+
+/// Detalle de un lote de tostado (General Manager, 4 nov 2026): qué entró y salió, la merma, para cada producto lo
+/// asignado, vendido y disponible, los datos del tueste que se registraron, el lote verde, las notas y las fotos.
+/// Sólo lectura: todo es información (roast_lot_detail).
+class _TostadoDetalleScreen extends StatefulWidget {
+  const _TostadoDetalleScreen({required this.id, required this.producto});
+  final String id;
+  final String producto;
+
+  @override
+  State<_TostadoDetalleScreen> createState() => _TostadoDetalleScreenState();
+}
+
+class _TostadoDetalleScreenState extends State<_TostadoDetalleScreen> {
+  Map<String, dynamic>? _t;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    final r = await AdministracionService.tostado(widget.id);
+    if (!mounted) return;
+    setState(() {
+      _error = r.isSuccess ? null : (r.error ?? 'No se pudo cargar el lote de tostado.');
+      if (r.isSuccess) _t = _mapa(r.data!['tostado']);
+    });
+  }
+
+  static String? _minutos(dynamic s) {
+    final n = num.tryParse('${s ?? ''}');
+    if (n == null) return null;
+    final m = n ~/ 60, r = (n % 60).round();
+    return '$m:${r.toString().padLeft(2, '0')} min';
+  }
+
+  static String? _fechaHora(dynamic iso) {
+    final d = DateTime.tryParse('${iso ?? ''}')?.toLocal();
+    if (d == null) return null;
+    return '${_fechaCorta(iso)} ${d.year}, ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  }
+
+  Widget _dato(String nombre, String? valor) => valor == null || valor.isEmpty || valor == 'null'
+      ? const SizedBox.shrink()
+      : Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade300))),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(width: 150, child: Text(nombre, style: TextStyle(color: Colors.grey.shade700))),
+            Expanded(child: Text(valor, style: const TextStyle(fontWeight: FontWeight.w600))),
+          ]),
+        );
+
+  Widget _panel(String titulo, List<Widget> filas) {
+    final visibles = filas.where((w) => w is! SizedBox).toList();
+    if (visibles.isEmpty) return const SizedBox.shrink();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+          padding: const EdgeInsets.fromLTRB(4, 16, 4, 6), child: Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(16)),
+        child: Column(children: visibles),
+      ),
+    ]);
+  }
+
+  String? _num(dynamic v, String unidad) => v == null ? null : '$v $unidad';
+
+  @override
+  Widget build(BuildContext context) {
+    final t = _t;
+    final verde = t == null ? const <String, dynamic>{} : _mapa(t['verde']);
+    final productos = t == null ? const <Map<String, dynamic>>[] : _lista(t['productos']);
+    final media = t == null ? const <dynamic>[] : (t['media'] is List ? t['media'] as List : const <dynamic>[]);
+    final sensoriales = t == null || t['notas_sensoriales'] is! List ? null : (t['notas_sensoriales'] as List).join(', ');
+    return Scaffold(
+      appBar: AppBar(title: const Text('Lote de tostado')),
+      body: RefreshIndicator(
+        onRefresh: _cargar,
+        child: t == null
+            ? ListView(children: [
+                Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: _error != null ? Text(_error!, textAlign: TextAlign.center) : const Center(child: CircularProgressIndicator()),
+                ),
+              ])
+            : ListView(padding: const EdgeInsets.all(16), children: [
+                Row(children: [
+                  Expanded(child: Text(widget.producto, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
+                  _Insignia('${t['lote'] ?? '—'}', tono: Colors.orange),
+                ]),
+                const SizedBox(height: 4),
+                Text('Tostado el ${_fechaCorta(t['tostado_el'])}', style: TextStyle(color: Colors.grey.shade700)),
+                _panel('Café', [
+                  _dato('Café verde que entró', t['kg_verde'] == null ? null : _kg(t['kg_verde'])),
+                  _dato('Café tostado que salió', t['kg_tostado'] == null ? null : _kg(t['kg_tostado'])),
+                  _dato('Merma', t['merma_pct'] == null ? null : '${t['merma_pct']}%'),
+                ]),
+                for (final p in productos)
+                  _panel(productos.length > 1 ? '${p['nombre'] ?? 'Producto'}' : 'Para el producto', [
+                    _dato('Asignado', _kg(p['asignado'])),
+                    _dato('Vendido', _kg(p['vendido'])),
+                    _dato('Disponible', _kg(p['disponible'])),
+                  ]),
+                _panel('Tueste', [
+                  _dato('Empezó', _fechaHora(t['tostado_el'])),
+                  _dato('Terminó', _fechaHora(t['terminado_el'])),
+                  _dato('Tostadora', t['tostadora']?.toString()),
+                  _dato('Nivel de tueste', t['nivel']?.toString()),
+                  _dato('Temperatura de carga', _num(t['temp_carga'], '°C')),
+                  _dato('Temperatura de salida', _num(t['temp_salida'], '°C')),
+                  _dato('Tiempo total', _minutos(t['tiempo_s'])),
+                  _dato('Primer crack', _minutos(t['primer_crack_s'])),
+                  _dato('Notas sensoriales', sensoriales),
+                ]),
+                _panel('Lote verde', [
+                  _dato('Lote', verde['lote']?.toString()),
+                  _dato('Variedad', verde['variedad']?.toString()),
+                  _dato('Cosecha', verde['cosecha']?.toString()),
+                  _dato('Origen', verde['origen']?.toString()),
+                ]),
+                if (t['notas'] != null)
+                  _panel('Notas', [
+                    Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: SizedBox(width: double.infinity, child: Text('${t['notas']}'))),
+                  ]),
+                if (media.isNotEmpty) ...[
+                  const Padding(
+                      padding: EdgeInsets.fromLTRB(4, 16, 4, 6),
+                      child: Text('Fotos y videos', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+                  GridView.count(
+                    crossAxisCount: 3,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    mainAxisSpacing: 6,
+                    crossAxisSpacing: 6,
+                    children: [
+                      for (final u in media.map((e) => '$e'))
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: RegExp(r'\.(mp4|mov)$', caseSensitive: false).hasMatch(u)
+                              ? Container(
+                                  color: Colors.orange.shade50,
+                                  child: Icon(Icons.videocam_outlined, color: Colors.orange.shade700, size: 32))
+                              : Image.network(u,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) =>
+                                      Container(color: Colors.grey.shade200, child: Icon(Icons.broken_image_outlined, color: Colors.grey.shade500))),
+                        ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 24),
+              ]),
+      ),
+    );
   }
 }
 

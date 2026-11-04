@@ -74,6 +74,10 @@ class AdministracionService {
     return _get('produccion/reporte?desde=${mes(desde)}&hasta=${mes(hasta)}');
   }
 
+  /// Detalle de un lote de tostado (General Manager, 4 nov 2026): entró, salió, merma, lote verde, datos del tueste,
+  /// notas, fotos y kilos por producto.
+  static Future<ApiResponse<Map<String, dynamic>>> tostado(String id) => _get('produccion/tostados/${Uri.encodeComponent(id)}');
+
   static Future<ApiResponse<Map<String, dynamic>>> reporteProveedor(String id) => _get('proveedores/${Uri.encodeComponent(id)}/reporte');
 
   /// Subir evidencia (dueños): una foto o PDF del voucher o recibo de una compra (purchase), un gasto (expense),
