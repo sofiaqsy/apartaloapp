@@ -1032,131 +1032,144 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
   static int _nEvidencias(Map<String, dynamic> f) => (f['evidencias'] as num?)?.toInt() ?? 0;
   static String _textoEvidencias(Map<String, dynamic> f) => _nEvidencias(f) == 1 ? '1 evidencia' : '${_nEvidencias(f)} evidencias';
 
-  /// Lo que se puede hacer con una fila: pagar (o aprobar), Subir evidencia y, si ya tiene, Ver evidencia.
-  Future<void> _menu(
-      String titulo, String tipo, String id, Map<String, dynamic> fila, List<(IconData, String, Future<void> Function())> pagar) async {
-    final n = _nEvidencias(fila);
-    final opciones = <(IconData, String, Future<void> Function())>[
-      ...pagar,
-      (Icons.info_outline, 'Ver detalle', () => _detalle(tipo, fila)),
-      (
-        Icons.add_a_photo_outlined,
-        'Subir evidencia',
-        () async {
-          if (await _subirEvidencia(context, tipo, id)) cargar();
-        }
-      ),
-      if (n > 0)
-        (
-          Icons.photo_library_outlined,
-          'Ver evidencia ($n)',
-          () async {
-            await _abrirPantalla<void>(context, _EvidenciasScreen(tipo: tipo, id: id, titulo: titulo));
-            cargar();
-          }
-        ),
-    ];
-    final elegido = await showModalBottomSheet<int>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(title: Text(titulo, style: const TextStyle(fontWeight: FontWeight.w600))),
-          for (var i = 0; i < opciones.length; i++)
-            ListTile(leading: Icon(opciones[i].$1), title: Text(opciones[i].$2), onTap: () => Navigator.pop(ctx, i)),
-        ]),
-      ),
-    );
-    if (elegido != null && mounted) await opciones[elegido].$3();
-  }
-
-  /// Ver detalle: la compra abre su detalle completo; un gasto o un adelanto, sus datos y su evidencia.
+  /// Tocar una fila abre su detalle (General Manager, 3 nov 2026); debajo, lo que se puede hacer: pagar o aprobar
+  /// (sólo si espera), Subir evidencia y Ver evidencia. Al volver, si algo cambió, Finanzas se recarga.
   Future<void> _detalle(String tipo, Map<String, dynamic> f) async {
-    if (tipo == 'purchase') {
-      var cambio = false;
-      await _abrirPantalla<void>(
-          context, _CompraDetalleScreen(id: '${f['entrega']}', esDueno: true, onCambio: () => cambio = true));
-      if (cambio && mounted) cargar();
-      return;
-    }
-    final gasto = tipo == 'expense';
+    final espera = _espera(f);
     final datos = <(String, String?)>[
       ('Estado', '${f['estado'] ?? ''}${_diasEsperando(f) != null ? ' · ${_diasEsperando(f)}' : ''}'),
-      ('Monto', _soles(f['monto'])),
-      ('Código', '${f['id']}'),
-      ('Fecha', _fechaCorta(f['fecha'])),
-      if (gasto) ...[
+      if (tipo == 'purchase') ...[
+        ('Agricultor', f['agricultor']?.toString()),
+        ('Compra', '${f['id']} · ${_kg(f['kg'])}'),
+        if (espera) ('Pidieron pagar', _soles(f['monto'] ?? f['debe'])),
+        if (espera) ('Cómo', f['metodo'] == 'advance' ? 'Con el adelanto ${f['adelanto']}' : 'Transferencia'),
+        if (espera) ('Pidió', f['por']?.toString()),
+        if (espera) ('Nota', f['nota']?.toString()),
+        ('Total', _soles(f['total'])),
+        ('Pagado', _soles(f['pagado'])),
+        if (((f['de_adelantos'] as num?) ?? 0) > 0) ('De adelantos', _soles(f['de_adelantos'])),
+        ('Falta pagar', _soles(f['debe'])),
+        (espera ? 'Pedido el' : 'Último pago', _fechaCorta(f['fecha'])),
+      ] else if (tipo == 'expense') ...[
+        ('Monto', _soles(f['monto'])),
         ('Categoría', f['categoria']?.toString()),
         ('Descripción', f['descripcion']?.toString()),
         ('Área', f['area'] == null ? null : (_areas[f['area']] ?? '${f['area']}')),
+        ('Fecha', _fechaCorta(f['fecha'])),
         ('Registrado por', f['por']?.toString()),
         ('Pagado el', f['pagado_el'] == null ? null : _fechaCorta(f['pagado_el'])),
         ('Cómo se pagó', f['metodo'] == null ? null : (_metodosPago[f['metodo']] ?? '${f['metodo']}')),
         ('Pagado por', f['pagado_por']?.toString()),
+        ('Código', '${f['id']}'),
       ] else ...[
         ('Para', f['para']?.toString()),
+        ('Monto', _soles(f['monto'])),
         ('Motivo', f['motivo']?.toString()),
         ('Devuelve en', f['devuelve'] == null ? null : (_devuelveEn[f['devuelve']] ?? '${f['devuelve']}')),
+        ('Fecha', _fechaCorta(f['fecha'])),
         ('Pidió', f['por']?.toString()),
         ('Adelanto entregado', f['adelanto']?.toString()),
         ('Decidido el', f['decidido_el'] == null ? null : _fechaCorta(f['decidido_el'])),
         ('Decidido por', f['decidido_por']?.toString()),
         ('Motivo del rechazo', f['motivo_rechazo']?.toString()),
+        ('Código', '${f['id']}'),
       ],
     ];
+    // Lo que espera se paga o se decide desde aquí; true si se guardó (entonces el detalle se cierra).
+    final acciones = <(IconData, String, Future<bool> Function(BuildContext))>[
+      if (espera && tipo == 'purchase')
+        f['metodo'] == 'advance'
+            ? (Icons.savings_outlined, 'Pagar con el adelanto', (ctx) => _confirmarConAdelanto(ctx, f))
+            : (
+                Icons.payments_outlined,
+                _titulos['pago']!,
+                (ctx) => _pagar(ctx, 'pago', 'purchase', '${f['id']}',
+                    fijos: {'compraId': f['id']},
+                    subtitulo: '${f['agricultor'] ?? f['id']} · pidieron ${_soles(f['monto'] ?? f['debe'])}',
+                    iniciales: {if (f['monto'] != null) 'monto': f['monto']})
+              ),
+      if (espera && tipo == 'expense')
+        (
+          Icons.payments_outlined,
+          _titulos['pagoGasto']!,
+          (ctx) => _pagar(ctx, 'pagoGasto', 'expense', '${f['id']}', fijos: {'gastoId': f['id']}, subtitulo: '${f['categoria']} · ${_soles(f['monto'])}')
+        ),
+      if (espera && tipo == 'advance_request') ...[
+        (
+          Icons.check_circle_outline,
+          'Aprobar y entregar',
+          (ctx) => _pagar(ctx, 'aprobarAdelanto', 'advance_request', '${f['id']}',
+              fijos: {'solicitudId': f['id']}, subtitulo: '${f['para'] ?? ''} · ${_soles(f['monto'])}')
+        ),
+        (
+          Icons.cancel_outlined,
+          'Rechazar',
+          (ctx) => _abrirFormulario(ctx, 'rechazarAdelanto', fijos: {'solicitudId': f['id']}, subtitulo: '${f['para'] ?? ''}')
+        ),
+      ],
+    ];
+    var cambio = false;
     await _abrirPantalla<void>(
         context,
         _FinanzaDetalleScreen(
-          titulo: gasto ? '${f['categoria'] ?? 'Gasto'}' : 'Adelanto · ${f['para'] ?? ''}',
+          titulo: switch (tipo) {
+            'purchase' => 'Compra · ${f['agricultor'] ?? ''}',
+            'expense' => '${f['categoria'] ?? 'Gasto'}',
+            _ => 'Adelanto · ${f['para'] ?? ''}',
+          },
           datos: datos,
+          acciones: acciones,
           tipo: tipo,
           id: '${f['id']}',
+          evidencias: _nEvidencias(f),
+          entrega: tipo == 'purchase' ? f['entrega']?.toString() : null,
+          onCambio: () => cambio = true,
         ));
-    if (mounted) cargar(); // pudo subir o quitar evidencia
+    if (cambio && mounted) cargar();
   }
 
-  /// Paga (o aprueba) y, si se guardó, ofrece subir la evidencia del pago en el momento: después la fila sale de
-  /// Finanzas y la evidencia queda con su compra, gasto o adelanto.
-  Future<void> _pagar(String form, String tipo, String id,
+  /// Paga (o aprueba) y, si se guardó, ofrece subir la evidencia del pago en el momento. true si se guardó.
+  Future<bool> _pagar(BuildContext ctx, String form, String tipo, String id,
       {required Map<String, dynamic> fijos, required String subtitulo, Map<String, dynamic> iniciales = const {}}) async {
-    if (!await _abrirFormulario(context, form, fijos: fijos, subtitulo: subtitulo, iniciales: iniciales) || !mounted) return;
-    cargar();
+    if (!await _abrirFormulario(ctx, form, fijos: fijos, subtitulo: subtitulo, iniciales: iniciales) || !ctx.mounted) return false;
     final subir = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
+      context: ctx,
+      builder: (d) => AlertDialog(
         title: const Text('¿Subir la evidencia?'),
         content: const Text('Una foto del voucher o del recibo, para tenerla con el pago.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Después')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Subir evidencia')),
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Después')),
+          ElevatedButton(onPressed: () => Navigator.pop(d, true), child: const Text('Subir evidencia')),
         ],
       ),
     );
-    if (subir == true && mounted) await _subirEvidencia(context, tipo, id);
+    if (subir == true && ctx.mounted) await _subirEvidencia(ctx, tipo, id);
+    return true;
   }
 
   /// Pagar con adelanto no mueve dinero: Finanzas confirma y la base descuenta el adelanto (revisando el saldo otra vez).
-  Future<void> _confirmarConAdelanto(Map<String, dynamic> c) async {
+  Future<bool> _confirmarConAdelanto(BuildContext ctx, Map<String, dynamic> c) async {
     final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
+      context: ctx,
+      builder: (d) => AlertDialog(
         title: const Text('¿Pagar con el adelanto?'),
         content: Text('${c['agricultor'] ?? ''}: ${_soles(c['monto'])} del adelanto ${c['adelanto']}. No sale dinero del banco.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Confirmar')),
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancelar')),
+          ElevatedButton(onPressed: () => Navigator.pop(d, true), child: const Text('Confirmar')),
         ],
       ),
     );
-    if (ok != true || !mounted) return;
+    if (ok != true || !ctx.mounted) return false;
     final r = await AdministracionService.registrar('pagoConAdelanto', {'solicitudId': c['solicitud']},
         clave: AdministracionService.nuevaClave('pagoConAdelanto'));
-    if (!mounted) return;
+    if (!ctx.mounted) return false;
     final res = r.data ?? const {};
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
         content: Text(r.isSuccess
             ? 'Pagado con el adelanto ✓ ${_soles(res['amount'])} · al adelanto le queda ${_soles(res['advance_left'])}'
             : (r.error ?? 'No se guardó'))));
-    if (r.isSuccess) cargar();
+    return r.isSuccess;
   }
 
   @override
@@ -1211,19 +1224,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
         if (_nEvidencias(c) > 0) _textoEvidencias(c),
       ].join(' · '),
       fin: _estado(c),
-      onTap: () => _menu('${c['agricultor'] ?? c['id']} · ${_soles(monto)}', 'purchase', '${c['id']}', c, [
-        if (espera)
-          c['metodo'] == 'advance'
-              ? (Icons.savings_outlined, 'Pagar con el adelanto', () => _confirmarConAdelanto(c))
-              : (
-                  Icons.payments_outlined,
-                  _titulos['pago']!,
-                  () => _pagar('pago', 'purchase', '${c['id']}',
-                      fijos: {'compraId': c['id']},
-                      subtitulo: '${c['agricultor'] ?? c['id']} · pidieron ${_soles(c['monto'] ?? c['debe'])}',
-                      iniciales: {if (c['monto'] != null) 'monto': c['monto']})
-                ),
-      ]),
+      onTap: () => _detalle('purchase', c),
     );
   }
 
@@ -1241,19 +1242,11 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
         if (_nEvidencias(g) > 0) _textoEvidencias(g),
       ].join(' · '),
       fin: _estado(g),
-      onTap: () => _menu('${g['categoria'] ?? 'Gasto'} · ${_soles(g['monto'])}', 'expense', '${g['id']}', g, [
-        if (espera)
-          (
-            Icons.payments_outlined,
-            _titulos['pagoGasto']!,
-            () => _pagar('pagoGasto', 'expense', '${g['id']}', fijos: {'gastoId': g['id']}, subtitulo: '${g['categoria']} · ${_soles(g['monto'])}')
-          ),
-      ]),
+      onTap: () => _detalle('expense', g),
     );
   }
 
   Widget _filaAdelanto(Map<String, dynamic> a) {
-    final espera = _espera(a);
     return _Ficha(
       inicio: _Insignia(_fechaCorta(a['fecha']), tono: Colors.purple),
       titulo: '${a['para'] ?? 'Sin nombre'}',
@@ -1266,34 +1259,71 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> {
         if (_nEvidencias(a) > 0) _textoEvidencias(a),
       ].join(' · '),
       fin: _estado(a),
-      onTap: () => _menu('Adelanto · ${a['para'] ?? ''} · ${_soles(a['monto'])}', 'advance_request', '${a['id']}', a, [
-        if (espera) ...[
-          (
-            Icons.check_circle_outline,
-            'Aprobar y entregar',
-            () => _pagar('aprobarAdelanto', 'advance_request', '${a['id']}',
-                fijos: {'solicitudId': a['id']}, subtitulo: '${a['para'] ?? ''} · ${_soles(a['monto'])}')
-          ),
-          (Icons.cancel_outlined, 'Rechazar', () => formulario('rechazarAdelanto', fijos: {'solicitudId': a['id']}, subtitulo: '${a['para'] ?? ''}')),
-        ],
-      ]),
+      onTap: () => _detalle('advance_request', a),
     );
   }
 }
 
-/// Detalle de un gasto o un adelanto en Finanzas: sólo información y, abajo, su evidencia (se carga al tocar).
-class _FinanzaDetalleScreen extends StatelessWidget {
-  const _FinanzaDetalleScreen({required this.titulo, required this.datos, required this.tipo, required this.id});
+/// Detalle de una fila de Finanzas (compra, gasto o adelanto): sólo información y, debajo, lo que se puede hacer:
+/// pagar o decidir (si espera), Subir evidencia y Ver evidencia (General Manager, 3 nov 2026).
+class _FinanzaDetalleScreen extends StatefulWidget {
+  const _FinanzaDetalleScreen({
+    required this.titulo,
+    required this.datos,
+    required this.acciones,
+    required this.tipo,
+    required this.id,
+    required this.evidencias,
+    required this.onCambio,
+    this.entrega,
+  });
   final String titulo;
   final List<(String, String?)> datos;
+  final List<(IconData, String, Future<bool> Function(BuildContext))> acciones;
   final String tipo;
   final String id;
+  final int evidencias;
+  final String? entrega; // la compra completa (sólo compras)
+  final VoidCallback onCambio;
+
+  @override
+  State<_FinanzaDetalleScreen> createState() => _FinanzaDetalleScreenState();
+}
+
+class _FinanzaDetalleScreenState extends State<_FinanzaDetalleScreen> {
+  late int _n = widget.evidencias;
+
+  Future<void> _accion(Future<bool> Function(BuildContext) hacer) async {
+    if (await hacer(context) && mounted) {
+      widget.onCambio();
+      Navigator.of(context).pop(); // ya no espera: Finanzas se recarga con su nuevo estado
+    }
+  }
+
+  Future<void> _subir() async {
+    if (await _subirEvidencia(context, widget.tipo, widget.id) && mounted) {
+      widget.onCambio();
+      setState(() => _n++);
+    }
+  }
+
+  /// Al volver de la evidencia se cuenta otra vez (pudo quitar una).
+  Future<void> _ver() async {
+    await _abrirPantalla<void>(context, _EvidenciasScreen(tipo: widget.tipo, id: widget.id, titulo: widget.titulo));
+    final r = await AdministracionService.evidencias(widget.tipo, widget.id);
+    if (!mounted || !r.isSuccess) return;
+    final n = _lista(r.data!['evidencias']).length;
+    if (n != _n) {
+      widget.onCambio();
+      setState(() => _n = n);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final visibles = datos.where((d) => d.$2 != null && d.$2!.isNotEmpty && d.$2 != 'null').toList();
+    final visibles = widget.datos.where((d) => d.$2 != null && d.$2!.isNotEmpty && d.$2 != 'null').toList();
     return Scaffold(
-      appBar: AppBar(title: Text(titulo)),
+      appBar: AppBar(title: Text(widget.titulo)),
       body: ListView(padding: const EdgeInsets.all(16), children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1310,13 +1340,22 @@ class _FinanzaDetalleScreen extends StatelessWidget {
               ),
           ]),
         ),
-        const SizedBox(height: 12),
-        _Ficha(
-          inicio: const _InsigniaIcono(Icons.photo_library_outlined, tono: Colors.indigo),
-          titulo: 'Evidencia',
-          detalle: 'Vouchers y recibos',
-          onTap: () => _abrirPantalla<void>(context, _EvidenciasScreen(tipo: tipo, id: id, titulo: titulo)),
-        ),
+        if (widget.entrega != null) ...[
+          const SizedBox(height: 12),
+          _Ficha(
+            inicio: const _InsigniaIcono(Icons.move_to_inbox, tono: Colors.green),
+            titulo: 'Ver la compra completa',
+            detalle: 'Café, revisión de calidad, lote y pagos',
+            onTap: () => _abrirPantalla<void>(context, _CompraDetalleScreen(id: widget.entrega!, esDueno: true, onCambio: widget.onCambio)),
+          ),
+        ],
+        const SizedBox(height: 20),
+        // Lo que se puede hacer (botones de verdad, debajo del detalle).
+        _Acciones(acciones: [
+          for (final a in widget.acciones) (a.$1, a.$2, () => _accion(a.$3)),
+          (Icons.add_a_photo_outlined, 'Subir evidencia', _subir),
+          if (_n > 0) (Icons.photo_library_outlined, 'Ver evidencia ($_n)', _ver),
+        ]),
       ]),
     );
   }

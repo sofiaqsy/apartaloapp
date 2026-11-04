@@ -1184,11 +1184,26 @@ void main() {
       await tester.tap(find.text('Agricultor Pagado'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    expect(find.text('Ver detalle'), findsOneWidget);
+    // Tocar la fila abre su detalle; debajo, sólo evidencia (ya está pagada).
+    expect(find.text('Ver la compra completa'), findsOneWidget);
+    expect(find.text('Subir evidencia'), findsOneWidget);
     expect(find.text('Pagar compra'), findsNothing);
   });
 
-  testWidgets('Ver detalle of a paid gasto shows when and how it was paid', (tester) async {
+  testWidgets('a waiting compra opens its detail with Pagar compra, Subir evidencia and Ver evidencia under it', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await entrarFinanzas(tester);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Pedro Ramírez Ñique'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    for (final t in ['Pidieron pagar', 'S/ 300', 'Transferencia', 'Pagar compra', 'Subir evidencia', 'Ver evidencia (1)']) {
+      expect(find.text(t), findsWidgets, reason: t);
+    }
+    expect(find.text('Ver detalle'), findsNothing); // no menu: the detail opens at once
+  });
+
+  testWidgets('a paid gasto opens its detail with when and how it was paid', (tester) async {
     await abrir(tester, rol: 'owner');
     await entrarFinanzas(tester);
     await http.runWithClient(() async {
@@ -1196,10 +1211,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Mano de obra'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Ver detalle'));
-      await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    for (final t in ['Pagado el', 'Transferencia', 'owner@x', 'Evidencia', 'S/ 80']) {
+    for (final t in ['Pagado el', 'Transferencia', 'owner@x', 'Subir evidencia', 'S/ 80']) {
       expect(find.textContaining(t), findsWidgets, reason: t);
     }
   });
