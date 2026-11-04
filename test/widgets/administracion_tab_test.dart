@@ -824,10 +824,16 @@ void main() {
       await tester.tap(find.text('Producción'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    // Opens on Lotes de tostado because there are roasts; Café verde, Proveedores and Gastos are the other tabs.
+    // Opens on Café verde, the first tab, then Lotes de tostado, Proveedores and Gastos (4 Nov 2026).
     // "Tuestes" is now "Lotes de tostado" and "Lotes" is "Café verde" (4 Nov 2026).
     expect(find.text('Tuestes'), findsNothing);
     expect(find.text('Lotes'), findsNothing);
+    for (final t in ['L-1', 'Catimor · cosecha 2026', '760 kg / 1,000 kg', '76%']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    expect(find.text('Finalizar'), findsNothing);
+    await tester.tap(find.text('Lotes de tostado').last);
+    await tester.pump();
     // Roasted coffee by product, the same as the product screen (4 Nov 2026): each product with its kilos, its lots
     // and its roasts in progress or planned.
     for (final t in ['Tostar café', 'Registrar gasto', 'Essential', 'Omagua 250 g', 'Omagua 1 kg',
@@ -864,12 +870,6 @@ void main() {
     }
     expect(find.text('Finalizar'), findsOneWidget); // the roast in progress
     expect(find.text('Iniciar'), findsOneWidget); // the planned one
-    await tester.tap(find.text('Café verde').last);
-    await tester.pump();
-    for (final t in ['L-1', 'Catimor · cosecha 2026', '760 kg / 1,000 kg', '76%']) {
-      expect(find.text(t), findsOneWidget, reason: t);
-    }
-    expect(find.text('Finalizar'), findsNothing);
   });
 
   testWidgets('Producción copies Compras: a Gastos tab after Proveedores, and the PDF button with its own report', (tester) async {
@@ -877,7 +877,7 @@ void main() {
     await http.runWithClient(() async {
       await tester.tap(find.text('Producción'));
       await tester.pumpAndSettle();
-      final tabs = ['Lotes de tostado', 'Café verde', 'Proveedores', 'Gastos'].map((t) => tester.getCenter(find.text(t).last).dx).toList();
+      final tabs = ['Café verde', 'Lotes de tostado', 'Proveedores', 'Gastos'].map((t) => tester.getCenter(find.text(t).last).dx).toList();
       for (var i = 1; i < tabs.length; i++) {
         expect(tabs[i], greaterThan(tabs[i - 1]));
       }
@@ -908,6 +908,8 @@ void main() {
     await http.runWithClient(() async {
       await tester.tap(find.text('Producción'));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('Lotes de tostado').last); // Café verde is the first tab now (4 Nov 2026)
+      await tester.pump();
       await tester.tap(find.text('Finalizar'));
       await tester.pumpAndSettle();
       await tester.enterText(find.widgetWithText(TextField, 'Kilos de café tostado'), '25');

@@ -2802,7 +2802,7 @@ class _ProduccionScreen extends StatefulWidget {
 }
 
 class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _ProveedoresDelProceso, _GastosDelArea, _ReporteDelProceso {
-  int? _pestana; // 0 Lotes de tostado, 1 Café verde, 2 Proveedores, 3 Gastos; al abrir: Lotes de tostado si hay alguno, si no Café verde
+  int? _pestana; // 0 Café verde, 1 Lotes de tostado, 2 Proveedores, 3 Gastos; abre en Café verde (General Manager, 4 nov 2026)
 
   @override
   String get nombreReporte => 'Producción';
@@ -2890,7 +2890,7 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
       final conProducto = {for (final p in productos) for (final t in _lista(p['tuestes'])) '${t['id']}'};
       final sinProducto = tuestes.where((t) => !conProducto.contains('${t['id']}')).toList();
       final porProcesar = _lista(d['por_procesar']);
-      final pestana = _pestana ?? (tuestes.isNotEmpty || productos.isNotEmpty ? 0 : 1);
+      final pestana = _pestana ?? 0;
       return [
         // Sin resumen arriba, como Compras (General Manager, 4 nov 2026): la tarjeta de Procesos ya lo muestra.
         _Acciones(acciones: [
@@ -2903,7 +2903,8 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
         ]),
         _Pestanas(
           // Gastos, y "Lotes de tostado" y "Café verde" en vez de Tuestes y Lotes: General Manager, 4 nov 2026
-          nombres: const ['Lotes de tostado', 'Café verde', 'Proveedores', 'Gastos'],
+          // Café verde antes que Lotes de tostado (General Manager, 4 nov 2026).
+          nombres: const ['Café verde', 'Lotes de tostado', 'Proveedores', 'Gastos'],
           anchoPorNombre: true,
           elegida: pestana,
           onElegir: (i) {
@@ -2916,7 +2917,7 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
           ...listaGastos()
         else if (pestana == 2)
           ..._listaProveedores()
-        else if (pestana == 0) ...[
+        else if (pestana == 1) ...[
           // Sin título ni total arriba (General Manager, 4 nov 2026): los productos en el orden de la pestaña Productos.
           if (productos.isEmpty && sinProducto.isEmpty) _vacio('No hay café tostado ni lotes de tostado programados. Toca "Tostar café".'),
           for (final p in productos) ...[
