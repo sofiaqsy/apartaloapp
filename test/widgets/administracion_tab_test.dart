@@ -166,6 +166,17 @@ void main() {
     if (p.endsWith('/lotes-verdes/g1/cerrar')) {
       return http.Response(jsonEncode({'ok': true, 'resultado': {'lote': 'L-1', 'kg_que_mostraba': 760}}), 200);
     }
+    if (p.endsWith('/produccion/tostados/r8/cuenta') && req.url.queryParameters['producto'] == 'p3') {
+      return http.Response(jsonEncode({
+        'cuenta': {
+          'lineas': [
+            {'fecha': '2026-10-25', 'tipo': 'venta', 'titulo': 'Venta · pedido ORD-9', 'detalle': '2 × 20 kg', 'kg': -40, 'saldo': 340},
+            {'fecha': '2026-10-20', 'tipo': 'tueste', 'titulo': 'Tueste · Essential', 'detalle': '80 kg tostados en total', 'kg': 380, 'saldo': 380},
+          ],
+          'total': 2, 'hay_mas': false, 'saldo': 340, 'entradas': 380, 'salidas': 40,
+        }
+      }), 200);
+    }
     if (p.endsWith('/produccion/tostados/r8')) {
       return http.Response(jsonEncode({
         'tostado': {
@@ -275,7 +286,7 @@ void main() {
             {'id': 'e2', 'estado': 'planned', 'fecha': '2026-11-04T15:00:00Z', 'kg_verde': 30, 'lote': 'L-1', 'producto': 'Omagua 1 kg'},
           ],
           'mes': {'tuestes': 5, 'kg_verde': 820, 'kg_tostado': 683, 'merma_pct': 16.7},
-          'tostado_kg': 385, 'por_procesar': [],
+          'tostado_kg': 385, 'por_procesar': [{'estado': 'parchment', 'calidad': 'pending', 'lotes': 2, 'kg': 88.7}],
           // By product, as the product screen counts it (production_summary_v2, 4 Nov 2026).
           'productos': [
             {'id': 'p3', 'nombre': 'Essential', 'kg_tostado': 340, 'lotes': [{'id': 'r8', 'lote': 'L-8', 'fecha': '2026-10-20', 'kg': 340}], 'tuestes': []},
@@ -926,6 +937,12 @@ void main() {
     await tester.scrollUntilVisible(find.text('Buen desarrollo'), 200, scrollable: find.byType(Scrollable).last);
     expect(find.text('Finca Rosal'), findsWidgets);
     expect(find.text('Temperatura de carga'), findsNothing); // not recorded, so not shown
+    // Estado de lote, like the green lots (4 Nov 2026): the roast adds, each sale takes out, with the balance.
+    await tester.scrollUntilVisible(find.text('Venta · pedido ORD-9'), 200, scrollable: find.byType(Scrollable).last);
+    for (final t in ['Estado de lote', 'Tueste · Essential', '+380 kg', '−40 kg', 'Saldo 340 kg']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    expect(pedidos.lastWhere((r) => r.url.path.endsWith('/tostados/r8/cuenta')).url.queryParameters['offset'], '0');
     expect(tester.takeException(), isNull);
     await tester.pageBack();
     await tester.pumpAndSettle();
@@ -993,7 +1010,7 @@ void main() {
     }
     final lista = find.byType(Scrollable).last;
     await tester.scrollUntilVisible(find.text('Compra DL-0008 · José Luis Gamboa Villano'), 200, scrollable: lista);
-    for (final t in ['Estado de cuenta', '+57.6 kg', 'Saldo 485.0 kg']) {
+    for (final t in ['Estado de lote', '+57.6 kg', 'Saldo 485.0 kg']) {
       expect(find.text(t), findsWidgets, reason: t);
     }
     expect(find.text('25'), findsOneWidget); // the count on the title is all the lines, not the page
@@ -1036,6 +1053,9 @@ void main() {
     expect(find.text('Lote L-1'), findsOneWidget);
     expect(find.text('Agregar café al lote'), findsNothing);
     expect(find.text('Cerrar lote'), findsNothing);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('Café comprado por procesar'), findsNothing); // removed from Café verde (4 Nov 2026)
   });
 
   testWidgets('Producción copies Compras: a Gastos tab after Proveedores, and the PDF button with its own report', (tester) async {

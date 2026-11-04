@@ -83,6 +83,10 @@ class AdministracionService {
   static Future<ApiResponse<Map<String, dynamic>>> cuentaLote(String loteId, {int desde = 0}) =>
       _get('produccion/lotes-verdes/${Uri.encodeComponent(loteId)}/cuenta?offset=$desde&limit=20');
 
+  /// Estado de lote de un lote tostado para un producto, de 20 en 20 (General Manager, 4 nov 2026).
+  static Future<ApiResponse<Map<String, dynamic>>> cuentaTostado(String tuesteId, String productoId, {int desde = 0}) =>
+      _get('produccion/tostados/${Uri.encodeComponent(tuesteId)}/cuenta?producto=${Uri.encodeComponent(productoId)}&offset=$desde&limit=20');
+
   static Future<ApiResponse<Map<String, dynamic>>> comprasParaLote(String loteId) => _get('produccion/lotes-verdes/${Uri.encodeComponent(loteId)}/compras');
 
   static Future<ApiResponse<Map<String, dynamic>>> agregarCafeLote(String loteId, Map<String, dynamic> datos, {required String clave}) =>

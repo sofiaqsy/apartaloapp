@@ -2895,7 +2895,6 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
       final productos = _lista(d['productos']);
       final conProducto = {for (final p in productos) for (final t in _lista(p['tuestes'])) '${t['id']}'};
       final sinProducto = tuestes.where((t) => !conProducto.contains('${t['id']}')).toList();
-      final porProcesar = _lista(d['por_procesar']);
       final pestana = _pestana ?? 0;
       return [
         // Sin resumen arriba, como Compras (General Manager, 4 nov 2026): la tarjeta de Procesos ya lo muestra.
@@ -2937,7 +2936,10 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
                 titulo: _fechaLarga(l['fecha']),
                 fin: Text(_kg(l['kg']), style: const TextStyle(fontWeight: FontWeight.w600)),
                 // Cada lote tostado abre su detalle (General Manager, 4 nov 2026).
-                onTap: l['id'] == null ? null : () => _abrirPantalla<void>(context, _TostadoDetalleScreen(id: '${l['id']}', producto: '${p['nombre'] ?? ''}')),
+                onTap: l['id'] == null
+                    ? null
+                    : () => _abrirPantalla<void>(
+                        context, _TostadoDetalleScreen(id: '${l['id']}', producto: '${p['nombre'] ?? ''}', productoId: p['id']?.toString())),
               ),
             for (final t in _lista(p['tuestes'])) _filaTueste(t, conProducto: true),
           ],
@@ -2952,16 +2954,7 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
           // Cada lote abre su detalle, y las acciones están adentro (General Manager, 4 nov 2026).
           for (final l in lotes)
             _FilaLote(lote: l, onTap: () => _abrirLote(l)),
-          if (porProcesar.isNotEmpty) ...[
-            _encabezado('Café comprado por procesar', '${porProcesar.length}'),
-            for (final p in porProcesar)
-              _Ficha(
-                inicio: const _InsigniaIcono(Icons.inventory_2_outlined, tono: Colors.brown),
-                titulo: _estadosCafe[p['estado']] ?? '${p['estado']}',
-                detalle: '${p['lotes']} ${p['lotes'] == 1 ? 'lote' : 'lotes'} · calidad: ${p['calidad'] == 'pending' ? 'por revisar' : p['calidad']}',
-                fin: Text(_kg(p['kg']), style: const TextStyle(fontWeight: FontWeight.w600)),
-              ),
-          ],
+          // Sin "Café comprado por procesar" (General Manager, 4 nov 2026).
         ],
       ];
     });
@@ -2972,9 +2965,10 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
 /// asignado, vendido y disponible, los datos del tueste que se registraron, el lote verde, las notas y las fotos.
 /// Sólo lectura: todo es información (roast_lot_detail).
 class _TostadoDetalleScreen extends StatefulWidget {
-  const _TostadoDetalleScreen({required this.id, required this.producto});
+  const _TostadoDetalleScreen({required this.id, required this.producto, this.productoId});
   final String id;
   final String producto;
+  final String? productoId; // para su Estado de lote: lo que se tostó para este producto y lo que se vendió
 
   @override
   State<_TostadoDetalleScreen> createState() => _TostadoDetalleScreenState();
@@ -2983,14 +2977,52 @@ class _TostadoDetalleScreen extends StatefulWidget {
 class _TostadoDetalleScreenState extends State<_TostadoDetalleScreen> {
   Map<String, dynamic>? _t;
   String? _error;
+  // Estado de lote (General Manager, 4 nov 2026): el tueste suma y cada venta resta; del servidor de 20 en 20.
+  final _lineas = <Map<String, dynamic>>[];
+  Map<String, dynamic> _cuenta = const {};
+  bool _hayMas = false;
+  bool _cargandoMas = false;
+  int _pedido = 0;
+  final _scroll = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _cargar();
+    _scroll.addListener(() {
+      if (_scroll.position.pixels > _scroll.position.maxScrollExtent - 200) _masLineas();
+    });
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  Future<void> _masLineas({bool desdeCero = false}) async {
+    if (widget.productoId == null) return;
+    if (!desdeCero && (_cargandoMas || !_hayMas)) return;
+    final pedido = desdeCero ? ++_pedido : _pedido;
+    setState(() => _cargandoMas = true);
+    final r = await AdministracionService.cuentaTostado(widget.id, widget.productoId!, desde: desdeCero ? 0 : _lineas.length);
+    if (!mounted || pedido != _pedido) return;
+    setState(() {
+      _cargandoMas = false;
+      if (!r.isSuccess) {
+        _hayMas = false;
+        return;
+      }
+      final c = _mapa(r.data!['cuenta']);
+      if (desdeCero) _lineas.clear();
+      _lineas.addAll(_lista(c['lineas']));
+      _cuenta = c;
+      _hayMas = c['hay_mas'] == true;
+    });
   }
 
   Future<void> _cargar() async {
+    _masLineas(desdeCero: true);
     final r = await AdministracionService.tostado(widget.id);
     if (!mounted) return;
     setState(() {
@@ -3057,7 +3089,7 @@ class _TostadoDetalleScreenState extends State<_TostadoDetalleScreen> {
                   child: _error != null ? Text(_error!, textAlign: TextAlign.center) : const Center(child: CircularProgressIndicator()),
                 ),
               ])
-            : ListView(padding: const EdgeInsets.all(16), children: [
+            : ListView(controller: _scroll, padding: const EdgeInsets.all(16), children: [
                 Row(children: [
                   Expanded(child: Text(widget.producto, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
                   _Insignia('${t['lote'] ?? '—'}', tono: Colors.orange),
@@ -3121,6 +3153,14 @@ class _TostadoDetalleScreenState extends State<_TostadoDetalleScreen> {
                         ),
                     ],
                   ),
+                ],
+                // Estado de lote al final, porque se carga de 20 en 20 al llegar abajo (General Manager, 4 nov 2026).
+                if (widget.productoId != null) ...[
+                  _encabezado('Estado de lote', _cuenta['total'] == null ? '' : '${_cuenta['total']}'),
+                  // Sin panel de saldo: "Para el producto" ya muestra asignado, vendido y disponible (los kilos una sola vez).
+                  for (final m in _lineas) _LineaCuenta(linea: m),
+                  if (_lineas.isEmpty && !_cargandoMas) _vacio('Este lote todavía no tiene movimientos.'),
+                  if (_cargandoMas) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
                 ],
                 const SizedBox(height: 24),
               ]),
@@ -3505,9 +3545,9 @@ class _LoteVerdeDetalleScreenState extends State<_LoteVerdeDetalleScreen> {
                     _dato('Origen', l['origen']?.toString()),
                     _dato('Llegó', l['llego'] == null ? null : _fechaLarga(l['llego'])),
                   ]),
-                  // Una sola lista, como un estado de cuenta (General Manager, 4 nov 2026): las compras suman (+) y los tuestes,
+                  // Una sola lista, el estado de lote, como un estado de cuenta (General Manager, 4 nov 2026): las compras suman (+) y los tuestes,
                   // las ventas de verde y el cierre restan (−), con el saldo después de cada línea; lo más nuevo arriba.
-                  _encabezado('Estado de cuenta', cuenta['total'] == null ? '' : '${cuenta['total']}'),
+                  _encabezado('Estado de lote', cuenta['total'] == null ? '' : '${cuenta['total']}'), // antes "Estado de cuenta" (4 nov 2026)
                   if (_lineas.isEmpty && !_cargandoMas) _vacio('Este lote todavía no tiene movimientos.'),
                   for (final m in _lineas) _LineaCuenta(linea: m),
                   // Sin texto al final de la lista: sólo la carga mientras llega la siguiente página.
