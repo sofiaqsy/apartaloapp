@@ -1111,31 +1111,42 @@ void main() {
     expect(find.text('Pagar compra'), findsNothing);
   });
 
-  testWidgets('Solicitar pago asks the amount and how; with an advance it sends which one', (tester) async {
+  testWidgets('Solicitar pago completo asks all that is owed by transfer; staff cannot mark it paid from advances', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
       await tester.tap(find.text('Compras'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Agricultor Parte'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Solicitar pago'));
+      expect(find.text('Marcar como pagado desde adelantos'), findsNothing); // owners only
+      await tester.tap(find.text('Solicitar pago completo'));
       await tester.pumpAndSettle();
-      expect(find.text('Monto a pagar (S/) (opcional)'), findsOneWidget);
-      expect(find.text('500'), findsOneWidget); // filled with what is owed
-      await tester.tap(find.text('Con un adelanto'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('ADV-007 · queda S/ 200'));
-      await tester.pumpAndSettle();
-      await tester.enterText(find.widgetWithText(TextFormField, 'Monto a pagar (S/) (opcional)'), '200');
-      await tester.tap(find.text('Guardar'));
+      expect(find.textContaining('S/ 500 por transferencia'), findsOneWidget);
+      await tester.tap(find.text('Solicitar'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     final r = pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/solicitarPago'));
     final body = jsonDecode(r.body) as Map;
     expect(body['compraId'], 'PU-0002');
-    expect(body['monto'], 200);
-    expect(body['metodo'], 'advance');
-    expect(body['adelantoId'], 'ADV-007');
+    expect(body['metodo'], 'transfer');
+    expect(body.containsKey('monto'), isFalse); // empty = all that is owed
+  });
+
+  testWidgets('an owner marks a compra as paid from advances only when they choose it', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Agricultor Parte'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Marcar como pagado desde adelantos'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('ADV-007 (queda S/ 200)'), findsOneWidget);
+      await tester.tap(find.text('Marcar como pagado'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final r = pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/pagoDesdeAdelantos'));
+    expect((jsonDecode(r.body) as Map)['compraId'], 'PU-0002');
   });
 
   testWidgets('Finanzas confirms a payment with an advance with one tap', (tester) async {

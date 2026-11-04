@@ -1731,30 +1731,52 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
     }
   }
 
-  /// Solicitar pago: el monto (por defecto todo lo que se debe) y cómo se paga. "Con un adelanto" sólo aparece si
-  /// el agricultor tiene un adelanto abierto; Finanzas lo confirma.
-  Future<void> _solicitarPago(Map<String, dynamic> c) async {
-    final adelantos = _lista(c['adelantos']);
-    final debe = (c['debe'] as num?) ?? num.tryParse('${c['debe'] ?? ''}');
-    await _abrirFormularioYRecargar('solicitarPago',
-        fijos: {'compraId': c['compra_id']},
-        subtitulo: '${c['agricultor'] ?? ''}${debe != null ? ' · falta ${_soles(debe)}' : ''}',
-        iniciales: {if (debe != null) 'monto': debe},
-        opciones: {
-          if (adelantos.isEmpty) 'metodo': const {'transfer': 'Transferencia'},
-          'adelantoId': {for (final a in adelantos) '${a['id']}': '${a['id']} · queda ${_soles(a['saldo'])}'},
-        });
-  }
+  /// Una pregunta antes de guardar; true si dijo que sí.
+  Future<bool> _confirmar(String titulo, String texto, String si) async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(titulo),
+          content: Text(texto),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: Text(si)),
+          ],
+        ),
+      ) ==
+      true;
 
-  Future<void> _abrirFormularioYRecargar(String form,
-      {required Map<String, dynamic> fijos,
-      required String subtitulo,
-      Map<String, dynamic> iniciales = const {},
-      Map<String, Map<String, String>> opciones = const {}}) async {
-    if (await _abrirFormulario(context, form, fijos: fijos, subtitulo: subtitulo, iniciales: iniciales, opciones: opciones)) {
+  Future<void> _guardar(String form, Map<String, dynamic> datos, String Function(Map<String, dynamic>) hecho) async {
+    final r = await AdministracionService.registrar(form, datos, clave: AdministracionService.nuevaClave(form));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.isSuccess ? hecho(r.data ?? const {}) : (r.error ?? 'No se guardó'))));
+    if (r.isSuccess) {
       widget.onCambio();
       _cargar();
     }
+  }
+
+  /// Solicitar pago completo (General Manager, 3 nov 2026): todo lo que se debe, por transferencia; Finanzas lo paga.
+  Future<void> _solicitarCompleto(Map<String, dynamic> c) async {
+    if (!await _confirmar('¿Solicitar pago completo?',
+        '${c['agricultor'] ?? ''}: ${_soles(c['debe'])} por transferencia. Finanzas lo pagará.', 'Solicitar')) {
+      return;
+    }
+    await _guardar('solicitarPago', {'compraId': c['compra_id'], 'metodo': 'transfer'}, (_) => _hecho['solicitarPago']!);
+  }
+
+  /// Marcar como pagado desde adelantos (dueños): los adelantos abiertos del mismo agricultor, el más antiguo primero,
+  /// hasta lo que se debe. Nunca es automático. No sale dinero del banco.
+  Future<void> _pagarDesdeAdelantos(Map<String, dynamic> c, List<Map<String, dynamic>> adelantos) async {
+    final lista = adelantos.map((a) => '${a['id']} (queda ${_soles(a['saldo'])})').join(', ');
+    if (!await _confirmar('¿Marcar como pagado desde adelantos?',
+        '${c['agricultor'] ?? ''} debe ${_soles(c['debe'])}. Se usa: $lista. No sale dinero del banco.', 'Marcar como pagado')) {
+      return;
+    }
+    await _guardar('pagoDesdeAdelantos', {'compraId': c['compra_id']}, (res) {
+      final falta = num.tryParse('${res['still_owed'] ?? 0}') ?? 0;
+      return 'Pagado desde adelantos ✓ ${_soles(res['from_advances'])}${falta > 0 ? ' · falta ${_soles(falta)}' : ''}';
+    });
   }
 
   Widget _dato(String nombre, String? valor) => valor == null || valor.isEmpty || valor == 'null'
@@ -1869,8 +1891,13 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
                     ),
                   ])
                 else if ((situacion == 'Por pagar' || situacion == 'Pagado en parte') && c['compra_id'] != null)
-                  // Compras no paga: pide el pago con este botón y Finanzas lo hace. No es automático.
-                  _Acciones(acciones: [(Icons.schedule_send, 'Solicitar pago', () => _solicitarPago(c))]),
+                  // Compras no paga: pide el pago completo y Finanzas lo hace, o (dueños) lo marca pagado desde los
+                  // adelantos del agricultor. Nunca es automático (General Manager, 3 nov 2026).
+                  _Acciones(acciones: [
+                    (Icons.schedule_send, 'Solicitar pago completo', () => _solicitarCompleto(c)),
+                    if (widget.esDueno && _lista(c['adelantos']).isNotEmpty)
+                      (Icons.savings_outlined, 'Marcar como pagado desde adelantos', () => _pagarDesdeAdelantos(c, _lista(c['adelantos']))),
+                  ]),
               ]),
       ),
     );
