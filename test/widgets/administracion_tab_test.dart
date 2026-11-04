@@ -106,6 +106,29 @@ void main() {
     }
     // The report is checked up to the request; building the PDF needs the fonts from the internet (tested apart).
     if (p.endsWith('/compras/reporte') || p.endsWith('/produccion/reporte')) return http.Response(jsonEncode({'error': 'Sin señal'}), 503);
+    if (p.endsWith('/lotes-verdes/g7')) {
+      return http.Response(jsonEncode({
+        'lote': {
+          'id': 'g7', 'codigo': 'L-7', 'estado': 'available', 'kg_ahora': 414, 'kg_inicial': 1000, 'variedad': 'Blend', 'cosecha': 2026,
+          'origen': 'Finca Rosal', 'llego': '2026-09-17', 'producto': 'Blend de Caturra', 'crece': true,
+          'movimientos': [
+            {'fecha': '2026-11-03', 'tipo': 'Agregado', 'kg': 240, 'pergamino': 300, 'rendimiento_pct': 80, 'compras': [{'id': 'DL-0901', 'agricultor': 'Tito Lobato'}]}
+          ],
+          'tuestes': [{'id': 'e9', 'fecha': '2026-11-02T15:00:00Z', 'estado': 'completed', 'kg_verde': 100, 'kg_tostado': 80, 'producto': 'Blend de Caturra'}],
+          'tuestes_total': 2,
+        }
+      }), 200);
+    }
+    if (p.endsWith('/lotes-verdes/g1')) {
+      return http.Response(jsonEncode({
+        'lote': {'id': 'g1', 'codigo': 'L-1', 'estado': 'available', 'kg_ahora': 760, 'kg_inicial': 1000, 'variedad': 'Catimor', 'cosecha': 2026, 'movimientos': [], 'tuestes': [], 'tuestes_total': 0}
+      }), 200);
+    }
+    if (p.endsWith('/lotes-verdes/g8')) {
+      return http.Response(jsonEncode({
+        'lote': {'id': 'g8', 'codigo': 'L-8', 'estado': 'available', 'kg_ahora': 140, 'kg_inicial': 1000, 'producto': 'Essential', 'movimientos': [], 'tuestes': [], 'tuestes_total': 0}
+      }), 200);
+    }
     if (p.endsWith('/lotes-verdes/g7/compras')) {
       return http.Response(jsonEncode({
         'compras': [
@@ -843,7 +866,7 @@ void main() {
       await tester.tap(find.text('Producción'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    // Opens on Café verde, the first tab, then Lotes de tostado, Proveedores and Gastos (4 Nov 2026).
+    // Opens on Café verde, the first tab, then Tostado, Proveedores and Gastos (4 Nov 2026).
     // "Tuestes" is now "Lotes de tostado" and "Lotes" is "Café verde" (4 Nov 2026).
     expect(find.text('Tuestes'), findsNothing);
     expect(find.text('Lotes'), findsNothing);
@@ -851,7 +874,7 @@ void main() {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     expect(find.text('Finalizar'), findsNothing);
-    await tester.tap(find.text('Lotes de tostado').last);
+    await tester.tap(find.text('Tostado').last);
     await tester.pump();
     // Roasted coffee by product, the same as the product screen (4 Nov 2026): each product with its kilos, its lots
     // and its roasts in progress or planned.
@@ -891,21 +914,36 @@ void main() {
     expect(find.text('Iniciar'), findsOneWidget); // the planned one
   });
 
-  testWidgets('Café verde: each lot shows its product; owners add milled coffee to the Blend lot and close old lots after the count', (tester) async {
+  testWidgets('Café verde: each lot opens its detail with the actions inside: Agregar café al lote on the Blend lot, Cerrar lote after the count', (tester) async {
     await abrir(tester, rol: 'owner');
-    await http.runWithClient(() async {
-      await tester.tap(find.text('Producción'));
-      await tester.pumpAndSettle();
-    }, () => MockClient((req) async => responder(req)));
+    Future<void> tocar(Finder f) => http.runWithClient(() async {
+          await tester.ensureVisible(f);
+          await tester.tap(f);
+          await tester.pumpAndSettle();
+        }, () => MockClient((req) async => responder(req)));
+    await tocar(find.text('Producción'));
     expect(find.textContaining('Blend de Caturra · lote del Blend'), findsOneWidget);
     expect(find.text('Essential'), findsOneWidget);
-    expect(find.text('Agregar café al lote'), findsOneWidget); // only the Blend lot
-    expect(find.text('Cerrar lote'), findsOneWidget); // only L-1: L-7 is the Blend lot and L-8 is Essential's coffee
+    // The actions are inside each lot's detail, not on the list (4 Nov 2026).
+    expect(find.text('Agregar café al lote'), findsNothing);
+    expect(find.text('Cerrar lote'), findsNothing);
 
-    // Cerrar lote: only after a count of 0 kg.
-    await tester.tap(find.text('Cerrar lote'));
+    // L-8 is Essential's coffee: its detail has no action.
+    await tocar(find.text('L-8'));
+    expect(find.text('Lote L-8'), findsOneWidget);
+    expect(find.text('Agregar café al lote'), findsNothing);
+    expect(find.text('Cerrar lote'), findsNothing);
+    await tester.pageBack();
     await tester.pumpAndSettle();
+
+    // L-1: Cerrar lote, only after a count of 0 kg. The two fields are apart, never touching.
+    await tocar(find.text('L-1'));
+    expect(find.text('Agregar café al lote'), findsNothing);
+    await tocar(find.text('Cerrar lote'));
     expect(find.text('¿Cerrar el lote L-1?'), findsOneWidget);
+    final kg = tester.getRect(find.widgetWithText(TextField, 'Kilos que encontró el conteo'));
+    final motivo = tester.getRect(find.widgetWithText(TextField, 'Motivo'));
+    expect(motivo.top - kg.bottom, greaterThanOrEqualTo(12));
     await tester.enterText(find.widgetWithText(TextField, 'Kilos que encontró el conteo'), '120');
     await tester.tap(find.widgetWithText(ElevatedButton, 'Cerrar lote'));
     await tester.pump();
@@ -913,19 +951,20 @@ void main() {
     expect(pedidos.any((r) => r.url.path.endsWith('/cerrar')), isFalse);
     await tester.enterText(find.widgetWithText(TextField, 'Kilos que encontró el conteo'), '0');
     await tester.enterText(find.widgetWithText(TextField, 'Motivo'), 'Conteo del 5 nov: sin sacos');
-    await http.runWithClient(() async {
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Cerrar lote'));
-      await tester.pumpAndSettle();
-    }, () => MockClient((req) async => responder(req)));
+    await tocar(find.widgetWithText(ElevatedButton, 'Cerrar lote'));
     final cierre = pedidos.lastWhere((r) => r.url.path.endsWith('/lotes-verdes/g1/cerrar'));
     expect(jsonDecode(cierre.body)['kgContados'], 0);
     expect(jsonDecode(cierre.body)['motivo'], 'Conteo del 5 nov: sin sacos');
+    expect(find.text('Lote L-1'), findsNothing); // a closed lot goes back to the list
 
-    // Agregar café al lote: the compras milled, parchment in (the sum of the compras), green out, and Quality's yes.
-    await http.runWithClient(() async {
-      await tester.tap(find.text('Agregar café al lote'));
-      await tester.pumpAndSettle();
-    }, () => MockClient((req) async => responder(req)));
+    // L-7, the Blend lot: its data, what was added and its roasts, and Agregar café al lote.
+    await tocar(find.text('L-7'));
+    for (final t in ['Lote L-7', 'Lote del Blend: crece con café pilado', 'Agregado y cierre', 'Martes 3 de noviembre · +240 kg', 'Tuestes con este lote', '100 kg verde → 80 kg tostado']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    expect(find.textContaining('rendimiento 80%'), findsOneWidget);
+    expect(find.text('Cerrar lote'), findsNothing); // the Blend lot stays open
+    await tocar(find.text('Agregar café al lote'));
     expect(find.text('Agregar café al lote L-7'), findsOneWidget);
     await tester.tap(find.text('Pedro Ramírez Ñique'));
     await tester.pump();
@@ -933,6 +972,9 @@ void main() {
     await tester.enterText(find.widgetWithText(TextField, 'Kilos de café verde que salieron'), '240');
     await tester.pump();
     expect(find.text('Rendimiento: 80.0%'), findsOneWidget);
+    final pergamino = tester.getRect(find.widgetWithText(TextField, 'Kilos de pergamino que entraron'));
+    final verde = tester.getRect(find.widgetWithText(TextField, 'Kilos de café verde que salieron'));
+    expect(verde.top - pergamino.bottom, greaterThanOrEqualTo(12)); // the two kilo fields are apart
     await tester.ensureVisible(find.text('Agregar al lote'));
     await tester.tap(find.text('Agregar al lote'));
     await tester.pump();
@@ -941,11 +983,7 @@ void main() {
     await tester.ensureVisible(find.text('Calidad aprobó este café'));
     await tester.tap(find.text('Calidad aprobó este café'));
     await tester.pump();
-    await http.runWithClient(() async {
-      await tester.ensureVisible(find.text('Agregar al lote'));
-      await tester.tap(find.text('Agregar al lote'));
-      await tester.pumpAndSettle();
-    }, () => MockClient((req) async => responder(req)));
+    await tocar(find.text('Agregar al lote'));
     final agregado = jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/lotes-verdes/g7/agregar')).body);
     expect(agregado['compras'], ['DL-0901']);
     expect(agregado['kgPergamino'], 300);
@@ -955,13 +993,15 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('staff see the green lots and their product, but not Agregar café al lote or Cerrar lote', (tester) async {
+  testWidgets('staff open a green lot and see its data, but not Agregar café al lote or Cerrar lote', (tester) async {
     await abrir(tester, rol: 'staff');
     await http.runWithClient(() async {
       await tester.tap(find.text('Producción'));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('L-1'));
+      await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    expect(find.text('Essential'), findsOneWidget);
+    expect(find.text('Lote L-1'), findsOneWidget);
     expect(find.text('Agregar café al lote'), findsNothing);
     expect(find.text('Cerrar lote'), findsNothing);
   });
@@ -971,14 +1011,14 @@ void main() {
     await http.runWithClient(() async {
       await tester.tap(find.text('Producción'));
       await tester.pumpAndSettle();
-      final tabs = ['Café verde', 'Lotes de tostado', 'Proveedores', 'Gastos'].map((t) => tester.getCenter(find.text(t).last).dx).toList();
+      final tabs = ['Café verde', 'Tostado', 'Proveedores', 'Gastos'].map((t) => tester.getCenter(find.text(t).last).dx).toList();
       for (var i = 1; i < tabs.length; i++) {
         expect(tabs[i], greaterThan(tabs[i - 1]));
       }
       // The long name gets the widest tab, so it is not shrunk on the iPhone (4 Nov 2026).
       double ancho(String t) => tester.getSize(find.ancestor(of: find.text(t).last, matching: find.byType(InkWell)).first).width;
-      expect(ancho('Lotes de tostado'), greaterThan(ancho('Café verde')));
       expect(ancho('Café verde'), greaterThan(ancho('Gastos')));
+      expect(find.text('Lotes de tostado'), findsNothing); // the tab is "Tostado" now (4 Nov 2026)
       await tester.tap(find.text('Gastos').last);
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
@@ -1002,7 +1042,7 @@ void main() {
     await http.runWithClient(() async {
       await tester.tap(find.text('Producción'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Lotes de tostado').last); // Café verde is the first tab now (4 Nov 2026)
+      await tester.tap(find.text('Tostado').last); // Café verde is the first tab now (4 Nov 2026)
       await tester.pump();
       await tester.tap(find.text('Finalizar'));
       await tester.pumpAndSettle();

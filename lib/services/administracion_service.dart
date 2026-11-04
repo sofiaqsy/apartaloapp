@@ -76,6 +76,9 @@ class AdministracionService {
 
   /// Lotes verdes (General Manager, 4 nov 2026, tras la reunión de lotes): las compras que pueden entrar al lote del
   /// Blend, Agregar café al lote y Cerrar lote. Sólo dueños; lo decide la base de datos.
+  /// Detalle de un lote verde (4 nov 2026): datos, producto, lo agregado y el cierre, los últimos tuestes.
+  static Future<ApiResponse<Map<String, dynamic>>> loteVerde(String loteId) => _get('produccion/lotes-verdes/${Uri.encodeComponent(loteId)}');
+
   static Future<ApiResponse<Map<String, dynamic>>> comprasParaLote(String loteId) => _get('produccion/lotes-verdes/${Uri.encodeComponent(loteId)}/compras');
 
   static Future<ApiResponse<Map<String, dynamic>>> agregarCafeLote(String loteId, Map<String, dynamic> datos, {required String clave}) =>
