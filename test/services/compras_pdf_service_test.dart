@@ -85,7 +85,7 @@ void main() {
           'meses': rango ? 5 : 1,
           'generado': '2026-11-04T15:00:00Z',
           'dueno': dueno,
-          'franja': {'tuestes': 2, 'kg_verde': 60, 'kg_tostado': 49.8, 'merma_pct': 17.0},
+          'franja': {'tuestes': 2, 'kg_verde': 60, 'kg_tostado': 49.8, 'merma_pct': 17.0, 'kg_verde_vendido': 72, 'kg_tostado_vendido': 90},
           'en_curso': {'programados': 1, 'tostando': 0},
           'tuestes': rango
               ? []
@@ -108,8 +108,18 @@ void main() {
           'tostado_hoy': [
             {'fecha': '2026-07-02', 'producto': 'Omagua 250 g', 'lote': 'TT-1', 'kg': 12}
           ],
-          'por_procesar': [
-            {'estado': 'parchment', 'calidad': 'pending', 'lotes': 2, 'kg': 120}
+          // Validated again with Production (4 Nov 2026): no por_procesar; green movements by lot, roasted sold, oversold lots.
+          'movimientos_verde': [
+            {'lote': 'L-1', 'estado': 'Cerrado', 'cerrado': 760},
+            {'lote': 'L-5', 'estado': 'Abierto', 'tostado': 65, 'diferencia': -108, 'saldo': 47},
+            {'lote': 'L-7', 'estado': 'Abierto', 'compras': 2, 'pergamino': 88.7, 'estimado': 70.96, 'tostado': 100, 'vendido': 72, 'saldo': 484.96},
+          ],
+          'vendido_tostado': [
+            {'producto': 'Blend de Caturra, Pache, typica', 'kg': 50},
+            {'producto': 'Geisha', 'kg': 30},
+          ],
+          'vendido_de_mas': [
+            {'producto': 'Blend de Caturra, Pache, typica', 'lote': 'L-8', 'fecha': '2026-10-17', 'asignado': 120, 'vendido': 126, 'saldo': -6},
           ],
           if (dueno) 'costos': [
             {'categoria': 'Mantenimiento', 'pendiente': 90, 'pagado': 0, 'total': 90}

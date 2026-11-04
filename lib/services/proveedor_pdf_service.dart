@@ -600,13 +600,13 @@ class ComprasPdfService {
 }
 
 /// Reporte de Producción (General Manager, 4 nov 2026), con el mismo diseño del de Compras. Qué muestra lo decidió el
-/// área de Producción: franja (lotes de tostado, verde que entró, tostado que salió, merma media); los lotes de tostado del mes (o una
-/// tabla por mes); merma por lote verde; stock de verde y de tostado hoy; café por procesar hoy; costos (sólo dueños).
+/// área de Producción, revisado con ella el 4 nov 2026: franja (lotes de tostado, verde que entró, tostado que salió, merma media,
+/// verde vendido, tostado vendido); los lotes de tostado del mes (o una tabla por mes); movimientos del verde por lote; merma
+/// por lote verde; tostado vendido por producto y lotes vendidos de más; stock de verde y de tostado hoy; costos (sólo dueños).
 /// [reporte] es lo que da /produccion/reporte.
 class ProduccionPdfService {
   static String _kg(dynamic v) => v == null ? '—' : ProveedorPdfService.kg(v);
   static String _pct(dynamic v) => v == null ? '—' : '${v is num ? v.toStringAsFixed(1) : v}%';
-  static const _cafe = {'cherry': 'Cereza', 'parchment': 'Pergamino', 'green': 'Verde'};
 
   static Future<Uint8List> generarBytes(Map<String, dynamic> reporte, {String? businessName, pw.Font? base, pw.Font? bold}) async {
     final doc = pw.Document();
@@ -628,7 +628,9 @@ class ProduccionPdfService {
     final porLote = ProveedorPdfService._lista(reporte['por_lote']);
     final verde = ProveedorPdfService._lista(reporte['verde_hoy']);
     final tostado = ProveedorPdfService._lista(reporte['tostado_hoy']);
-    final porProcesar = ProveedorPdfService._lista(reporte['por_procesar']);
+    final movVerde = ProveedorPdfService._lista(reporte['movimientos_verde']);
+    final vendidoTostado = ProveedorPdfService._lista(reporte['vendido_tostado']);
+    final deMas = ProveedorPdfService._lista(reporte['vendido_de_mas']);
     final costos = ProveedorPdfService._lista(reporte['costos']);
     final costosMes = ProveedorPdfService._lista(reporte['costos_por_mes']);
     final hoy = ProveedorPdfService.fecha(reporte['generado'] ?? DateTime.now().toIso8601String());
@@ -692,11 +694,19 @@ class ProduccionPdfService {
               color: ProveedorPdfService._warmBg,
               borderRadius: pw.BorderRadius.circular(6),
               border: pw.Border.all(color: ProveedorPdfService._cardBorder)),
-          child: pw.Row(children: [
-            pw.Expanded(child: ProveedorPdfService._metaChip('Lotes de tostado terminados', ComprasPdfService._n(franja['tuestes']))),
-            pw.Expanded(child: ProveedorPdfService._metaChip('Café verde que entró', _kg(franja['kg_verde']))),
-            pw.Expanded(child: ProveedorPdfService._metaChip('Café tostado que salió', _kg(franja['kg_tostado']))),
-            pw.Expanded(child: ProveedorPdfService._metaChip('Merma media', _pct(franja['merma_pct']))),
+          // Dos filas de tres; las ventas de verde y de tostado se agregaron con Producción (General Manager, 4 nov 2026).
+          child: pw.Column(children: [
+            pw.Row(children: [
+              pw.Expanded(child: ProveedorPdfService._metaChip('Lotes de tostado terminados', ComprasPdfService._n(franja['tuestes']))),
+              pw.Expanded(child: ProveedorPdfService._metaChip('Café verde que entró al tostador', _kg(franja['kg_verde']))),
+              pw.Expanded(child: ProveedorPdfService._metaChip('Café tostado que salió', _kg(franja['kg_tostado']))),
+            ]),
+            pw.SizedBox(height: 8),
+            pw.Row(children: [
+              pw.Expanded(child: ProveedorPdfService._metaChip('Merma media', _pct(franja['merma_pct']))),
+              pw.Expanded(child: ProveedorPdfService._metaChip('Café verde vendido', _kg(franja['kg_verde_vendido'] ?? 0))),
+              pw.Expanded(child: ProveedorPdfService._metaChip('Café tostado vendido', _kg(franja['kg_tostado_vendido'] ?? 0))),
+            ]),
           ]),
         ),
         espacio(),
@@ -744,7 +754,39 @@ class ProduccionPdfService {
         ),
         espacio(),
 
-        // ── B. MERMA POR LOTE VERDE ──
+        // ── B. MOVIMIENTOS DEL CAFÉ VERDE POR LOTE ── (de su Estado de lote; Producción, 4 nov 2026)
+        if (movVerde.isEmpty)
+          nada('MOVIMIENTOS DEL CAFÉ VERDE POR LOTE', 'No hubo movimientos de café verde en el periodo.')
+        else ...[
+          ...tabla(
+            'MOVIMIENTOS DEL CAFÉ VERDE POR LOTE',
+            ['Lote', 'Compras', 'Verde estimado', 'Tostado', 'Vendido', 'Cerrado', 'Diferencia', 'Saldo hoy'],
+            [
+              for (final m in movVerde)
+                [
+                  '${m['lote'] ?? '—'}${m['estado'] == 'Cerrado' ? ' (cerrado)' : ''}',
+                  m['compras'] == null ? '—' : '${ComprasPdfService._n(m['compras'])} · ${_kg(m['pergamino'])} perg.',
+                  m['estimado'] == null ? '—' : '+${_kg(m['estimado'])}',
+                  m['tostado'] == null ? '—' : '−${_kg(m['tostado'])}',
+                  m['vendido'] == null ? '—' : '−${_kg(m['vendido'])}',
+                  m['cerrado'] == null ? '—' : '−${_kg(m['cerrado'])}',
+                  m['diferencia'] == null ? '—' : _kg(m['diferencia']),
+                  m['saldo'] == null ? '—' : _kg(m['saldo']),
+                ],
+            ],
+            {2, 3, 4, 5, 6, 7},
+          ),
+          pw.Padding(
+            padding: const pw.EdgeInsets.only(top: 6),
+            child: pw.Text(
+                'Verde estimado: 80% del pergamino de cada compra del Blend; no es el rendimiento real. Cerrado: los kilos que el lote '
+                'mostraba al cerrarlo después del conteo. Diferencia: lo que no cuadra hoy entre los movimientos y los kilos del lote.',
+                style: const pw.TextStyle(fontSize: 8.5, color: ProveedorPdfService._textGrey)),
+          ),
+        ],
+        espacio(),
+
+        // ── C. MERMA POR LOTE VERDE ──
         if (porLote.isNotEmpty) ...[
           ...tabla(
             'MERMA POR LOTE VERDE',
@@ -766,7 +808,33 @@ class ProduccionPdfService {
           espacio(),
         ],
 
-        // ── C. CAFÉ VERDE HOY ──
+        // ── D. CAFÉ TOSTADO VENDIDO POR PRODUCTO ── (Producción, 4 nov 2026)
+        if (vendidoTostado.isEmpty)
+          nada('CAFÉ TOSTADO VENDIDO POR PRODUCTO', 'No se vendió café tostado en el periodo.')
+        else
+          ...tabla(
+            'CAFÉ TOSTADO VENDIDO POR PRODUCTO',
+            ['Producto', 'Vendido'],
+            [for (final v in vendidoTostado) ['${v['producto'] ?? '—'}', _kg(v['kg'])]],
+            {1},
+          ),
+        // Lotes tostados vendidos por encima de lo asignado: bajo 0, marcados (General Manager, 4 nov 2026).
+        if (deMas.isNotEmpty) ...[
+          espacio(),
+          ...tabla(
+            'LOTES TOSTADOS VENDIDOS DE MÁS (HOY)',
+            ['Producto', 'Lote', 'Tostado el', 'Asignado', 'Vendido', 'Saldo'],
+            [
+              for (final d in deMas)
+                ['${d['producto'] ?? '—'}', '${d['lote'] ?? '—'}', ProveedorPdfService.fecha(d['fecha']), _kg(d['asignado']), _kg(d['vendido']),
+                  'vendido de más: ${_kg(d['saldo'])}'],
+            ],
+            {3, 4, 5},
+          ),
+        ],
+        espacio(),
+
+        // ── E. CAFÉ VERDE HOY ──
         if (verde.isEmpty)
           nada('CAFÉ VERDE EN STOCK HOY ($hoy)', 'No hay café verde en stock.')
         else
@@ -781,7 +849,7 @@ class ProduccionPdfService {
           ),
         espacio(),
 
-        // ── D. CAFÉ TOSTADO HOY ──
+        // ── F. CAFÉ TOSTADO HOY ──
         if (tostado.isEmpty)
           nada('CAFÉ TOSTADO DISPONIBLE HOY ($hoy)', 'No hay café tostado disponible.')
         else
@@ -795,26 +863,9 @@ class ProduccionPdfService {
             {3},
           ),
 
-        // ── E. POR PROCESAR HOY ──
-        if (porProcesar.isNotEmpty) ...[
-          espacio(),
-          ...tabla(
-            'CAFÉ COMPRADO POR PROCESAR HOY ($hoy)',
-            ['Café', 'Lotes', 'Kilos', 'Calidad'],
-            [
-              for (final p in porProcesar)
-                [
-                  _cafe[p['estado']] ?? '${p['estado'] ?? ''}',
-                  ComprasPdfService._n(p['lotes']),
-                  _kg(p['kg']),
-                  p['calidad'] == 'pending' ? 'Por revisar' : '${p['calidad'] ?? ''}',
-                ],
-            ],
-            {1, 2},
-          ),
-        ],
+        // Sin "Café comprado por procesar" (General Manager, 4 nov 2026: "we don't have that option").
 
-        // ── F. COSTOS (sólo dueños) ──
+        // ── G. COSTOS (sólo dueños) ──
         if (esDueno) ...[
           espacio(),
           if (costos.isEmpty)
