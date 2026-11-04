@@ -71,6 +71,16 @@ void main() {
         'total': 1, 'hay_mas': false,
       }), 200);
     }
+    if (p.endsWith('/comercial/pagos')) {
+      return http.Response(jsonEncode({
+        'pagos': [
+          {'id': 'pg1', 'fecha': '2026-11-03T15:00:00Z', 'pedido_id': 'o500', 'numero': 'ORD-500', 'cliente': 'Cafe Pago', 'monto': 80, 'comprobantes': 1, 'verificado': true,
+            'pedido': {'id': 'ORD-500', 'supabaseId': 'o500', 'cliente': 'Cafe Pago', 'estado': 'ENTREGADO', 'fecha': '3/11/2026', 'productos': [], 'total': 80, 'estadoPago': 'PAGADO', 'evidencias': [], 'pagos': []}},
+          {'id': 'pg2', 'fecha': '2026-11-02T15:00:00Z', 'pedido_id': 'o501', 'numero': 'ORD-501', 'cliente': 'Cafe Sin', 'monto': 40, 'comprobantes': 0, 'verificado': false},
+        ],
+        'total': 2, 'hay_mas': false,
+      }), 200);
+    }
     if (p.endsWith('/comercial/productos')) {
       return http.Response(jsonEncode({
         'desde': '2026-01-01',
@@ -1237,7 +1247,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Comercialización like the other processes (4 Nov 2026): no data on top, 5 tabs, orders, customers and products 20 a page, PDF', (tester) async {
+  testWidgets('Comercialización (4 Nov 2026): no data on top, Últimos pagos, Clientes and Gastos 20 a page, PDF; no Pedidos, Productos or Proveedores', (tester) async {
     await abrir(tester, rol: 'owner');
     await tester.scrollUntilVisible(find.text('Vendido este mes'), 200, scrollable: find.byType(Scrollable).last);
     expect(find.text('Comercialización'), findsOneWidget); // the first card keeps its indicators
@@ -1245,22 +1255,25 @@ void main() {
       await tester.tap(find.text('Comercialización'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    expect(find.text('Reporte de ventas'), findsNothing); // the old report is gone
+    expect(find.text('Reporte de ventas'), findsNothing);
     expect(find.text('Ticket promedio'), findsNothing); // no data on top
-    for (final t in ['Registrar pedido', 'Registrar gasto', 'Pedidos', 'Clientes', 'Productos', 'Proveedores', 'Gastos']) {
+    for (final t in ['Registrar gasto', 'Últimos pagos', 'Clientes', 'Gastos']) {
       expect(find.text(t), findsWidgets, reason: t);
     }
+    for (final t in ['Registrar pedido', 'Pedidos', 'Productos', 'Proveedores']) {
+      expect(find.text(t), findsNothing, reason: t);
+    }
     expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
-    // Pedidos: 20 a page, newest first; each opens the order detail.
-    final ped = pedidos.lastWhere((r) => r.url.path.contains('/api/pedidos/'));
-    expect(ped.url.queryParameters['limite'], '20');
-    expect(find.text('Cafe Venta'), findsOneWidget);
+    // Últimos pagos: 20 a page; each payment with its order opens the order detail.
+    expect(pedidos.any((r) => r.url.path.endsWith('/comercial/pagos') && r.url.queryParameters['limit'] == '20'), isTrue);
+    for (final t in ['Cafe Pago', 'Pedido ORD-500 · S/ 80', 'Verificado', 'Sin comprobante']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
     // Clientes: from the orders; each opens its detail with its orders.
     await http.runWithClient(() async {
       await tester.tap(find.text('Clientes').last);
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    expect(pedidos.any((r) => r.url.path.endsWith('/comercial/clientes') && r.url.queryParameters['limit'] == '20'), isTrue);
     expect(find.text('Cafe Uno'), findsOneWidget);
     expect(find.textContaining('2 pedidos · S/ 150'), findsOneWidget);
     await http.runWithClient(() async {
@@ -1271,17 +1284,24 @@ void main() {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     expect(pedidos.lastWhere((r) => r.url.path.contains('/api/pedidos/')).url.queryParameters['cliente'], 'Cafe Uno');
-    await tester.pageBack();
-    await tester.pumpAndSettle();
-    // Productos: the best sellers this year, information only.
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Comercialización: a payment opens its order, the same detail as in Pedidos', (tester) async {
+    final antes = FlutterError.onError;
+    FlutterError.onError = (d) {
+      if (!d.toString().contains('overflowed')) antes?.call(d);
+    };
+    addTearDown(() => FlutterError.onError = antes);
+    await abrir(tester, rol: 'owner');
+    await tester.scrollUntilVisible(find.text('Vendido este mes'), 200, scrollable: find.byType(Scrollable).last);
     await http.runWithClient(() async {
-      await tester.tap(find.text('Productos').last);
+      await tester.tap(find.text('Comercialización'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cafe Pago'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    for (final t in ['Más vendidos este año', 'Blend', '3 uds.']) {
-      expect(find.text(t), findsOneWidget, reason: t);
-    }
-    expect(tester.takeException(), isNull);
+    expect(find.byType(DetallePedidoSheet), findsOneWidget);
   });
 
   testWidgets('Resumen points to Comercialización for the sales', (tester) async {

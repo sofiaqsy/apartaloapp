@@ -134,7 +134,8 @@ class AdministracionService {
   static Future<ApiResponse<Map<String, dynamic>>> reporteComercial(DateTime desde, DateTime hasta) => _reporte('comercial', desde, hasta);
   static Future<ApiResponse<Map<String, dynamic>>> clientesComercial({int desde = 0, String? buscar}) =>
       _get('comercial/clientes?offset=$desde&limit=20${buscar == null || buscar.isEmpty ? '' : '&q=${Uri.encodeComponent(buscar)}'}');
-  static Future<ApiResponse<Map<String, dynamic>>> productosComercial({int desde = 0}) => _get('comercial/productos?offset=$desde&limit=20');
+  /// Últimos pagos (General Manager, 4 nov 2026): los pagos registrados en los pedidos, de 20 en 20, cada uno con su pedido.
+  static Future<ApiResponse<Map<String, dynamic>>> pagosComercial({int desde = 0}) => _get('comercial/pagos?offset=$desde&limit=20');
 
   static Future<ApiResponse<Map<String, dynamic>>> reporteProveedor(String id) => _get('proveedores/${Uri.encodeComponent(id)}/reporte');
 

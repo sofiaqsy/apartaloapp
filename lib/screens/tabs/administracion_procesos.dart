@@ -2927,19 +2927,15 @@ class _ComercialScreen extends StatefulWidget {
   State<_ComercialScreen> createState() => _ComercialScreenState();
 }
 
-/// Comercialización como los demás procesos (General Manager, 4 nov 2026; lo propuso el área Comercial): sin datos
-/// arriba, Registrar pedido y Registrar gasto, pestañas Pedidos | Clientes | Productos | Proveedores | Gastos (de 20 en
-/// 20; cada pedido y cada cliente abren su detalle) y el reporte en PDF. Sin "Por cobrar": el estado de pago de los
-/// pedidos todavía no cuadra.
-class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _ProveedoresDelProceso, _GastosDelArea, _ReporteDelProceso {
-  int _pestana = 0; // 0 Pedidos, 1 Clientes, 2 Productos, 3 Proveedores, 4 Gastos
+/// Comercialización como los demás procesos (General Manager, 4 nov 2026; lo propuso el área Comercial y la General
+/// Manager lo ajustó el mismo día): sin datos arriba, Registrar gasto, pestañas Últimos pagos | Clientes | Gastos (de 20
+/// en 20) y el reporte en PDF. Sin pestañas Pedidos, Productos ni Proveedores, ni Registrar pedido. Sin "Por cobrar":
+/// el estado de pago de los pedidos todavía no cuadra.
+class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _GastosDelArea, _ReporteDelProceso {
+  int _pestana = 0; // 0 Últimos pagos, 1 Clientes, 2 Gastos
 
   @override
   String get clave => 'comercial';
-  @override
-  String? get areaProveedores => 'commercial';
-  @override
-  String get vacioProveedores => 'Todavía no hay proveedores de Comercialización.';
   @override
   String get areaGastos => 'commercial';
   @override
@@ -2954,78 +2950,80 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Provee
   @override
   Future<Uint8List> armarPdf(Map<String, dynamic> reporte) => ComercialPdfService.generarBytes(reporte);
 
-  // Pedidos, clientes y productos: de 20 en 20 desde el servidor, al llegar al final.
-  final _filas = [<Map<String, dynamic>>[], <Map<String, dynamic>>[], <Map<String, dynamic>>[]];
-  final _cargandoFilas = [false, false, false];
-  final _hayMasFilas = [true, true, true];
-  final _erroresFilas = <String?>[null, null, null];
-  int _paginaPedidos = 0;
+  // Pagos y clientes: de 20 en 20 desde el servidor, al llegar al final.
+  final _filas = [<Map<String, dynamic>>[], <Map<String, dynamic>>[]];
+  final _cargandoFilas = [false, false];
+  final _hayMasFilas = [true, true];
+  final _erroresFilas = <String?>[null, null];
   int _vuelta = 0;
 
   @override
   Future<void> cargar() async {
     _vuelta++;
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < 2; i++) {
       _filas[i].clear();
       _cargandoFilas[i] = false;
       _hayMasFilas[i] = true;
       _erroresFilas[i] = null;
     }
-    _paginaPedidos = 0;
-    await Future.wait([super.cargar(), if (_pestana < 3) _mas(_pestana)]);
+    await Future.wait([super.cargar(), if (_pestana < 2) _mas(_pestana)]);
   }
 
   Future<void> _mas(int i) async {
     if (_cargandoFilas[i] || !_hayMasFilas[i]) return;
     final vuelta = _vuelta;
     setState(() => _cargandoFilas[i] = true);
-    List<Map<String, dynamic>> nuevas = const [];
-    bool hayMas = false;
-    String? error;
-    if (i == 0) {
-      final r = await ApiService.getPedidos(pagina: _paginaPedidos + 1, limite: 20);
-      if (r.isSuccess && r.data != null) {
-        nuevas = r.data!.pedidos;
-        hayMas = r.data!.hayMas;
-        _paginaPedidos++;
-      } else {
-        error = r.error ?? 'No se pudieron cargar los pedidos.';
-      }
-    } else {
-      final r = i == 1
-          ? await AdministracionService.clientesComercial(desde: _filas[1].length)
-          : await AdministracionService.productosComercial(desde: _filas[2].length);
-      if (r.isSuccess) {
-        nuevas = _lista(r.data![i == 1 ? 'clientes' : 'productos']);
-        hayMas = r.data!['hay_mas'] == true;
-      } else {
-        error = r.error ?? 'No se pudo cargar.';
-      }
-    }
+    final r = i == 0
+        ? await AdministracionService.pagosComercial(desde: _filas[0].length)
+        : await AdministracionService.clientesComercial(desde: _filas[1].length);
     if (!mounted || vuelta != _vuelta) return;
     setState(() {
       _cargandoFilas[i] = false;
-      _filas[i].addAll(nuevas);
-      _hayMasFilas[i] = error == null && hayMas;
-      _erroresFilas[i] = error;
+      if (r.isSuccess) {
+        _filas[i].addAll(_lista(r.data![i == 0 ? 'pagos' : 'clientes']));
+        _hayMasFilas[i] = r.data!['hay_mas'] == true;
+      } else {
+        _erroresFilas[i] = r.error ?? 'No se pudo cargar.';
+        _hayMasFilas[i] = false;
+      }
     });
   }
 
-  Future<void> _registrarPedido() async {
-    final nuevo = await Navigator.push<Map<String, dynamic>>(context, MaterialPageRoute(builder: (_) => const CrearPedidoScreen()));
-    if (nuevo != null && mounted) cargar();
+  /// Un pago registrado en un pedido: cuándo, el cliente, el pedido y el monto (dueños); si tiene comprobante
+  /// verificado. Abre el pedido completo, el mismo detalle que la pestaña Pedidos.
+  Widget _filaPago(Map<String, dynamic> p) {
+    final verificado = p['verificado'] == true;
+    final comprobantes = (p['comprobantes'] as num?)?.toInt() ?? 0;
+    final pedido = p['pedido'] is Map ? Map<String, dynamic>.from(p['pedido'] as Map) : null;
+    return _Ficha(
+      inicio: _Insignia(_fechaCorta(p['fecha']), tono: Colors.green),
+      titulo: '${p['cliente'] ?? 'Sin nombre'}',
+      detalle: ['Pedido ${p['numero'] ?? ''}', if (p['monto'] != null) _soles(p['monto'])].join(' · '),
+      fin: verificado
+          ? const _Pildora('Verificado', Colors.green)
+          : comprobantes > 0
+              ? const _Pildora('Por verificar', Colors.orange)
+              : const _Pildora('Sin comprobante', Colors.grey),
+      onTap: pedido == null
+          ? null
+          : () => showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => DetallePedidoSheet(pedido: pedido, onActualizado: cargar),
+              ),
+    );
   }
 
   List<Widget> _listaComercial(int i) {
     final filas = _filas[i];
     return [
-      if (i == 2) _encabezado('Más vendidos este año', ''),
       if (filas.isEmpty && !_cargandoFilas[i])
-        _vacio(_erroresFilas[i] ?? const ['Todavía no hay pedidos.', 'Todavía no hay clientes.', 'Todavía no hay ventas este año.'][i]),
+        _vacio(_erroresFilas[i] ?? const ['Todavía no hay pagos registrados.', 'Todavía no hay clientes.'][i]),
       for (final f in filas)
         if (i == 0)
-          _fichaPedido(context, f, onActualizado: cargar)
-        else if (i == 1)
+          _filaPago(f)
+        else
           _Ficha(
             inicio: _Insignia(_fechaCorta(f['ultimo']), tono: Colors.blue),
             titulo: '${f['nombre'] ?? 'Sin nombre'}',
@@ -3035,39 +3033,20 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Provee
               if (f['primero'] != null) 'desde ${_fechaCorta(f['primero'])}',
             ].join(' · '),
             onTap: () => _abrirPantalla<void>(context, _ClienteComercialScreen(cliente: f)),
-          )
-        else
-          // Un producto es información: sin caja ni flecha.
-          _Ficha(
-            inicio: const _InsigniaIcono(Icons.coffee_outlined, tono: Colors.brown),
-            titulo: '${f['producto'] ?? 'Producto'}',
-            detalle: [
-              if (f['presentacion'] != null) '${f['presentacion']}',
-              '${f['pedidos']} ${f['pedidos'] == 1 ? 'pedido' : 'pedidos'}',
-              if (f['total'] != null) _soles(f['total']),
-            ].join(' · '),
-            fin: Text('${_numero(f['unidades'])} uds.', style: const TextStyle(fontWeight: FontWeight.w600)),
           ),
       if (_cargandoFilas[i]) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
     ];
   }
 
-  static String _numero(dynamic v) {
-    final n = num.tryParse('${v ?? ''}') ?? 0;
-    return n == n.roundToDouble() ? n.round().toString() : n.toStringAsFixed(1);
-  }
-
   @override
   Widget build(BuildContext context) {
     return pantalla('Comercialización', botonFlotante: botonReporte(), alFinal: () {
-      if (_pestana < 3) _mas(_pestana);
-      if (_pestana == 3) masProveedores();
-      if (_pestana == 4) masGastos();
+      if (_pestana < 2) _mas(_pestana);
+      if (_pestana == 2) masGastos();
     }, (d) {
       return [
         // Sin datos arriba (General Manager, 4 nov 2026): la tarjeta de Procesos ya los muestra.
         _Acciones(acciones: [
-          (Icons.add_shopping_cart, 'Registrar pedido', _registrarPedido),
           (
             Icons.receipt_long,
             _titulos['gasto']!, // el mismo nombre en cada proceso; el área va fija (General Manager, 3 nov 2026)
@@ -3075,17 +3054,16 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Provee
           ),
         ]),
         _Pestanas(
-          nombres: const ['Pedidos', 'Clientes', 'Productos', 'Proveedores', 'Gastos'],
+          nombres: const ['Últimos pagos', 'Clientes', 'Gastos'],
           anchoPorNombre: true,
           elegida: _pestana,
           onElegir: (i) {
             setState(() => _pestana = i);
-            if (i < 3 && _filas[i].isEmpty) _mas(i);
-            if (i == 3) abrirProveedores();
-            if (i == 4) cargarGastos();
+            if (i < 2 && _filas[i].isEmpty) _mas(i);
+            if (i == 2) cargarGastos();
           },
         ),
-        if (_pestana < 3) ..._listaComercial(_pestana) else if (_pestana == 3) ..._listaProveedores() else ...listaGastos(),
+        if (_pestana < 2) ..._listaComercial(_pestana) else ...listaGastos(),
       ];
     });
   }
