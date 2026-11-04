@@ -111,6 +111,11 @@ void main() {
         'lote': {
           'id': 'g7', 'codigo': 'L-7', 'estado': 'available', 'kg_ahora': 414, 'kg_inicial': 1000, 'variedad': 'Blend', 'cosecha': 2026,
           'origen': 'Finca Rosal', 'llego': '2026-09-17', 'producto': 'Blend de Caturra', 'crece': true,
+          'por_pilar_kg': 88.7,
+          'por_pilar': [
+            {'id': 'DL-0009', 'fecha': '2026-11-04', 'agricultor': 'Jhonatan', 'estado': 'parchment', 'kg': 16.7},
+            {'id': 'DL-0008', 'fecha': '2026-11-04', 'agricultor': 'José Luis Gamboa Villano', 'estado': 'parchment', 'kg': 72},
+          ],
           'movimientos': [
             {'fecha': '2026-11-03', 'tipo': 'Agregado', 'kg': 240, 'pergamino': 300, 'rendimiento_pct': 80, 'compras': [{'id': 'DL-0901', 'agricultor': 'Tito Lobato'}]}
           ],
@@ -242,7 +247,7 @@ void main() {
         'produccion': {
           // The Blend lot first (it grows), then the others; each with the product that uses it (4 Nov 2026).
           'lotes_verdes': [
-            {'id': 'g7', 'codigo': 'L-7', 'kg_ahora': 414, 'kg_inicial': 1000, 'cosecha': 2026, 'variedad': 'Blend', 'producto': 'Blend de Caturra', 'crece': true},
+            {'id': 'g7', 'codigo': 'L-7', 'kg_ahora': 414, 'kg_inicial': 1000, 'cosecha': 2026, 'variedad': 'Blend', 'producto': 'Blend de Caturra', 'crece': true, 'por_pilar_n': 2, 'por_pilar_kg': 88.7},
             {'id': 'g1', 'codigo': 'L-1', 'kg_ahora': 760, 'kg_inicial': 1000, 'cosecha': 2026, 'variedad': 'Catimor'},
             {'id': 'g8', 'codigo': 'L-8', 'kg_ahora': 140, 'kg_inicial': 1000, 'cosecha': 2026, 'variedad': 'Blend', 'producto': 'Essential'},
           ],
@@ -924,6 +929,8 @@ void main() {
     await tocar(find.text('Producción'));
     expect(find.textContaining('Blend de Caturra · lote del Blend'), findsOneWidget);
     expect(find.text('Essential'), findsOneWidget);
+    // The Blend compras join the lot by themselves, as "por pilar" (4 Nov 2026).
+    expect(find.text('88.7 kg de pergamino por pilar · 2 compras'), findsOneWidget);
     // The actions are inside each lot's detail, not on the list (4 Nov 2026).
     expect(find.text('Agregar café al lote'), findsNothing);
     expect(find.text('Cerrar lote'), findsNothing);
@@ -959,10 +966,18 @@ void main() {
 
     // L-7, the Blend lot: its data, what was added and its roasts, and Agregar café al lote.
     await tocar(find.text('L-7'));
-    for (final t in ['Lote L-7', 'Lote del Blend: crece con café pilado', 'Agregado y cierre', 'Martes 3 de noviembre · +240 kg', 'Tuestes con este lote', '100 kg verde → 80 kg tostado']) {
+    for (final t in ['Por pilar', 'José Luis Gamboa Villano', 'Jhonatan', '72 kg']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
+    for (final t in ['Lote L-7', 'Lote del Blend: crece con café pilado']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    final lista = find.byType(Scrollable).last;
+    await tester.scrollUntilVisible(find.text('Martes 3 de noviembre · +240 kg'), 200, scrollable: lista);
     expect(find.textContaining('rendimiento 80%'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('100 kg verde → 80 kg tostado'), 200, scrollable: lista);
+    expect(find.text('Tuestes con este lote'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Agregar café al lote'), -200, scrollable: lista);
     expect(find.text('Cerrar lote'), findsNothing); // the Blend lot stays open
     await tocar(find.text('Agregar café al lote'));
     expect(find.text('Agregar café al lote L-7'), findsOneWidget);

@@ -3446,6 +3446,14 @@ class _FilaLote extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis),
               ),
+            // Las compras del Blend entran solas al lote como "por pilar"; su verde se suma al pilarlas (4 nov 2026).
+            if (lote['por_pilar_n'] != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                    '${_kg(lote['por_pilar_kg'])} de pergamino por pilar · ${lote['por_pilar_n']} ${lote['por_pilar_n'] == 1 ? 'compra' : 'compras'}',
+                    style: TextStyle(fontSize: 13, color: Colors.orange.shade800)),
+              ),
             const SizedBox(height: 6),
             Row(children: [
               Expanded(
@@ -3622,6 +3630,20 @@ class _LoteVerdeDetalleScreenState extends State<_LoteVerdeDetalleScreen> {
                     _dato('Origen', l['origen']?.toString()),
                     _dato('Llegó', l['llego'] == null ? null : _fechaLarga(l['llego'])),
                   ]),
+                  // Las compras del Blend que ya son del lote pero aún no se pilan (General Manager, 4 nov 2026): entran solas
+                  // al registrarlas; su café verde se suma con Agregar café al lote, con el rendimiento real.
+                  if (_lista(l['por_pilar']).isNotEmpty) ...[
+                    _encabezado('Por pilar', _kg(l['por_pilar_kg'])),
+                    for (final c in _lista(l['por_pilar']))
+                      _Ficha(
+                        inicio: const _InsigniaIcono(Icons.inventory_2_outlined, tono: Colors.brown),
+                        titulo: '${c['agricultor'] ?? c['id']}',
+                        detalle: ['${c['id']}', _fechaLarga(c['fecha']), _estadosCafe[c['estado']] ?? '${c['estado'] ?? ''}']
+                            .where((t) => t.isNotEmpty)
+                            .join(' · '),
+                        fin: Text(_kg(c['kg']), style: const TextStyle(fontWeight: FontWeight.w600)),
+                      ),
+                  ],
                   if (movimientos.isNotEmpty) ...[
                     _encabezado('Agregado y cierre', '${movimientos.length}'),
                     for (final m in movimientos)
