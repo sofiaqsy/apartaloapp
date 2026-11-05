@@ -70,6 +70,14 @@ class AdministracionService {
   static Future<ApiResponse<Map<String, dynamic>>> conciliarMovimiento(int id, String tipo, String ref, {required String clave}) =>
       _post('finanzas/movimientos/$id/conciliar', {'tipo': tipo, 'ref': ref, 'clientRef': clave});
 
+  /// Un pago de la app ({pago}, dueños): su estado frente al banco, su número de operación y su evidencia.
+  static Future<ApiResponse<Map<String, dynamic>>> pago(String id) => _get('finanzas/pagos/${Uri.encodeComponent(id)}');
+
+  /// Escribe el número de operación del banco en un pago que no cruzó solo, y vuelve a cruzar (los formularios nunca
+  /// lo piden; es una acción opcional del pago).
+  static Future<ApiResponse<Map<String, dynamic>>> operacionPago(String id, String operacion, {required String clave}) =>
+      _post('finanzas/pagos/${Uri.encodeComponent(id)}/operacion', {'operacion': operacion, 'clientRef': clave});
+
   /// Compras → Adelantos: los pedidos por aprobar (en la primera página) y los adelantos, del más nuevo al más antiguo.
   static Future<ApiResponse<Map<String, dynamic>>> adelantos({int offset = 0, int limit = 20}) => _get('adelantos?offset=$offset&limit=$limit');
 

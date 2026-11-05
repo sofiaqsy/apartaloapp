@@ -267,6 +267,15 @@ void main() {
         'recientes': [{'id': 'DL-0001', 'fecha': '2026-11-03', 'estado': 'parchment', 'kg': 100}],
       }}), 200);
     }
+    if (p.endsWith('/finanzas/pagos/PY-0008/operacion')) {
+      return http.Response(jsonEncode({'ok': true, 'resultado': {'pago': 'PY-0008', 'operacion': '6003252', 'conciliado': true, 'movimiento': 9}}), 200);
+    }
+    if (p.endsWith('/finanzas/pagos/PY-0008')) {
+      return http.Response(jsonEncode({'pago': {
+        'id': 'PY-0008', 'fecha': '2026-11-04', 'monto': -308.95, 'tipo': 'Compra', 'quien': 'Jhonatan', 'metodo': 'yape', 'cuenta': 'BCP Corriente Soles',
+        'estado': 'No está en el banco', 'puede_operacion': true, 'por': 'owner@x', 'evidencia': {'tipo': 'purchase', 'id': 'DL-0009', 'n': 0},
+      }}), 200);
+    }
     if (p.contains('/finanzas/movimientos/') && p.endsWith('/conciliar')) {
       return http.Response(jsonEncode({'ok': true, 'resultado': {'movimiento': 12, 'estado': 'Conciliado', 'pago': 'PY-0010'}}), 200);
     }
@@ -275,7 +284,8 @@ void main() {
       return http.Response(jsonEncode({'movimiento': {
         'id': 12, 'fecha': '2026-11-05', 'banco': 'TRAN.CTAS.TERC.HK', 'operacion': '6011866', 'monto': -350, 'cuenta': 'BCP Corriente Soles',
         'estado': 'Falta en la app',
-        'sugerencias': [{'tipo': 'gasto', 'ref': 'EX-0003', 'titulo': 'Gasto · Personal', 'detalle': 'EX-0003 · Ayudante', 'fecha': '2026-11-04', 'monto': 350}],
+        'sugerencias': [{'tipo': 'gasto', 'ref': 'EX-0003', 'titulo': 'Gasto · Personal', 'detalle': 'EX-0003 · Ayudante', 'fecha': '2026-11-04', 'monto': 350,
+          'por': 'misael@x', 'evidencia': {'tipo': 'expense', 'id': 'EX-0003', 'n': 1}}],
       }}), 200);
     }
     if (p.endsWith('/finanzas/movimientos/11')) {
@@ -1316,7 +1326,7 @@ void main() {
       await tester.tap(find.text('TRAN.CTAS.TERC.HK'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    for (final t in ['Puede ser', 'Gasto · Personal', 'Conciliar', '6011866']) {
+    for (final t in ['Puede ser', 'Gasto · Personal', 'Conciliar', '6011866', 'registró misael@x', 'Ver evidencia (1)']) {
       expect(find.text(t), findsWidgets, reason: t);
     }
     await http.runWithClient(() async {
@@ -1338,6 +1348,34 @@ void main() {
     }, () => MockClient((req) async => responder(req)));
     expect(find.textContaining('Sin coincidencias'), findsOneWidget);
     expect(find.text('Conciliar'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an app payment not in the bank opens its detail and takes the operation number (5 Nov 2026)', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await tester.scrollUntilVisible(find.text('Finanzas'), 200, scrollable: find.byType(Scrollable).last);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Finanzas'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Movimientos').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Compra · Jhonatan'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    for (final t in ['No está en el banco', 'Yape', 'Sin foto del pago', 'Agregar número de operación']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Agregar número de operación'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '06003252');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final o = pedidos.lastWhere((r) => r.url.path.endsWith('/operacion'));
+    expect(o.url.path, endsWith('/finanzas/pagos/PY-0008/operacion'));
+    expect(jsonDecode(o.body), containsPair('operacion', '06003252'));
+    expect(find.textContaining('Conciliado ✓'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

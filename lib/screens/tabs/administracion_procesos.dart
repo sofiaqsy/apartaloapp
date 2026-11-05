@@ -1120,8 +1120,17 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
     });
   }
 
-  Future<void> _abrirMovimiento(Map<String, dynamic> m) async {
-    final cambio = await _abrirPantalla<bool>(context, _MovimientoDetalleScreen(id: (m['movimiento'] as num).toInt()));
+  Future<void> _abrirMovimiento(Map<String, dynamic> m) =>
+      _recargarSiCambio(_abrirPantalla<bool>(context, _MovimientoDetalleScreen(id: (m['movimiento'] as num).toInt())));
+
+  Future<void> _abrirPago(String id) async {
+    var cambio = false;
+    await _abrirPantalla<void>(context, _PagoDetalleScreen(id: id, onCambio: () => cambio = true));
+    await _recargarSiCambio(Future.value(cambio));
+  }
+
+  Future<void> _recargarSiCambio(Future<bool?> pantalla) async {
+    final cambio = await pantalla;
     if (cambio == true && mounted) {
       setState(() {
         _movimientos.clear();
@@ -1166,7 +1175,10 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
         for (final m in _movimientos)
           _LineaMovimiento(
             movimiento: m,
-            onTap: m['movimiento'] != null && !const {'Impuesto ITF', 'Comisión del banco'}.contains(m['estado']) ? () => _abrirMovimiento(m) : null,
+            onTap: m['movimiento'] != null
+                ? (const {'Impuesto ITF', 'Comisión del banco'}.contains(m['estado']) ? null : () => _abrirMovimiento(m))
+                // Un pago de la app que el banco todavía no trae abre su detalle (evidencia, número de operación).
+                : ('${m['id'] ?? ''}'.startsWith('PY-') ? () => _abrirPago('${m['id']}') : null),
           ),
         if (_errorMov != null)
           Padding(padding: const EdgeInsets.all(16), child: Text(_errorMov!, textAlign: TextAlign.center))
@@ -3894,6 +3906,8 @@ class _MovimientoDetalleScreenState extends State<_MovimientoDetalleScreen> {
               ),
           ]),
         ),
+        if (pago.isNotEmpty || pedido.isNotEmpty)
+          _Evidencia(evidencia: _mapa(pago['evidencia']), comprobantes: _lista(pedido['comprobantes']), titulo: datos.first.$2 ?? 'Movimiento'),
         // Sin nada que se le parezca, se dice aquí (General Manager, 5 nov 2026).
         if (m['sin_coincidencias'] == true) ...[
           const SizedBox(height: 16),
@@ -3926,6 +3940,11 @@ class _MovimientoDetalleScreenState extends State<_MovimientoDetalleScreen> {
                       if (s['tipo'] == 'gasto' || s['tipo'] == 'compra') 'por pagar',
                     ].where((t) => t.isNotEmpty).join(' · '),
                     style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+                // Para conciliar bien, los datos y la foto del pago (General Manager, 5 nov 2026).
+                if (s['por'] != null || s['nota'] != null)
+                  Text([if (s['nota'] != null) '${s['nota']}', if (s['por'] != null) 'registró ${s['por']}'].join(' · '),
+                      style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+                _Evidencia(evidencia: _mapa(s['evidencia']), comprobantes: _lista(s['comprobantes']), titulo: '${s['titulo'] ?? ''}'),
                 const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
@@ -3939,6 +3958,188 @@ class _MovimientoDetalleScreenState extends State<_MovimientoDetalleScreen> {
             ),
         ],
       ]),
+    );
+  }
+}
+
+/// La foto de un pago para conciliar (General Manager, 5 nov 2026): Ver evidencia (n) del gasto, compra o adelanto, o
+/// los comprobantes de un pedido de la tienda (verificado o no). Sin foto lo dice, sin parecer botón.
+class _Evidencia extends StatelessWidget {
+  const _Evidencia({required this.evidencia, required this.comprobantes, required this.titulo});
+  final Map<String, dynamic> evidencia;
+  final List<Map<String, dynamic>> comprobantes;
+  final String titulo;
+
+  @override
+  Widget build(BuildContext context) {
+    final n = (evidencia['n'] as num?)?.toInt() ?? 0;
+    final botones = <Widget>[
+      if (n > 0)
+        OutlinedButton.icon(
+          onPressed: () => _abrirPantalla<void>(context, _EvidenciasScreen(tipo: '${evidencia['tipo']}', id: '${evidencia['id']}', titulo: titulo)),
+          icon: const Icon(Icons.photo_library_outlined),
+          label: Text('Ver evidencia ($n)'),
+        ),
+      for (var i = 0; i < comprobantes.length; i++)
+        OutlinedButton.icon(
+          onPressed: () => launchUrl(Uri.parse('${comprobantes[i]['url']}'), mode: LaunchMode.externalApplication),
+          icon: const Icon(Icons.receipt_long_outlined),
+          label: Text('Ver comprobante${comprobantes.length > 1 ? ' ${i + 1}' : ''}${comprobantes[i]['verificado'] == true ? ' · verificado' : ''}'),
+        ),
+    ];
+    if (botones.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text('Sin foto del pago', style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+      );
+    }
+    return Padding(padding: const EdgeInsets.only(top: 8), child: Wrap(spacing: 8, runSpacing: 8, children: botones));
+  }
+}
+
+/// Un pago de la app en Movimientos (General Manager, 5 nov 2026): sus datos, su estado frente al banco y su foto; si
+/// el banco todavía no lo trae, Agregar número de operación (opcional: los formularios nunca lo piden), que lo cruza
+/// con la línea del banco que tenga ese número. Avisa con onCambio si algo cambió (Movimientos se recarga al volver).
+class _PagoDetalleScreen extends StatefulWidget {
+  const _PagoDetalleScreen({required this.id, required this.onCambio});
+  final String id;
+  final VoidCallback onCambio;
+
+  @override
+  State<_PagoDetalleScreen> createState() => _PagoDetalleScreenState();
+}
+
+class _PagoDetalleScreenState extends State<_PagoDetalleScreen> {
+  Map<String, dynamic>? _p;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    final r = await AdministracionService.pago(widget.id);
+    if (!mounted) return;
+    setState(() {
+      if (r.isSuccess) {
+        _p = _mapa(r.data!['pago']);
+      } else {
+        _error = r.error;
+      }
+    });
+  }
+
+  Future<void> _agregarOperacion() async {
+    final operacion = await showDialog<String>(context: context, builder: (_) => const _OperacionDialog());
+    if (operacion == null || !mounted) return;
+    final r = await AdministracionService.operacionPago(widget.id, operacion, clave: AdministracionService.nuevaClave('operacion'));
+    if (!mounted) return;
+    final conciliado = r.isSuccess && r.data!['conciliado'] == true;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(!r.isSuccess
+            ? (r.error ?? 'No se guardó')
+            : conciliado
+                ? 'Conciliado ✓ con la línea del banco de ese número'
+                : 'Guardado ✓ se conciliará cuando el archivo del banco traiga ese número')));
+    if (r.isSuccess) {
+      widget.onCambio();
+      _cargar();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = _p;
+    return Scaffold(
+        appBar: AppBar(title: Text(p == null ? 'Pago' : '${p['tipo'] ?? 'Pago'} · ${_fechaCorta(p['fecha'])}')),
+        body: p == null
+            ? Center(
+                child: _error != null
+                    ? Padding(padding: const EdgeInsets.all(16), child: Text(_error!, textAlign: TextAlign.center))
+                    : const CircularProgressIndicator())
+            : ListView(padding: const EdgeInsets.all(16), children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(16)),
+                  child: Column(children: [
+                    for (final d in <(String, String?)>[
+                      ('Estado', p['estado']?.toString()),
+                      ('Monto', '${(num.tryParse('${p['monto']}') ?? 0) > 0 ? '+' : '−'}${_soles((num.tryParse('${p['monto']}') ?? 0).abs())}'),
+                      ('Fecha', _fechaLarga(p['fecha'])),
+                      ('Para', (p['quien'] ?? p['categoria'])?.toString()),
+                      ('Descripción', p['descripcion']?.toString()),
+                      ('Cómo', p['metodo'] == null ? null : (_metodosPago[p['metodo']] ?? '${p['metodo']}')),
+                      ('Cuenta', p['cuenta']?.toString()),
+                      ('Operación', p['operacion']?.toString()),
+                      ('Nota', p['nota']?.toString()),
+                      ('Registró', p['por']?.toString()),
+                      ('Código', '${p['id']}'),
+                    ].where((d) => d.$2 != null && d.$2!.isNotEmpty))
+                      Container(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade300))),
+                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          SizedBox(width: 120, child: Text(d.$1, style: TextStyle(color: Colors.grey.shade700))),
+                          Expanded(child: Text(d.$2!, style: const TextStyle(fontWeight: FontWeight.w600))),
+                        ]),
+                      ),
+                  ]),
+                ),
+                _Evidencia(evidencia: _mapa(p['evidencia']), comprobantes: const [], titulo: '${p['tipo'] ?? 'Pago'} · ${p['id']}'),
+                if (p['puede_operacion'] == true) ...[
+                  const SizedBox(height: 20),
+                  _Acciones(acciones: [(Icons.tag, p['operacion'] == null ? 'Agregar número de operación' : 'Cambiar número de operación', _agregarOperacion)]),
+                ],
+              ]),
+    );
+  }
+}
+
+/// El número de operación, como lo muestra el banco (sólo números; los ceros de adelante no importan).
+class _OperacionDialog extends StatefulWidget {
+  const _OperacionDialog();
+
+  @override
+  State<_OperacionDialog> createState() => _OperacionDialogState();
+}
+
+class _OperacionDialogState extends State<_OperacionDialog> {
+  final _c = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  void _guardar() {
+    final t = _c.text.trim();
+    if (!RegExp(r'\d').hasMatch(t)) {
+      setState(() => _error = 'Escribe el número de operación del banco.');
+      return;
+    }
+    Navigator.pop(context, t);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Número de operación'),
+      content: TextField(
+        controller: _c,
+        autofocus: true,
+        keyboardType: TextInputType.number,
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _guardar(),
+        decoration: InputDecoration(labelText: 'Como lo muestra el banco', errorText: _error),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        ElevatedButton(onPressed: _guardar, child: const Text('Guardar')),
+      ],
     );
   }
 }
