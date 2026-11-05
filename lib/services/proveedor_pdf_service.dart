@@ -94,9 +94,14 @@ class ProveedorPdfService {
 
   /// A titled table that continues on the next page when it is long (MultiPage only splits a table placed
   /// directly on the page, not inside a box).
-  static List<pw.Widget> _tabla(String titulo, List<String> columnas, List<List<String>> filas, Set<int> derecha) => [
+  /// [anchos]: el ancho de algunas columnas (por ejemplo una de textos largos que reparte el sobrante); las demás miden
+  /// lo que su contenido.
+  static List<pw.Widget> _tabla(String titulo, List<String> columnas, List<List<String>> filas, Set<int> derecha,
+          {Map<int, pw.TableColumnWidth>? anchos}) =>
+      [
         _sectionHeader('  $titulo'),
         pw.Table(
+          columnWidths: anchos,
           border: const pw.TableBorder(
             left: pw.BorderSide(color: _cardBorder),
             right: pw.BorderSide(color: _cardBorder),
@@ -1424,14 +1429,20 @@ class ComercialPdfService {
 /// pedido registrado en el periodo, también los cancelados, con su estado, si está pagado, en parte o sin pagar, su día de
 /// registro y el día en que se completó; y cada pago con su día, su monto y el número de operación del BCP.
 class ClientePdfService {
-  static const _estados = {
-    'PENDIENTE': 'Pendiente',
-    'CONFIRMADO': 'Confirmado',
-    'EN_PREPARACION': 'Preparando',
-    'ENVIADO': 'En camino',
-    'COMPLETADO': 'Completado',
-    'CANCELADO': 'Cancelado',
-  };
+  /// "120 × Café finca Rosal 1Kg (grano)", uno por línea: lo que se pidió, en lugar del número de pedido (General
+  /// Manager, 5 nov 2026).
+  static String productos(Map<String, dynamic> pedido) {
+    final lineas = [
+      for (final i in ProveedorPdfService._lista(pedido['productos']))
+        '${_cantidad(i['cantidad'])} × ${i['nombre'] ?? ''}${i['molienda'] == null ? '' : ' (${i['molienda']})'}',
+    ];
+    return lineas.isEmpty ? '${pedido['pedido'] ?? ''}' : lineas.join('\n');
+  }
+
+  static String _cantidad(dynamic v) {
+    final n = (v is num) ? v : num.tryParse('${v ?? ''}') ?? 0;
+    return n == n.roundToDouble() ? '${n.toInt()}' : '$n';
+  }
 
   static Future<Uint8List> generarBytes(Map<String, dynamic> reporte, {String? businessName, pw.Font? base, pw.Font? bold}) {
     const tabla = ProveedorPdfService._tabla;
@@ -1450,7 +1461,7 @@ class ClientePdfService {
             style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._textDark)),
         pw.SizedBox(height: 10),
         _ReporteBase.franja([
-          ('Pedidos', '${ComprasPdfService._n(franja['pedidos'])}${(franja['cancelados'] ?? 0) == 0 ? '' : ' (${ComprasPdfService._cuantos(franja['cancelados'], 'cancelado', 'cancelados')})'}'),
+          ('Pedidos', ComprasPdfService._n(franja['pedidos'])),
           ('Total', soles(franja['total'])),
           ('Pagado', soles(franja['pagado'])),
           ('Debe', soles(franja['debe'])),
@@ -1461,21 +1472,13 @@ class ClientePdfService {
         else ...[
           ...tabla(
             'PEDIDOS',
-            ['Pedido', 'Registrado', 'Estado', 'Pago', 'Total', 'Pagado', 'Debe', 'Completado'],
+            ['Productos', 'Registrado', 'Completado', 'Pago', 'Total', 'Pagado', 'Debe'],
             [
               for (final p in pedidos)
-                [
-                  '${p['pedido'] ?? ''}',
-                  fecha(p['registrado']),
-                  _estados[p['estado']] ?? '${p['estado'] ?? ''}',
-                  p['estado'] == 'CANCELADO' ? '—' : '${p['pago'] ?? ''}',
-                  soles(p['total']),
-                  soles(p['pagado']),
-                  p['estado'] == 'CANCELADO' ? '—' : soles(p['debe']),
-                  fecha(p['completado']),
-                ],
+                [productos(p), fecha(p['registrado']), fecha(p['completado']), '${p['pago'] ?? ''}', soles(p['total']), soles(p['pagado']), soles(p['debe'])],
             ],
             {4, 5, 6},
+            anchos: {0: const pw.FlexColumnWidth()},
           ),
           pw.SizedBox(height: 12),
           if (pagos.isEmpty)
@@ -1483,14 +1486,15 @@ class ClientePdfService {
           else
             ...tabla(
               'PAGOS',
-              ['Fecha de pago', 'Pedido', 'Monto', 'N.º de operación'],
-              [for (final (p, pg) in pagos) [fecha(pg['fecha']), '${p['pedido'] ?? ''}', soles(pg['monto']), '${pg['operacion'] ?? '—'}']],
+              ['Fecha de pago', 'Productos del pedido', 'Monto', 'N.º de operación'],
+              [for (final (p, pg) in pagos) [fecha(pg['fecha']), productos(p), soles(pg['monto']), '${pg['operacion'] ?? '—'}']],
               {2},
+              anchos: {1: const pw.FlexColumnWidth()},
             ),
         ],
-        _ReporteBase.nota('Entran los pedidos registrados en el periodo. Pagado suma los pagos registrados en cada pedido; un pedido '
-            'cancelado no suma al total ni a lo que se debe. El número de operación es el del BCP en el comprobante verificado; '
-            '"—" si el pago todavía no tiene comprobante verificado.'),
+        _ReporteBase.nota('Entran los pedidos registrados en el periodo; los cancelados no se muestran. Pagado suma los pagos '
+            'registrados en cada pedido. El número de operación es el del BCP en el comprobante verificado; "—" si el pago '
+            'todavía no tiene comprobante verificado.'),
       ],
       conMontos: true,
       base: base,
