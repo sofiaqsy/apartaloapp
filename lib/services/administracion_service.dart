@@ -58,8 +58,15 @@ class AdministracionService {
   /// Finanzas → Movimientos (dueños): el estado de una cuenta ([cuenta]; sin ella, el banco), del más nuevo al más
   /// antiguo, de 20 en 20, con el saldo después de cada movimiento; la última página trae el saldo inicial.
   /// En el banco trae las líneas reales del BCP (las guarda la extensión) cruzadas con los pagos, cada una con su estado.
-  static Future<ApiResponse<Map<String, dynamic>>> movimientosCuenta({String? cuenta, int offset = 0, int limit = 20}) =>
-      _get('finanzas/movimientos?${cuenta == null ? '' : 'cuenta=${Uri.encodeComponent(cuenta)}&'}offset=$offset&limit=$limit');
+  static Future<ApiResponse<Map<String, dynamic>>> movimientosCuenta(
+          {String? cuenta, int offset = 0, int limit = 20, String? buscar, String? estado}) =>
+      _get('finanzas/movimientos?${Uri(queryParameters: {
+        if (cuenta != null) 'cuenta': cuenta,
+        if (buscar != null && buscar.trim().isNotEmpty) 'buscar': buscar.trim(),
+        if (estado != null) 'estado': estado,
+        'offset': '$offset',
+        'limit': '$limit',
+      }).query}');
 
   /// Una línea del banco ({movimiento}, dueños): con qué se concilió o, si no, los registros del mismo monto que
   /// podrían ser (sugerencias) o sin_coincidencias.

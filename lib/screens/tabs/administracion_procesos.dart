@@ -1080,6 +1080,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
       _hayMas[i] = true;
       _errores[i] = null;
     }
+    _vueltaMov++;
     _movimientos.clear();
     _cargandoMov = false;
     _hayMasMov = true;
@@ -1090,26 +1091,43 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
 
   // Movimientos (General Manager, 5 nov 2026): el estado de una cuenta, como el Estado de lote; lo que entra en verde y
   // lo que sale en naranja, con el saldo después de cada uno, de 20 en 20, y el saldo inicial al final.
-  List<Map<String, dynamic>> _cuentas = [];
-  String? _cuenta; // sin elegir, el servidor da el banco
+  // Con el diseño de una app de banco (General Manager, 5 nov 2026, con una imagen): arriba el saldo disponible y lo que
+  // entró y salió en el mes; la lista por día, con Buscar y Filtrar por estado. Sin Caja (efectivo): sólo el banco.
+  Map<String, dynamic> _cuentaMov = const {};
+  Map<String, dynamic>? _resumen;
   final List<Map<String, dynamic>> _movimientos = [];
   bool _cargandoMov = false;
   bool _hayMasMov = true;
   String? _errorMov;
   Map<String, dynamic>? _inicial;
+  int _vueltaMov = 0; // al buscar o filtrar, las respuestas viejas se descartan
+  bool _verSaldo = true;
+  bool _buscando = false;
+  final _buscar = TextEditingController();
+  Timer? _esperaBuscar;
+  String? _filtro; // un estado; null, todos
+
+  static const _estadosMov = ['Conciliado', 'Falta en la app', 'No está en el banco', 'Ignorada'];
+
+  @override
+  void dispose() {
+    _esperaBuscar?.cancel();
+    _buscar.dispose();
+    super.dispose();
+  }
 
   Future<void> _masMovimientos() async {
     if (_cargandoMov || !_hayMasMov) return;
     _cargandoMov = true;
     final vuelta = _vuelta;
-    final cuenta = _cuenta;
-    final r = await AdministracionService.movimientosCuenta(cuenta: cuenta, offset: _movimientos.length);
-    if (!mounted || vuelta != _vuelta || cuenta != _cuenta) return;
+    final vueltaMov = _vueltaMov;
+    final r = await AdministracionService.movimientosCuenta(offset: _movimientos.length, buscar: _buscar.text, estado: _filtro);
+    if (!mounted || vuelta != _vuelta || vueltaMov != _vueltaMov) return;
     setState(() {
       _cargandoMov = false;
       if (r.isSuccess) {
-        _cuentas = _lista(r.data!['cuentas']);
-        _cuenta ??= _mapa(r.data!['cuenta'])['id']?.toString();
+        _cuentaMov = _mapa(r.data!['cuenta']);
+        if (r.data!['resumen'] != null) _resumen = _mapa(r.data!['resumen']);
         _movimientos.addAll(_lista(r.data!['filas']));
         _hayMasMov = r.data!['hayMas'] == true;
         if (r.data!['inicial'] != null) _inicial = _mapa(r.data!['inicial']);
@@ -1118,6 +1136,20 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
         _hayMasMov = false;
       }
     });
+  }
+
+  /// La lista vuelve a empezar (después de conciliar, al buscar o al filtrar).
+  void _reiniciarMovimientos() {
+    if (!mounted) return;
+    setState(() {
+      _vueltaMov++;
+      _movimientos.clear();
+      _cargandoMov = false;
+      _hayMasMov = true;
+      _errorMov = null;
+      _inicial = null;
+    });
+    _masMovimientos();
   }
 
   Future<void> _abrirMovimiento(Map<String, dynamic> m) =>
@@ -1130,65 +1162,125 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
   }
 
   Future<void> _recargarSiCambio(Future<bool?> pantalla) async {
-    final cambio = await pantalla;
-    if (cambio == true && mounted) {
-      setState(() {
-        _movimientos.clear();
-        _cargandoMov = false;
-        _hayMasMov = true;
-        _errorMov = null;
-        _inicial = null;
-      });
-      _masMovimientos();
+    if (await pantalla == true) _reiniciarMovimientos();
+  }
+
+  void _alternarBuscar() {
+    final cerrar = _buscando;
+    setState(() => _buscando = !_buscando);
+    if (cerrar && _buscar.text.trim().isNotEmpty) {
+      _buscar.clear();
+      _reiniciarMovimientos();
     }
   }
 
-  void _elegirCuenta(String id) {
-    if (id == _cuenta) return;
-    setState(() {
-      _cuenta = id;
-      _movimientos.clear();
-      _cargandoMov = false;
-      _hayMasMov = true;
-      _errorMov = null;
-      _inicial = null;
-    });
-    _masMovimientos();
+  Future<void> _elegirFiltro() async {
+    final elegido = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Align(alignment: Alignment.centerLeft, child: Text('Filtrar por estado', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)))),
+          for (final e in ['Todos', ..._estadosMov])
+            ListTile(
+              title: Text(e),
+              trailing: (e == 'Todos' ? _filtro == null : _filtro == e) ? Icon(Icons.check, color: Colors.blue.shade700) : null,
+              onTap: () => Navigator.of(context).pop(e),
+            ),
+        ]),
+      ),
+    );
+    if (elegido == null) return;
+    _filtrar(elegido == 'Todos' ? null : elegido);
   }
 
-  List<Widget> _listaMovimientos() => [
-        if (_cuentas.length > 1)
-          Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final c in _cuentas)
-                ChoiceChip(
-                  label: Text('${c['nombre'] ?? c['id']}'),
-                  selected: c['id']?.toString() == _cuenta,
-                  onSelected: (_) => _elegirCuenta('${c['id']}'),
-                ),
-            ]),
+  void _filtrar(String? estado) {
+    if (estado == _filtro) return;
+    _filtro = estado;
+    _reiniciarMovimientos();
+  }
+
+  // Cada línea del banco abre su detalle, donde se concilia (General Manager, 5 nov 2026); los cargos del banco
+  // (Impuesto ITF, Comisión del banco) no importan y no se abren.
+  VoidCallback? _alTocar(Map<String, dynamic> m) => m['movimiento'] != null
+      ? (const {'Impuesto ITF', 'Comisión del banco'}.contains(m['estado']) ? null : () => _abrirMovimiento(m))
+      // Un pago de la app que el banco todavía no trae abre su detalle (evidencia, número de operación).
+      : ('${m['id'] ?? ''}'.startsWith('PY-') ? () => _abrirPago('${m['id']}') : null);
+
+  List<Widget> _listaMovimientos() {
+    final listo = !_cargandoMov && !_hayMasMov && _errorMov == null;
+    final filas = [
+      ..._movimientos,
+      if (listo && _inicial != null) {'tipo': 'Saldo inicial', 'fecha': _inicial!['fecha'], 'saldo': _inicial!['saldo']},
+    ];
+    // Por día, del más nuevo al más antiguo, como llegan.
+    final dias = <String, List<Map<String, dynamic>>>{};
+    for (final m in filas) {
+      (dias['${m['fecha'] ?? ''}'] ??= []).add(m);
+    }
+    final buscado = _buscar.text.trim().isNotEmpty || _filtro != null;
+    return [
+      const SizedBox(height: 16),
+      _TarjetaSaldo(cuenta: _cuentaMov, resumen: _resumen, visible: _verSaldo, onVer: () => setState(() => _verSaldo = !_verSaldo)),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(4, 20, 0, 4),
+        child: Row(children: [
+          const Expanded(child: Text('Movimientos', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
+          _BotonRedondo(icono: _buscando ? Icons.close : Icons.search, ayuda: _buscando ? 'Cerrar la búsqueda' : 'Buscar', onTap: _alternarBuscar),
+          const SizedBox(width: 10),
+          _BotonRedondo(icono: Icons.tune, ayuda: 'Filtrar por estado', activo: _filtro != null, onTap: _elegirFiltro),
+        ]),
+      ),
+      if (_buscando)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: TextField(
+            controller: _buscar,
+            autofocus: true,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: 'Nombre, monto u operación',
+              prefixIcon: const Icon(Icons.search),
+              isDense: true,
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onChanged: (_) {
+              _esperaBuscar?.cancel();
+              _esperaBuscar = Timer(const Duration(milliseconds: 400), _reiniciarMovimientos);
+            },
+            onSubmitted: (_) {
+              _esperaBuscar?.cancel();
+              _reiniciarMovimientos();
+            },
           ),
-        const SizedBox(height: 8),
-        // Cada línea del banco abre su detalle, donde se concilia (General Manager, 5 nov 2026); los cargos del banco
-        // (Impuesto ITF, Comisión del banco) no importan y no se abren.
-        for (final m in _movimientos)
-          _LineaMovimiento(
-            movimiento: m,
-            onTap: m['movimiento'] != null
-                ? (const {'Impuesto ITF', 'Comisión del banco'}.contains(m['estado']) ? null : () => _abrirMovimiento(m))
-                // Un pago de la app que el banco todavía no trae abre su detalle (evidencia, número de operación).
-                : ('${m['id'] ?? ''}'.startsWith('PY-') ? () => _abrirPago('${m['id']}') : null),
+        ),
+      if (_filtro != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: InputChip(label: Text(_filtro!), onDeleted: () => _filtrar(null), deleteButtonTooltipMessage: 'Quitar el filtro'),
           ),
-        if (_errorMov != null)
-          Padding(padding: const EdgeInsets.all(16), child: Text(_errorMov!, textAlign: TextAlign.center))
-        else if (_cargandoMov || _hayMasMov)
-          const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
-        else ...[
-          if (_movimientos.isEmpty) _vacio('Esta cuenta no tiene movimientos todavía.'),
-          if (_inicial != null) _LineaMovimiento(movimiento: {'tipo': 'Saldo inicial', 'fecha': _inicial!['fecha'], 'saldo': _inicial!['saldo']}),
-        ],
-      ];
+        ),
+      for (final d in dias.entries) ...[
+        _DiaMovimientos(fecha: d.key),
+        _GrupoMovimientos(children: [for (final m in d.value) _LineaMovimiento(movimiento: m, onTap: _alTocar(m))]),
+      ],
+      if (_errorMov != null)
+        Padding(padding: const EdgeInsets.all(16), child: Text(_errorMov!, textAlign: TextAlign.center))
+      else if (_cargandoMov || _hayMasMov)
+        const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
+      else if (_movimientos.isEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: _vacio(buscado ? 'Ningún movimiento con esa búsqueda.' : 'Esta cuenta no tiene movimientos todavía.'),
+        ),
+    ];
+  }
 
   Future<void> _mas(int i) async {
     if (_cargando[i] || !_hayMas[i]) return;
@@ -3730,11 +3822,197 @@ class _LineaCuenta extends StatelessWidget {
   }
 }
 
-/// Una línea del estado de una cuenta (Finanzas → Movimientos), con la forma de _LineaCuenta: lo que entra en verde,
-/// lo que sale en naranja, y el saldo después. Es información, no se toca. La última es el saldo inicial.
+/// Soles siempre con céntimos, como el banco ("S/ 6,104.27"), para Movimientos.
+String _solesBanco(dynamic v) {
+  final n = (v is num) ? v.toDouble() : double.tryParse('${v ?? ''}') ?? 0;
+  return 'S/ ${n.toStringAsFixed(2).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',')}';
+}
+
+/// Arriba de Movimientos (General Manager, 5 nov 2026, con una imagen): el saldo disponible de la cuenta, que se puede
+/// ocultar con el ojo, y lo que entró y salió en el mes. Es información, no se toca (sólo el ojo).
+class _TarjetaSaldo extends StatelessWidget {
+  const _TarjetaSaldo({required this.cuenta, required this.resumen, required this.visible, required this.onVer});
+  final Map<String, dynamic> cuenta;
+  final Map<String, dynamic>? resumen;
+  final bool visible;
+  final VoidCallback onVer;
+
+  @override
+  Widget build(BuildContext context) {
+    const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    final r = resumen ?? const {};
+    final mes = DateTime.tryParse('${r['mes'] ?? ''}');
+    String oculto(String t) => visible ? t : 'S/ ••••';
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Expanded(
+            flex: 3,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text('Saldo disponible', style: TextStyle(fontSize: 14, color: Colors.grey.shade700)),
+              Row(children: [
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(r['saldo'] == null ? '—' : oculto(_solesBanco(r['saldo'])),
+                        style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                IconButton(
+                  onPressed: onVer,
+                  tooltip: visible ? 'Ocultar el saldo' : 'Mostrar el saldo',
+                  icon: Icon(visible ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                ),
+              ]),
+              if (cuenta['nombre'] != null)
+                Text('Cuenta ${cuenta['nombre']}', style: TextStyle(fontSize: 13, color: Colors.grey.shade700), maxLines: 1, overflow: TextOverflow.ellipsis),
+            ]),
+          ),
+          VerticalDivider(width: 24, color: Colors.grey.shade300),
+          Expanded(
+            flex: 2,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisAlignment: MainAxisAlignment.center, children: [
+              if (mes != null) Text('En ${meses[mes.month - 1]}', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+              Text('Ingresos', style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(oculto('+ ${_solesBanco(r['ingresos'])}'),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.green.shade800)),
+              ),
+              const SizedBox(height: 6),
+              Text('Gastos', style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(oculto('− ${_solesBanco(r['gastos'])}'),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.orange.shade800)),
+              ),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Buscar y Filtrar en Movimientos: acciones, por eso sí parecen botones.
+class _BotonRedondo extends StatelessWidget {
+  const _BotonRedondo({required this.icono, required this.ayuda, required this.onTap, this.activo = false});
+  final IconData icono;
+  final String ayuda;
+  final VoidCallback onTap;
+  final bool activo; // un filtro elegido
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: ayuda,
+      child: Material(
+        color: activo ? Colors.blue.shade50 : Colors.white,
+        shape: StadiumBorder(side: BorderSide(color: activo ? Colors.blue.shade200 : Colors.grey.shade300)),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: onTap,
+          child: SizedBox(width: 56, height: 44, child: Icon(icono, color: activo ? Colors.blue.shade700 : Colors.grey.shade800)),
+        ),
+      ),
+    );
+  }
+}
+
+/// El día de un grupo de movimientos: "Hoy · Jueves 5 de noviembre", "Ayer · …" o "Martes 3 de noviembre".
+class _DiaMovimientos extends StatelessWidget {
+  const _DiaMovimientos({required this.fecha});
+  final String fecha;
+
+  @override
+  Widget build(BuildContext context) {
+    final d = DateTime.tryParse(fecha);
+    final hoy = DateTime.now();
+    final dia = d == null ? null : DateTime(hoy.year, hoy.month, hoy.day).difference(DateTime(d.year, d.month, d.day)).inDays;
+    final cerca = dia == 0 ? 'Hoy' : (dia == 1 ? 'Ayer' : null);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+      child: Text.rich(
+        TextSpan(children: [
+          if (cerca != null) TextSpan(text: '$cerca · ', style: const TextStyle(fontWeight: FontWeight.bold)),
+          TextSpan(text: _fechaLarga(fecha), style: cerca != null ? TextStyle(color: Colors.grey.shade700) : const TextStyle(fontWeight: FontWeight.bold)),
+        ]),
+        style: const TextStyle(fontSize: 16),
+      ),
+    );
+  }
+}
+
+/// La tarjeta blanca con los movimientos de un día, separados por una línea.
+class _GrupoMovimientos extends StatelessWidget {
+  const _GrupoMovimientos({required this.children});
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 3))],
+      ),
+      child: Column(children: [
+        for (final (i, c) in children.indexed) ...[
+          if (i > 0) Divider(height: 1, indent: 72, color: Colors.grey.shade200),
+          c,
+        ],
+      ]),
+    );
+  }
+}
+
+/// El estado de una línea del banco, en una etiqueta de color (Conciliado con su check). Es información, no se toca.
+class _EstadoMovimiento extends StatelessWidget {
+  const _EstadoMovimiento(this.estado);
+  final String estado;
+
+  @override
+  Widget build(BuildContext context) {
+    final tono = switch (estado) {
+      'Conciliado' => Colors.green,
+      'Falta en la app' || 'No está en el banco' => Colors.orange,
+      _ => Colors.grey,
+    };
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: tono.shade50, borderRadius: BorderRadius.circular(6)),
+      // Un solo texto (el check dentro): en una pantalla angosta se corta con "…" en vez de desbordar.
+      child: Text.rich(
+        TextSpan(children: [
+          if (estado == 'Conciliado')
+            WidgetSpan(
+                alignment: PlaceholderAlignment.middle,
+                child: Padding(padding: const EdgeInsets.only(right: 4), child: Icon(Icons.check, size: 14, color: tono.shade800))),
+          TextSpan(text: estado),
+        ]),
+        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: tono.shade800),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+}
+
+/// Una línea del estado de una cuenta (Finanzas → Movimientos), con el diseño de una app de banco (General Manager,
+/// 5 nov 2026): el ícono de lo que fue, el nombre, cómo se pagó y su estado; a la derecha el monto (lo que entra en
+/// verde, lo que sale en naranja) y el saldo después. La última es el saldo inicial.
 /// En el banco cada línea dice si cruzó (General Manager, 5 nov 2026): Conciliado (está en el banco y en la app),
 /// Falta en la app (está en el banco y nadie lo registró), No está en el banco (registrado en la app, el banco todavía
-/// no lo trae: no mueve el saldo) o Ignorada.
+/// no lo trae: no mueve el saldo) o Ignorada. Los cargos del banco (Impuesto ITF, Comisión del banco) no llevan estado.
 class _LineaMovimiento extends StatelessWidget {
   const _LineaMovimiento({required this.movimiento, this.onTap});
   final Map<String, dynamic> movimiento;
@@ -3745,52 +4023,67 @@ class _LineaMovimiento extends StatelessWidget {
     final m = movimiento;
     final monto = num.tryParse('${m['monto']}');
     final entra = (monto ?? 0) > 0;
-    final iconos = {
-      'Compra': Icons.add_shopping_cart,
-      'Gasto': Icons.receipt_long,
-      'Adelanto': Icons.savings_outlined,
-      'Devolución de adelanto': Icons.savings_outlined,
-      'Retiro': Icons.account_balance_wallet,
-      'Transferencia': Icons.swap_horiz,
-      'Venta': Icons.storefront_outlined,
-      'Saldo inicial': Icons.flag_outlined,
-      'Comisión del banco': Icons.account_balance_outlined,
-    };
-    final quien = m['tipo'] == 'Gasto' ? m['categoria'] : (m['quien'] ?? m['otra_cuenta']);
     final estado = m['estado']?.toString();
-    final colorEstado = switch (estado) {
-      'Conciliado' => Colors.green.shade700,
-      'Falta en la app' || 'No está en el banco' => Colors.orange.shade800,
-      _ => Colors.grey.shade600,
-    };
-    final detalle = [
-      _fechaLarga(m['fecha']),
-      if (m['metodo'] != null && m['metodo'] != 'withdrawal') _metodosPago[m['metodo']] ?? '${m['metodo']}',
-    ].where((t) => t.isNotEmpty).join(' · ');
-    final linea = Container(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade200))),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _InsigniaIcono(iconos[m['tipo']] ?? Icons.circle_outlined, tono: monto == null ? Colors.blueGrey : (entra ? Colors.green : Colors.orange)),
+    final cargo = estado == 'Impuesto ITF' || estado == 'Comisión del banco';
+    final inicial = m['tipo'] == 'Saldo inicial';
+    final tipo = m['tipo']?.toString();
+    final banco = m['banco']?.toString();
+    final icono = inicial
+        ? Icons.outlined_flag
+        : cargo
+            ? Icons.receipt_long_outlined
+            : switch (tipo) {
+                'Venta' => Icons.storefront_outlined,
+                'Gasto' => m['categoria'] == 'Combustible' ? Icons.local_gas_station_outlined : Icons.receipt_long_outlined,
+                'Compra' => Icons.add_shopping_cart,
+                'Adelanto' || 'Devolución de adelanto' => Icons.savings_outlined,
+                'Retiro' => Icons.account_balance_wallet_outlined,
+                _ => entra ? Icons.arrow_downward : Icons.swap_horiz,
+              };
+    final quien = tipo == 'Gasto' ? m['categoria'] : (m['quien'] ?? m['otra_cuenta']);
+    // Una línea del banco que nadie registró se nombra con el texto del banco.
+    final titulo = inicial ? 'Saldo inicial' : (tipo == null && banco != null ? banco : [tipo ?? 'Movimiento', if (quien != null) quien].join(' · '));
+    final como = inicial
+        ? 'Apertura de cuenta'
+        : cargo
+            ? estado
+            : tipo == 'Venta'
+                ? 'Venta'
+                : (m['metodo'] != null && m['metodo'] != 'withdrawal')
+                    ? (_metodosPago[m['metodo']] ?? '${m['metodo']}')
+                    : tipo == 'Retiro'
+                        ? 'Retiro'
+                        : (banco != null && banco.toUpperCase().startsWith('TRAN') ? 'Transferencia' : null);
+    final linea = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      child: Row(children: [
+        Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            color: inicial ? Colors.blueGrey.shade50 : (entra ? Colors.green.shade50 : Colors.orange.shade50),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icono, color: inicial ? Colors.blueGrey.shade700 : (entra ? Colors.green.shade700 : Colors.orange.shade700)),
+        ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // Una línea del banco que nadie registró se nombra con el texto del banco.
-            Text(m['tipo'] == null && m['banco'] != null ? '${m['banco']}' : [m['tipo'] ?? 'Movimiento', if (quien != null) quien].join(' · '),
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
-            Text(detalle, style: TextStyle(fontSize: 13, color: Colors.grey.shade700), maxLines: 2, overflow: TextOverflow.ellipsis),
-            if (estado != null) Text(estado, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: colorEstado)),
+            Text(titulo, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
+            if (como != null) Text(como, style: TextStyle(fontSize: 13, color: Colors.grey.shade700), maxLines: 1, overflow: TextOverflow.ellipsis),
+            if (estado != null && !cargo) _EstadoMovimiento(estado),
           ]),
         ),
         const SizedBox(width: 8),
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          if (monto != null)
-            Text('${entra ? '+' : '−'}${_soles(monto.abs())}',
-                style: TextStyle(fontWeight: FontWeight.w700, color: entra ? Colors.green.shade800 : Colors.orange.shade800)),
-          Text('Saldo ${_soles(m['saldo'])}',
-              style: monto == null ? const TextStyle(fontWeight: FontWeight.w700) : TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+          if (monto != null) ...[
+            Text('${entra ? '+' : '−'} ${_solesBanco(monto.abs())}',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: entra ? Colors.green.shade800 : Colors.orange.shade800)),
+            Text('Saldo: ${_solesBanco(m['saldo'])}', style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+          ] else
+            Text(_solesBanco(m['saldo']), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
         ]),
-        if (onTap != null) Padding(padding: const EdgeInsets.only(left: 4, top: 8), child: Icon(Icons.chevron_right, color: Colors.grey.shade600)),
+        if (onTap != null) Padding(padding: const EdgeInsets.only(left: 4), child: Icon(Icons.chevron_right, color: Colors.grey.shade600)),
       ]),
     );
     return onTap == null ? linea : InkWell(onTap: onTap, child: linea);

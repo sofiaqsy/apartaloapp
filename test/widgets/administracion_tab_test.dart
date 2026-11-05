@@ -309,6 +309,7 @@ void main() {
       final caja = req.url.queryParameters['cuenta'] == 'AC-02';
       return http.Response(jsonEncode({
         'cuenta': caja ? {'id': 'AC-02', 'nombre': 'Caja (efectivo)'} : {'id': 'AC-01', 'nombre': 'BCP Corriente Soles'},
+        'resumen': {'saldo': caja ? 0 : 3204.37, 'mes': '2026-11-01', 'ingresos': 0, 'gastos': caja ? 0 : 500.10},
         'cuentas': [{'id': 'AC-01', 'nombre': 'BCP Corriente Soles'}, {'id': 'AC-02', 'nombre': 'Caja (efectivo)'}],
         'filas': caja
             ? []
@@ -1299,22 +1300,48 @@ void main() {
       await tester.tap(find.text('Movimientos').last);
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    // The bank's statement: what leaves in orange with the balance after it, and the opening balance at the end.
-    for (final t in ['Gasto · Combustible', 'Compra · Jhonatan', '−S/ 150', '−S/ 308.95', 'Saldo S/ 3,554.47',
-        'TRAN.CTAS.TERC.HK', 'Falta en la app', 'Conciliado', 'No está en el banco', 'Impuesto ITF']) {
+    // The bank app's design (General Manager, 5 Nov 2026): the balance on top with the month's money in and out, the
+    // lines by day, what leaves in orange with the balance after it, and the opening balance at the end. No Caja.
+    for (final t in ['Saldo disponible', 'S/ 3,204.37', 'Cuenta BCP Corriente Soles', 'En noviembre', '− S/ 500.10',
+        'Gasto · Combustible', 'Compra · Jhonatan', '− S/ 150.00', '− S/ 308.95', 'Saldo: S/ 3,554.47',
+        'TRAN.CTAS.TERC.HK', 'Falta en la app', 'No está en el banco', 'Impuesto ITF', 'Yape']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
-    await tester.scrollUntilVisible(find.text('Saldo inicial'), 200, scrollable: find.byType(Scrollable).last);
-    expect(find.text('Saldo S/ 4,013.32'), findsOneWidget);
+    expect(find.textContaining('Conciliado'), findsOneWidget); // with its check
+    expect(find.text('Caja (efectivo)'), findsNothing);
+    expect(find.byType(ChoiceChip), findsNothing);
+    final lista = find.byType(Scrollable).last;
+    await tester.scrollUntilVisible(find.text('Saldo inicial'), 200, scrollable: lista);
+    expect(find.text('S/ 4,013.32'), findsOneWidget);
+    expect(find.text('Apertura de cuenta'), findsOneWidget);
     expect(pedidos.any((r) => r.url.path.endsWith('/personas/buscar') && r.url.queryParameters['area'] == 'finance'), isFalse);
+    expect(pedidos.where((r) => r.url.path.endsWith('/finanzas/movimientos')).every((r) => !r.url.queryParameters.containsKey('cuenta')), isTrue);
+    await tester.scrollUntilVisible(find.text('Saldo disponible'), -200, scrollable: lista);
+    // The eye hides the balance.
+    await tester.ensureVisible(find.byTooltip('Ocultar el saldo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Ocultar el saldo'));
+    await tester.pump();
+    expect(find.text('S/ 3,204.37'), findsNothing);
+    expect(find.text('S/ ••••'), findsWidgets);
+    // Buscar asks the server with the text; Filtrar asks with the status and shows it, to remove it.
     await http.runWithClient(() async {
-      await tester.tap(find.text('Caja (efectivo)'));
+      await tester.tap(find.byTooltip('Buscar'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, 'jhon');
+      await tester.pump(const Duration(milliseconds: 500));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    expect(pedidos.any((r) => r.url.path.endsWith('/finanzas/movimientos') && r.url.queryParameters['cuenta'] == 'AC-02'), isTrue);
-    expect(find.text('Compra · Jhonatan'), findsNothing);
-    expect(find.text('Esta cuenta no tiene movimientos todavía.'), findsOneWidget);
-    expect(find.text('Saldo S/ 0'), findsOneWidget);
+    expect(pedidos.last.url.queryParameters['buscar'], 'jhon');
+    await http.runWithClient(() async {
+      await tester.tap(find.byTooltip('Filtrar por estado'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ListTile, 'Conciliado'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(pedidos.last.url.queryParameters['estado'], 'Conciliado');
+    expect(pedidos.last.url.queryParameters['buscar'], 'jhon');
+    expect(find.widgetWithText(InputChip, 'Conciliado'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1329,12 +1356,16 @@ void main() {
     }, () => MockClient((req) async => responder(req)));
     // ITF does not open (the bank's fees, Comisión del banco, follow the same rule).
     final n = pedidos.length;
+    await tester.ensureVisible(find.text('IMPUESTO ITF'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('IMPUESTO ITF'));
     await tester.pumpAndSettle();
     expect(pedidos.length, n);
     // The S/ 350 line: a gasto waiting to be paid; Conciliar pays it from this bank line.
     await http.runWithClient(() async {
-      await tester.tap(find.text('TRAN.CTAS.TERC.HK'));
+      await tester.ensureVisible(find.text('TRAN.CTAS.TERC.HK'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('TRAN.CTAS.TERC.HK'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     for (final t in ['Puede ser', 'Gasto · Personal', 'Conciliar', '6011866', 'registró misael@x', 'Ver evidencia (1)']) {
@@ -1363,7 +1394,9 @@ void main() {
     expect(find.text('Puede ser'), findsNothing); // back in Movimientos
     // A line with nothing of its amount says so in the detail.
     await http.runWithClient(() async {
-      await tester.tap(find.text('Gasto · Combustible'));
+      await tester.ensureVisible(find.text('Gasto · Combustible'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Gasto · Combustible'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     expect(find.textContaining('Sin coincidencias'), findsOneWidget);
@@ -1378,6 +1411,8 @@ void main() {
       await tester.tap(find.text('Finanzas'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Movimientos').last);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Compra · Jhonatan'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Compra · Jhonatan'));
       await tester.pumpAndSettle();
