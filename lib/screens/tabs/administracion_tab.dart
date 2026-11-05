@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/cupertino.dart' show CupertinoPageRoute;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:image_picker/image_picker.dart';
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -319,25 +320,30 @@ Future<bool> abrirFormularioParaPruebas(BuildContext context, String formulario)
 
 /// [iniciales] llenan campos al abrir (por ejemplo el monto que se pidió); [opciones] dan las opciones de un campo
 /// que vienen de la base (por ejemplo los adelantos abiertos del agricultor).
+/// [destino]: al pagar, a quién y dónde (Yape, cuentas); se muestra bajo "Cómo se pagó" según el método elegido.
 Future<bool> _abrirFormulario(BuildContext context, String formulario,
     {Map<String, dynamic> fijos = const {},
     String? subtitulo,
     Map<String, dynamic> iniciales = const {},
-    Map<String, Map<String, String>> opciones = const {}}) async {
+    Map<String, Map<String, String>> opciones = const {},
+    Future<ApiResponse<Map<String, dynamic>>>? destino}) async {
   final guardado = await Navigator.of(context).push<bool>(
     CupertinoPageRoute(
-        builder: (_) => _FormularioSheet(formulario: formulario, fijos: fijos, subtitulo: subtitulo, iniciales: iniciales, opciones: opciones)),
+        builder: (_) => _FormularioSheet(
+            formulario: formulario, fijos: fijos, subtitulo: subtitulo, iniciales: iniciales, opciones: opciones, destino: destino)),
   );
   return guardado == true;
 }
 
 class _FormularioSheet extends StatefulWidget {
-  const _FormularioSheet({required this.formulario, required this.fijos, this.subtitulo, this.iniciales = const {}, this.opciones = const {}});
+  const _FormularioSheet(
+      {required this.formulario, required this.fijos, this.subtitulo, this.iniciales = const {}, this.opciones = const {}, this.destino});
   final String formulario;
   final Map<String, dynamic> fijos;
   final String? subtitulo;
   final Map<String, dynamic> iniciales;
   final Map<String, Map<String, String>> opciones;
+  final Future<ApiResponse<Map<String, dynamic>>>? destino;
 
   @override
   State<_FormularioSheet> createState() => _FormularioSheetState();
@@ -356,10 +362,15 @@ class _FormularioSheetState extends State<_FormularioSheet> {
   bool _areaTocada = false;
   bool _guardando = false;
   String? _error;
+  // Al pagar: a quién y dónde (General Manager, 5 nov 2026). null mientras llega; {} si no se pudo saber.
+  Map<String, dynamic>? _destino;
 
   @override
   void initState() {
     super.initState();
+    widget.destino?.then((r) {
+      if (mounted) setState(() => _destino = r.isSuccess ? _mapaDe(r.data!['destino']) : const {});
+    });
     for (final c in _campos) {
       if (c.porDefecto != null) _valores[c.clave] = c.porDefecto;
       if (c.tipo == _Tipo.fecha) _valores[c.clave] = DateTime.now();
@@ -646,6 +657,8 @@ class _FormularioSheetState extends State<_FormularioSheet> {
             ),
             if (c.ayuda != null)
               Padding(padding: const EdgeInsets.only(top: 4), child: Text(c.ayuda!, style: TextStyle(fontSize: 12, color: Colors.grey.shade600))),
+            if (c.clave == 'metodo' && widget.destino != null)
+              _DatosParaPagar(destino: _destino, metodo: '${_valores['metodo'] ?? ''}'),
           ],
         );
       case _Tipo.persona:
@@ -1046,5 +1059,81 @@ class _ElegirPersonaState extends State<_ElegirPersona> {
         ]),
       ),
     );
+  }
+}
+
+Map<String, dynamic> _mapaDe(dynamic v) => v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
+
+/// Bajo "Cómo se pagó" (General Manager, 5 nov 2026): con Yape o Plin, el número de billetera de la persona (o su
+/// teléfono si no tiene uno guardado); con Transferencia, sus cuentas, CCI y números de servicio. Cada número con su
+/// botón Copiar. Es información, no se toca; sólo Copiar es un botón. Efectivo y adelanto no muestran nada.
+class _DatosParaPagar extends StatelessWidget {
+  const _DatosParaPagar({required this.destino, required this.metodo});
+  final Map<String, dynamic>? destino; // null mientras llega
+  final String metodo;
+
+  static const _nombres = {'phone_wallet': 'Yape / Plin', 'bank_account': 'Cuenta', 'cci': 'CCI', 'service_number': 'N.º de servicio'};
+
+  @override
+  Widget build(BuildContext context) {
+    final billetera = metodo == 'yape' || metodo == 'plin';
+    if (!billetera && metodo != 'transfer') return const SizedBox.shrink();
+    final gris = TextStyle(fontSize: 13, color: Colors.grey.shade700);
+    Widget caja(List<Widget> hijos) => Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(top: 10),
+          padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+          decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(10)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: hijos),
+        );
+    final d = destino;
+    if (d == null) return caja([Text('Buscando los datos para pagar…', style: gris)]);
+    final nombre = '${d['nombre'] ?? ''}';
+    if (d['persona'] == null) {
+      return caja([Text('No se sabe a quién se paga: no hay datos de Yape ni de cuenta.', style: gris)]);
+    }
+    final cuentas = [
+      for (final c in (d['cuentas'] is List ? d['cuentas'] as List : const []).whereType<Map>())
+        if (billetera ? c['tipo'] == 'phone_wallet' : c['tipo'] != 'phone_wallet') Map<String, dynamic>.from(c),
+    ];
+    // Sin Yape guardado, el teléfono de la persona (puede ser su Yape: se avisa).
+    if (billetera && cuentas.isEmpty && d['telefono'] != null) {
+      cuentas.add({'tipo': 'telefono', 'numero': d['telefono']});
+    }
+    return caja([
+      Text('Para pagar a $nombre', style: const TextStyle(fontWeight: FontWeight.w600)),
+      if (cuentas.isEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 4, right: 8),
+          child: Text(
+              billetera
+                  ? '$nombre no tiene número de Yape ni teléfono guardado. Agrégalo en su ficha de proveedor.'
+                  : '$nombre no tiene cuenta guardada. Agrégala en su ficha de proveedor.',
+              style: gris),
+        ),
+      for (final c in cuentas)
+        Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                  [
+                    c['tipo'] == 'telefono' ? 'Teléfono (revisa que tenga Yape)' : (_nombres[c['tipo']] ?? '${c['tipo']}'),
+                    if (c['banco'] != null) '${c['banco']}',
+                    if (c['titular'] != null) 'a nombre de ${c['titular']}',
+                  ].join(' · '),
+                  style: gris),
+              SelectableText('${c['numero'] ?? ''}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+            ]),
+          ),
+          IconButton(
+            tooltip: 'Copiar',
+            icon: const Icon(Icons.copy_rounded),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: '${c['numero'] ?? ''}'.replaceAll(RegExp(r'[^0-9]'), '')));
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copiado: ${c['numero']}'), duration: const Duration(seconds: 2)));
+            },
+          ),
+        ]),
+    ]);
   }
 }

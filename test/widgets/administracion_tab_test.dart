@@ -323,6 +323,11 @@ void main() {
         'inicial': {'fecha': '2026-11-01', 'saldo': caja ? 0 : 4013.32},
       }), 200);
     }
+    if (p.endsWith('/finanzas/destino')) {
+      // Fake data only: the farmer of PU-0001, with an account and a Yape number.
+      return http.Response(jsonEncode({'destino': {'persona': 'P-0001', 'nombre': 'Pedro Ramírez Ñique', 'telefono': '999000111',
+        'cuentas': [{'tipo': 'bank_account', 'numero': '191-0000000-0-00', 'banco': 'BCP'}, {'tipo': 'phone_wallet', 'numero': '955000000', 'titular': 'Ana Ejemplo'}]}}), 200);
+    }
     if (p.endsWith('/finanzas/lista')) {
       final filas = {
         'compras': [
@@ -582,6 +587,23 @@ void main() {
       expect(find.text('Pagar compra'), findsOneWidget);
       expect(find.text('Transferencia'), findsOneWidget);
       expect(find.textContaining('Número de operación'), findsNothing);
+      // Where the money goes (General Manager, 5 Nov 2026): Transferencia shows the account, Yape the wallet number.
+      expect(find.text('Para pagar a Pedro Ramírez Ñique'), findsOneWidget);
+      expect(find.text('191-0000000-0-00'), findsOneWidget);
+      expect(find.text('955000000'), findsNothing);
+      await tester.tap(find.text('Yape'));
+      await tester.pumpAndSettle();
+      expect(find.text('955000000'), findsOneWidget);
+      expect(find.textContaining('a nombre de Ana Ejemplo'), findsOneWidget);
+      expect(find.text('191-0000000-0-00'), findsNothing);
+      await tester.tap(find.byTooltip('Copiar'));
+      await tester.pump();
+      expect(find.text('Copiado: 955000000'), findsOneWidget);
+      await tester.tap(find.text('Efectivo'));
+      await tester.pumpAndSettle();
+      expect(find.text('Para pagar a Pedro Ramírez Ñique'), findsNothing); // cash: nothing to show
+      await tester.tap(find.text('Transferencia'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();
       // After paying, the evidence is offered at once (the row then leaves Finanzas).

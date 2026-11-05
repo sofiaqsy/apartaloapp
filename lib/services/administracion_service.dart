@@ -118,6 +118,11 @@ class AdministracionService {
   static Future<ApiResponse<Map<String, dynamic>>> conciliarMovimiento(int id, String tipo, String ref, {required String clave}) =>
       _post('finanzas/movimientos/$id/conciliar', {'tipo': tipo, 'ref': ref, 'clientRef': clave});
 
+  /// A quién y dónde se paga (General Manager, 5 nov 2026): para una compra, un gasto o un adelanto ([tipo] compra,
+  /// gasto o adelanto), la persona, su teléfono y sus cuentas activas ({destino}). Sólo dueños.
+  static Future<ApiResponse<Map<String, dynamic>>> destinoPago(String tipo, String id) =>
+      _get('finanzas/destino?tipo=${Uri.encodeQueryComponent(tipo)}&id=${Uri.encodeQueryComponent(id)}');
+
   /// Un pago de la app ({pago}, dueños): su estado frente al banco, su número de operación y su evidencia.
   static Future<ApiResponse<Map<String, dynamic>>> pago(String id) => _get('finanzas/pagos/${Uri.encodeComponent(id)}');
 

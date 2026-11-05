@@ -1439,7 +1439,11 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
   /// Paga (o aprueba) y, si se guardó, ofrece subir la evidencia del pago en el momento. true si se guardó.
   Future<bool> _pagar(BuildContext ctx, String form, String tipo, String id,
       {required Map<String, dynamic> fijos, required String subtitulo, Map<String, dynamic> iniciales = const {}}) async {
-    if (!await _abrirFormulario(ctx, form, fijos: fijos, subtitulo: subtitulo, iniciales: iniciales) || !ctx.mounted) return false;
+    // A quién y dónde se paga, mientras el formulario se abre (General Manager, 5 nov 2026).
+    final destino = AdministracionService.destinoPago(const {'purchase': 'compra', 'expense': 'gasto', 'advance_request': 'adelanto'}[tipo] ?? tipo, id);
+    if (!await _abrirFormulario(ctx, form, fijos: fijos, subtitulo: subtitulo, iniciales: iniciales, destino: destino) || !ctx.mounted) {
+      return false;
+    }
     final subir = await showDialog<bool>(
       context: ctx,
       builder: (d) => AlertDialog(
