@@ -17,7 +17,7 @@ import 'pedidos/widgets/detalle_pedido/seccion_pago_widget.dart';
 
 part 'administracion_procesos.dart';
 
-/// Pestaña Administración (antes Reportes): el título y las tarjetas de los procesos (General Manager, 5 nov 2026: sin
+/// Pestaña Administración (antes Reportes): las tarjetas de los procesos (General Manager, 5 nov 2026: sin título ni
 /// pestañas; Pendientes se quitó el 4 nov 2026 y Resumen el 5 nov 2026). Los formularios guardan en la base de
 /// operaciones (fincas) con el login de la persona.
 class AdministracionTab extends StatefulWidget {
@@ -38,23 +38,11 @@ class _AdministracionTabState extends State<AdministracionTab> {
     });
   }
 
-  // Sólo el título y los procesos (General Manager, 5 nov 2026: sin las pestañas Procesos y Resumen; el dinero del
-  // mes está en Finanzas → Movimientos y las ventas en Comercialización).
+  // Sólo los procesos (General Manager, 5 nov 2026: sin las pestañas Procesos y Resumen; el dinero del mes está en
+  // Finanzas → Movimientos y las ventas en Comercialización). Sin título propio: la barra de arriba dice
+  // "Administración" (en lugar de Finca Rosal, General Manager, 5 nov 2026).
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text('Administración', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          ),
-        ),
-        Expanded(child: _Registrar(esDueno: _esDueno)),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => _Registrar(esDueno: _esDueno);
 }
 
 // ─── Campos y formularios ────────────────────────────────────────────────────

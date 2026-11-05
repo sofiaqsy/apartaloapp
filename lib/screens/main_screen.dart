@@ -155,7 +155,7 @@ class _MainScreenState extends State<MainScreen> {
       case 2:
         return 'Clientes';
       case 3:
-        return widget.businessName;
+        return 'Administración'; // antes el nombre del negocio (General Manager, 5 nov 2026)
       default:
         return widget.businessName;
     }

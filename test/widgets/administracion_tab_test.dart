@@ -480,9 +480,9 @@ void main() {
     }, () => MockClient((req) async => responder(req)));
   }
 
-  testWidgets('only the title and the processes (no tabs since 5 Nov 2026); staff ask, only the owner sees money buttons', (tester) async {
+  testWidgets('only the processes (no title or tabs since 5 Nov 2026); staff ask, only the owner sees money buttons', (tester) async {
     await abrir(tester, rol: 'staff');
-    expect(find.text('Administración'), findsOneWidget);
+    expect(find.text('Administración'), findsNothing); // the top bar of the app says it (5 Nov 2026)
     for (final t in ['Procesos', 'Resumen']) {
       expect(find.text(t), findsNothing, reason: t);
     }
@@ -985,7 +985,7 @@ void main() {
     await tester.tap(find.byTooltip('Cancelar'));
     await tester.pumpAndSettle();
     expect(find.text('Guardar'), findsNothing);
-    expect(find.text('Administración'), findsOneWidget);
+    expect(find.text('Comercialización'), findsOneWidget); // back on the process cards
     expect(pedidos.where((r) => r.url.path.contains('/registrar/')), isEmpty);
   });
 
