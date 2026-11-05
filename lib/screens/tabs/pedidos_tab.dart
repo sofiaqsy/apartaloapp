@@ -36,6 +36,9 @@ class _PedidosTabState extends State<PedidosTab> with SingleTickerProviderStateM
   String _filtroEstado = 'PENDIENTES'; // PENDIENTES | HISTORIAL
   String _subFiltroHistorial = 'TODOS'; // TODOS | PAGADOS | PENDIENTE_PAGO
   final _searchFocus = FocusNode();
+  // Mientras se escribe en Buscar, Pre-venta y Nuevo Pedido se esconden: tapaban la lista sobre el teclado
+  // (General Manager, 5 nov 2026). Vuelven al cerrar el teclado.
+  bool _buscando = false;
 
   // Contadores server-side (se actualizan al cambiar de vista)
   int _countPendientes = 0;
@@ -55,6 +58,7 @@ class _PedidosTabState extends State<PedidosTab> with SingleTickerProviderStateM
     _shimmerCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))
       ..repeat(reverse: true);
     _scrollController.addListener(_onScroll);
+    _searchFocus.addListener(_alCambiarBusqueda);
     _cargarPedidos();
     _cargarContadores();
   }
@@ -65,10 +69,15 @@ class _PedidosTabState extends State<PedidosTab> with SingleTickerProviderStateM
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _searchTimer?.cancel();
+    _searchFocus.removeListener(_alCambiarBusqueda);
     _searchFocus.dispose();
     super.dispose();
   }
   
+  void _alCambiarBusqueda() {
+    if (mounted && _buscando != _searchFocus.hasFocus) setState(() => _buscando = _searchFocus.hasFocus);
+  }
+
   // Detectar scroll al fondo para cargar más
   void _onScroll() {
     if (_scrollController.position.pixels >= 
@@ -376,7 +385,7 @@ class _PedidosTabState extends State<PedidosTab> with SingleTickerProviderStateM
         ],
       ),
       ),
-      floatingActionButton: Column(
+      floatingActionButton: _buscando ? null : Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
