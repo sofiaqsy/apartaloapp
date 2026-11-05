@@ -480,12 +480,13 @@ void main() {
     }, () => MockClient((req) async => responder(req)));
   }
 
-  testWidgets('two parts (Pendientes was removed on 4 Nov 2026); staff ask, only the owner sees money buttons', (tester) async {
+  testWidgets('only the title and the processes (no tabs since 5 Nov 2026); staff ask, only the owner sees money buttons', (tester) async {
     await abrir(tester, rol: 'staff');
     expect(find.text('Administración'), findsOneWidget);
     for (final t in ['Procesos', 'Resumen']) {
-      expect(find.text(t), findsOneWidget);
+      expect(find.text(t), findsNothing, reason: t);
     }
+    expect(find.byType(TabBar), findsNothing);
     expect(find.text('Pendientes'), findsNothing);
     expect(find.text('Solicitudes'), findsNothing);
     // Registrar: one card per process, with its summary, and Registrar gasto below.
@@ -984,7 +985,7 @@ void main() {
     await tester.tap(find.byTooltip('Cancelar'));
     await tester.pumpAndSettle();
     expect(find.text('Guardar'), findsNothing);
-    expect(find.text('Procesos'), findsOneWidget);
+    expect(find.text('Administración'), findsOneWidget);
     expect(pedidos.where((r) => r.url.path.contains('/registrar/')), isEmpty);
   });
 
@@ -1498,13 +1499,6 @@ void main() {
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     expect(find.byType(DetallePedidoSheet), findsOneWidget);
-  });
-
-  testWidgets('Resumen points to Comercialización for the sales', (tester) async {
-    await abrir(tester, rol: 'staff');
-    await tester.tap(find.text('Resumen'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('Las ventas están en Procesos → Comercialización'), findsOneWidget);
   });
 
   testWidgets('Registrar shows only the cards of the areas ticked in Perfil', (tester) async {

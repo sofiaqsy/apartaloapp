@@ -17,9 +17,9 @@ import 'pedidos/widgets/detalle_pedido/seccion_pago_widget.dart';
 
 part 'administracion_procesos.dart';
 
-/// Pestaña Administración (antes Reportes): Procesos y Resumen (Pendientes se quitó: General Manager, 4 nov 2026).
-/// Los formularios guardan en la base de operaciones (fincas) con el login de la persona.
-/// Los reportes de ventas de siempre siguen dentro de Resumen, sin cambios.
+/// Pestaña Administración (antes Reportes): el título y las tarjetas de los procesos (General Manager, 5 nov 2026: sin
+/// pestañas; Pendientes se quitó el 4 nov 2026 y Resumen el 5 nov 2026). Los formularios guardan en la base de
+/// operaciones (fincas) con el login de la persona.
 class AdministracionTab extends StatefulWidget {
   const AdministracionTab({super.key});
 
@@ -38,40 +38,21 @@ class _AdministracionTabState extends State<AdministracionTab> {
     });
   }
 
+  // Sólo el título y los procesos (General Manager, 5 nov 2026: sin las pestañas Procesos y Resumen; el dinero del
+  // mes está en Finanzas → Movimientos y las ventas en Comercialización).
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Column(
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text('Administración', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-            ),
+    return Column(
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text('Administración', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
           ),
-          TabBar(
-            labelColor: Colors.blue.shade700,
-            unselectedLabelColor: Colors.grey.shade600,
-            indicatorColor: Colors.blue.shade600,
-            // Las pestañas caben en la pantalla del teléfono, sin deslizar. Mi área está en Perfil.
-            isScrollable: false,
-            labelPadding: const EdgeInsets.symmetric(horizontal: 2),
-            labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-            unselectedLabelStyle: const TextStyle(fontSize: 13),
-            tabs: const [Tab(text: 'Procesos'), Tab(text: 'Resumen')], // Procesos: antes Registrar (3 nov 2026); sin Pendientes (4 nov 2026)
-          ),
-          Expanded(
-            child: TabBarView(
-              children: [
-                _Registrar(esDueno: _esDueno),
-                _Resumen(esDueno: _esDueno),
-              ],
-            ),
-          ),
-        ],
-      ),
+        ),
+        Expanded(child: _Registrar(esDueno: _esDueno)),
+      ],
     );
   }
 }
@@ -926,68 +907,6 @@ class _MiAreaState extends State<_MiArea> {
                     style: TextStyle(fontSize: 12, color: g['status'] == 'Pagado' ? Colors.green.shade700 : Colors.orange.shade800)),
               ),
           ]),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Resumen ─────────────────────────────────────────────────────────────────
-
-class _Resumen extends StatefulWidget {
-  const _Resumen({required this.esDueno});
-  final bool esDueno;
-
-  @override
-  State<_Resumen> createState() => _ResumenState();
-}
-
-class _ResumenState extends State<_Resumen> {
-  List<dynamic> _meses = [];
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.esDueno) _cargar();
-  }
-
-  Future<void> _cargar() async {
-    final r = await AdministracionService.resumen();
-    if (!mounted) return;
-    setState(() {
-      _meses = (r.data?['meses'] as List?) ?? [];
-      _error = r.isSuccess ? null : r.error;
-    });
-  }
-
-  String _soles(dynamic v) => (num.tryParse('${v ?? 0}') ?? 0).toStringAsFixed(2);
-
-  @override
-  Widget build(BuildContext context) {
-    // El reporte de ventas se mudó a Procesos → Comercialización (General Manager, 3 nov 2026).
-    if (!widget.esDueno) {
-      return const Center(
-        child: Padding(
-            padding: EdgeInsets.all(24), child: Text('Las ventas están en Procesos → Comercialización: últimos pagos, clientes y el reporte en PDF.', textAlign: TextAlign.center)),
-      );
-    }
-    return RefreshIndicator(
-      onRefresh: _cargar,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          const Text('Dinero del mes', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!)),
-          if (_error == null && _meses.isEmpty) const Padding(padding: EdgeInsets.only(top: 8), child: Text('Aún no hay movimientos')),
-          for (final m in _meses)
-            Card(
-              child: ListTile(
-                title: Text('${m['account']} · ${m['month']}'),
-                subtitle: Text('Inicio ${_soles(m['opening'])} · entra ${_soles(m['money_in'])} · sale ${_soles(m['money_out'])}'),
-                trailing: Text('S/ ${_soles(m['closing'])}', style: const TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            ),
         ],
       ),
     );
