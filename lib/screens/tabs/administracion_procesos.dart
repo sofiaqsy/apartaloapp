@@ -3855,7 +3855,16 @@ class _MovimientoDetalleScreenState extends State<_MovimientoDetalleScreen> {
         clave: AdministracionService.nuevaClave('conciliar'));
     if (!mounted) return;
     setState(() => _guardando = false);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.isSuccess ? 'Conciliado ✓' : (r.error ?? 'No se guardó'))));
+    // Un pedido conciliado deja su comprobante verificado (el sello verde del pedido, General Manager 5 nov 2026).
+    final verificados = (r.data?['comprobantes_verificados'] as num?)?.toInt();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(!r.isSuccess
+            ? (r.error ?? 'No se guardó')
+            : verificados == null || verificados == 0
+                ? 'Conciliado ✓'
+                : verificados < 0
+                    ? 'Conciliado ✓ · el comprobante no se pudo marcar como verificado'
+                    : 'Conciliado ✓ · comprobante verificado')));
     if (r.isSuccess) Navigator.of(context).pop(true); // Movimientos se recarga
   }
 
