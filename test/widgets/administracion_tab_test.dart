@@ -447,6 +447,7 @@ void main() {
 
   setUp(() {
     pedidos.clear();
+    AdministracionService.olvidarMemoria(); // each test starts with an empty memory
     sugerencia = {'area': 'fulfillment', 'cost_centre': 'coffee', 'source': 'to_review'};
     marcadas = ['farm', 'sourcing', 'production', 'commercial', 'fulfillment', 'finance'];
     sinComercial = false;
@@ -2113,5 +2114,74 @@ void main() {
     expect(body['tipo'], 'expense');
     expect(body['id'], 'EX-0001');
     expect(base64Decode(body['archivoBase64'] as String), [0xff, 0xd8, 0xff, 0xe0]);
+  });
+
+
+  // Good practices for speed (General Manager, 5 Nov 2026). Measured with this same flow before the change:
+  // 4 requests for all the summaries, 0 of 3 screens with data at once, 3 category requests; now 1, 3 of 3 and 1.
+  testWidgets('speed: a process opens with its data at once, the cards are not asked again for nothing, categories are kept', (tester) async {
+    await abrir(tester, rol: 'owner');
+    bool todos(http.Request r) => r.url.path.endsWith('/procesos') && !r.url.queryParameters.containsKey('solo');
+    bool uno(http.Request r) => r.url.path.endsWith('/procesos') && r.url.queryParameters.containsKey('solo');
+    expect(pedidos.where(todos).length, 1);
+    final lento = MockClient((req) async {
+      await Future.delayed(const Duration(seconds: 1));
+      return responder(req);
+    });
+    for (var i = 0; i < 3; i++) {
+      await http.runWithClient(() async {
+        await tester.tap(find.text('Compras'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400)); // open; the server has not answered yet
+        expect(find.text('Registrar compra'), findsOneWidget, reason: 'visit ${i + 1}: the data is there at once');
+        await tester.pump(const Duration(seconds: 2));
+        await tester.pumpAndSettle();
+        await tester.pageBack();
+        await tester.pump(const Duration(seconds: 2));
+        await tester.pumpAndSettle();
+      }, () => lento);
+    }
+    // Each visit still asks the server for its own summary (money is always confirmed), never all of them again.
+    expect(pedidos.where(uno).length, 3);
+    expect(pedidos.where(todos).length, 1);
+    // The gasto form's categories (not money) are asked once.
+    for (var i = 0; i < 3; i++) {
+      await http.runWithClient(() async {
+        await abrirGasto(tester);
+        await tester.tap(find.byTooltip('Cancelar'));
+        await tester.pumpAndSettle();
+      }, () => MockClient((req) async => responder(req)));
+    }
+    expect(pedidos.where((r) => r.url.path.endsWith('/categorias')).length, 1);
+    // After saving anything, the memory is forgotten: the categories and, on coming back, the cards are asked again.
+    await http.runWithClient(() async {
+      final r = await AdministracionService.registrar('gasto', {'monto': 10}, clave: AdministracionService.nuevaClave('gasto'));
+      expect(r.isSuccess, isTrue);
+      await abrirGasto(tester);
+      await tester.tap(find.byTooltip('Cancelar'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(pedidos.where((r) => r.url.path.endsWith('/categorias')).length, 2);
+    expect(pedidos.where(todos).length, 2);
+    expect(tester.takeException(), isNull);
+  });
+
+  test('speed: the same read asked twice at the same time goes to the server once', () async {
+    var n = 0;
+    await http.runWithClient(() async {
+      final a = AdministracionService.compra('PU-1');
+      final b = AdministracionService.compra('PU-1');
+      final r = await Future.wait([a, b]);
+      expect(r.every((x) => x.isSuccess), isTrue);
+      await AdministracionService.compra('PU-1'); // once it answered, a new visit asks again (money is not kept)
+    }, () => MockClient((req) async {
+          n++;
+          return http.Response(jsonEncode({'compra': {'id': 'PU-1'}}), 200);
+        }));
+    expect(n, 2);
   });
 }

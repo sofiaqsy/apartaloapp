@@ -283,7 +283,9 @@ class SeccionPagoWidget extends StatelessWidget {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8),
           child: Stack(fit: StackFit.expand, children: [
+            // Se decodifica al tamaño de la miniatura (80 puntos), no al de la foto: mucha menos memoria.
             Image.network(url, fit: BoxFit.cover,
+                cacheWidth: (80 * MediaQuery.devicePixelRatioOf(context)).round(),
                 loadingBuilder: (_, child, p) => p == null
                     ? child
                     : Container(color: Colors.grey.shade100,

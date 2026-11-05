@@ -12,6 +12,43 @@ class AdministracionService {
   static const _json = {'Content-Type': 'application/json'};
   static final _random = Random.secure();
 
+  // ─── Memoria corta (buenas prácticas de rendimiento, General Manager 5 nov 2026) ───────────────────────────────
+  // Sin librerías ni base local: sólo mapas en memoria, que se pierden al cerrar la app.
+  // - Una misma lectura pedida dos veces a la vez sale una sola vez (_enCurso).
+  // - Las categorías de gasto (no son dinero) se guardan 10 minutos.
+  // - El último resumen de cada proceso se muestra al instante al abrir su pantalla, que igual lo pide de nuevo:
+  //   el dinero siempre lo confirma el servidor.
+  // - Cada vez que algo se guarda, la memoria se borra y [version] sube: quien mostraba datos sabe que cambiaron.
+  static final Map<String, Future<ApiResponse<Map<String, dynamic>>>> _enCurso = {};
+  static final Map<String, (DateTime, Map<String, dynamic>)> _guardado = {};
+  static final Map<String, Map<String, dynamic>> _procesosVistos = {};
+  static const _vidaCategorias = Duration(minutes: 10);
+
+  /// Sube cada vez que se guarda algo con éxito (formularios, pagos, evidencias, conciliar…).
+  static int version = 0;
+
+  /// Olvida todo lo guardado en memoria (al entrar con otra cuenta o negocio, y en las pruebas).
+  static void olvidarMemoria() {
+    _enCurso.clear();
+    _guardado.clear();
+    _procesosVistos.clear();
+  }
+
+  static void _seGuardoAlgo() {
+    version++;
+    _guardado.clear();
+    _procesosVistos.clear();
+  }
+
+  /// El último resumen recibido de un proceso ('compras', 'finanzas'…) de este negocio, o null.
+  static Map<String, dynamic>? procesoEnMemoria(String clave) => _procesosVistos['${ApiService.businessId}/$clave'];
+
+  static void _recordarProcesos(Map<String, dynamic> data) {
+    data.forEach((k, v) {
+      if (v is Map) _procesosVistos['${ApiService.businessId}/$k'] = Map<String, dynamic>.from(v);
+    });
+  }
+
   /// Clave única por envío: si la señal falla y se reintenta, la base guarda una sola vez.
   static String nuevaClave(String formulario) {
     final suffix = List.generate(8, (_) => _random.nextInt(36).toRadixString(36)).join();
@@ -30,6 +67,7 @@ class AdministracionService {
           .timeout(const Duration(seconds: 25));
       final body = _decode(res.body);
       if (res.statusCode == 200 && body is Map && body['ok'] == true) {
+        _seGuardoAlgo();
         return ApiResponse.success(Map<String, dynamic>.from(body['result'] ?? {}));
       }
       return ApiResponse.error(_mensaje(res.statusCode, body));
@@ -44,8 +82,11 @@ class AdministracionService {
 
   /// Tarjetas Compras y Producción: {compras: {...}, produccion: {...}} (el dinero sólo para dueños).
   /// Con [solo] (p. ej. 'compras') el servidor calcula sólo ese proceso: la pantalla de un proceso no pide todos.
-  static Future<ApiResponse<Map<String, dynamic>>> procesos({String? solo}) =>
-      _get(solo == null ? 'procesos' : 'procesos?solo=${Uri.encodeComponent(solo)}');
+  static Future<ApiResponse<Map<String, dynamic>>> procesos({String? solo}) async {
+    final r = await _get(solo == null ? 'procesos' : 'procesos?solo=${Uri.encodeComponent(solo)}');
+    if (r.isSuccess) _recordarProcesos(r.data!);
+    return r;
+  }
 
   /// Pestaña Compras: compras de la más nueva a la más antigua, de [limit] en [limit] ({compras, total, hayMas}).
   static Future<ApiResponse<Map<String, dynamic>>> compras({int offset = 0, int limit = 20}) => _get('compras?offset=$offset&limit=$limit');
@@ -130,6 +171,7 @@ class AdministracionService {
       final res = await http.post(Uri.parse('$_base/$path'), headers: _json, body: jsonEncode(datos)).timeout(const Duration(seconds: 25));
       final body = _decode(res.body);
       if (res.statusCode == 200 && body is Map && body['ok'] == true) {
+        _seGuardoAlgo();
         return ApiResponse.success(Map<String, dynamic>.from(body['resultado'] ?? {}));
       }
       return ApiResponse.error(_mensaje(res.statusCode, body));
@@ -198,7 +240,7 @@ class AdministracionService {
   static Future<ApiResponse<Map<String, dynamic>>> solicitudes() => _get('solicitudes');
 
   /// Categorías de gasto con el área y el centro de costo que sugieren, y la lista de áreas.
-  static Future<ApiResponse<Map<String, dynamic>>> categorias() => _get('categorias');
+  static Future<ApiResponse<Map<String, dynamic>>> categorias() => _get('categorias', vida: _vidaCategorias);
 
   /// Qué área pondría la base a un gasto (para Combustible: compra o entrega del mismo día, o la de la persona).
   static Future<ApiResponse<Map<String, dynamic>>> sugerirArea(String categoria, [String? fecha]) =>
@@ -240,9 +282,31 @@ class AdministracionService {
     }
   }
 
-  static Future<ApiResponse<Map<String, dynamic>>> _get(String path) async {
+  /// Una lectura. Si la misma ya está en camino, se espera esa (no sale dos veces). Con [vida], una respuesta buena
+  /// se reutiliza ese tiempo (sólo datos que no son dinero; se borra al guardar algo).
+  static Future<ApiResponse<Map<String, dynamic>>> _get(String path, {Duration? vida}) {
+    final url = '$_base/$path';
+    final guardado = _guardado[url];
+    if (vida != null && guardado != null && DateTime.now().difference(guardado.$1) < vida) {
+      return Future.value(ApiResponse.success(Map<String, dynamic>.from(guardado.$2)));
+    }
+    final enCurso = _enCurso[url];
+    if (enCurso != null) return enCurso;
+    final version0 = version;
+    final pedido = _leer(url).then((r) {
+      // Si mientras tanto se guardó algo, la respuesta puede ser vieja: no se recuerda.
+      if (vida != null && r.isSuccess && version0 == version) _guardado[url] = (DateTime.now(), Map<String, dynamic>.from(r.data!));
+      return r;
+    }).whenComplete(() {
+      _enCurso.remove(url); // sin devolverlo: whenComplete esperaría al mismo pedido y nunca terminaría
+    });
+    _enCurso[url] = pedido;
+    return pedido;
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> _leer(String url) async {
     try {
-      final res = await http.get(Uri.parse('$_base/$path')).timeout(const Duration(seconds: 20));
+      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 20));
       final body = _decode(res.body);
       if (res.statusCode == 200 && body is Map) return ApiResponse.success(Map<String, dynamic>.from(body));
       return ApiResponse.error(_mensaje(res.statusCode, body));

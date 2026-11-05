@@ -53,6 +53,11 @@ String _fechaLarga(dynamic iso) {
   return '${dias[d.weekday - 1]} ${d.day} de ${meses[d.month - 1]}';
 }
 
+/// Ancho en píxeles para decodificar una foto que ocupa 1/[columnas] de la pantalla: una foto del teléfono pesa unos
+/// 48 MB en memoria a tamaño completo y menos de 1 MB a este tamaño. Sólo en miniaturas; al abrirla se ve completa.
+int _anchoMiniatura(BuildContext context, int columnas) =>
+    (MediaQuery.sizeOf(context).width / columnas * MediaQuery.devicePixelRatioOf(context)).round();
+
 Map<String, dynamic> _mapa(dynamic v) => v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
 List<Map<String, dynamic>> _lista(dynamic v) => v is List ? v.map(_mapa).toList() : <Map<String, dynamic>>[];
 
@@ -96,6 +101,8 @@ class _RegistrarState extends State<_Registrar> {
   String? _error;
   Set<String>? _areas; // las áreas marcadas en Perfil; null mientras carga
   bool _cargado = false; // ya llegaron los resúmenes (hasta entonces cada tarjeta muestra su carga)
+  DateTime? _cargadoEn; // cuándo llegaron; al volver de un proceso se piden de nuevo sólo si algo cambió o ya pasó un minuto
+  int _version = -1; // AdministracionService.version de esa carga
 
   @override
   void initState() {
@@ -117,12 +124,15 @@ class _RegistrarState extends State<_Registrar> {
 
   Future<void> _cargar() async {
     _leerAreas();
+    final version = AdministracionService.version;
     final r = await AdministracionService.procesos();
     if (!mounted) return;
     setState(() {
       _error = r.isSuccess ? null : r.error;
       if (r.isSuccess) {
         _cargado = true;
+        _cargadoEn = DateTime.now();
+        _version = version;
         // El servidor sólo manda los procesos de las áreas de la persona; los que faltan quedan en null.
         Map<String, dynamic>? de(String k) => r.data![k] is Map ? _mapa(r.data![k]) : null;
         _finca = de('finca');
@@ -137,10 +147,15 @@ class _RegistrarState extends State<_Registrar> {
     });
   }
 
+  // Al volver de un proceso, los resúmenes se piden de nuevo sólo si dentro se guardó algo o tienen más de un minuto
+  // (antes se pedían siempre: los seis procesos en cada vuelta).
   Future<void> _entrar(Widget pantalla) async {
     await _abrirPantalla<String>(context, pantalla);
     if (!mounted) return;
-    _cargar();
+    final cargadoEn = _cargadoEn;
+    if (_version != AdministracionService.version || cargadoEn == null || DateTime.now().difference(cargadoEn) > const Duration(minutes: 1)) {
+      _cargar();
+    }
   }
 
   @override
@@ -582,6 +597,9 @@ abstract class _ProcesoState<T extends StatefulWidget> extends State<T> {
   @override
   void initState() {
     super.initState();
+    // El resumen que ya trajo su tarjeta se ve al instante (sin rueda de carga); igual se pide de nuevo enseguida,
+    // así el dinero siempre lo confirma el servidor.
+    datos = AdministracionService.procesoEnMemoria(clave);
     cargar();
   }
 
@@ -3040,6 +3058,7 @@ class _EvidenciasScreenState extends State<_EvidenciasScreen> {
                                 color: Colors.grey.shade200, child: Icon(Icons.picture_as_pdf_outlined, size: 36, color: Colors.grey.shade700))
                             : Image.network('${e['url']}',
                                 fit: BoxFit.cover,
+                                cacheWidth: _anchoMiniatura(context, 3),
                                 errorBuilder: (_, __, ___) => Container(color: Colors.grey.shade200, child: const Icon(Icons.broken_image_outlined))),
                         Positioned(
                           left: 0,
@@ -3758,6 +3777,7 @@ class _TostadoDetalleScreenState extends State<_TostadoDetalleScreen> {
                                   child: Icon(Icons.videocam_outlined, color: Colors.orange.shade700, size: 32))
                               : Image.network(u,
                                   fit: BoxFit.cover,
+                                  cacheWidth: _anchoMiniatura(context, 3),
                                   errorBuilder: (_, __, ___) =>
                                       Container(color: Colors.grey.shade200, child: Icon(Icons.broken_image_outlined, color: Colors.grey.shade500))),
                         ),
@@ -4392,6 +4412,7 @@ class _PagoPedido extends StatelessWidget {
                   height: 220,
                   width: double.infinity,
                   fit: BoxFit.cover,
+                  cacheWidth: _anchoMiniatura(context, 1),
                   loadingBuilder: (_, child, progreso) =>
                       progreso == null ? child : const SizedBox(height: 220, child: Center(child: CircularProgressIndicator())),
                   errorBuilder: (_, __, ___) => Container(

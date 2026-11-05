@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
+import '../services/administracion_service.dart';
 import '../services/api_service.dart';
 import '../services/notification_service.dart';
 import '../providers/printer_provider.dart';
@@ -41,6 +42,7 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     ApiService.businessId = widget.businessId;
+    AdministracionService.olvidarMemoria(); // otra cuenta u otro negocio: nada de lo visto antes
     _loadRole();
     _initializeServices();
   }
