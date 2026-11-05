@@ -287,6 +287,11 @@ void main() {
         'sugerencias': [{'tipo': 'gasto', 'ref': 'EX-0003', 'titulo': 'Gasto · Personal', 'detalle': 'EX-0003 · Ayudante', 'fecha': '2026-11-04', 'monto': 350,
           'por': 'misael@x', 'evidencia': {'tipo': 'expense', 'id': 'EX-0003', 'n': 1}},
           {'tipo': 'pedido', 'ref': 'ord-uuid', 'titulo': 'Cirilo Peña Carbajal', 'detalle': 'ORD-20260817-52cd9d7a', 'fecha': '2026-11-03', 'monto': 350,
+           // The order as the Pedidos tab has it: its Pago part is shown with the order detail's own design.
+           'pedido_app': {'supabaseId': 'ord-uuid', 'id': 'ORD-20260817-52cd9d7a', 'total': 700, 'montoPagado': 700, 'estadoPago': 'PAGADO',
+             'pagos': [{'id': 'pg1', 'monto': 350, 'fecha': '2026-10-13T01:40:00Z'}, {'id': 'pg2', 'monto': 350, 'fecha': '2026-11-04T03:32:00Z'}],
+             'evidencias': [{'id': 'e2', 'url': 'https://example.test/voucher.jpg', 'tipo': 'BCP', 'fecha': '2026-11-04T03:40:00Z', 'paymentId': 'pg2',
+               'verificacion': {'estado': 'VERIFICADO'}}]},
            'pago_pedido': {'total': 4800, 'pagado': 4800, 'debe': 0, 'pagos': [
              {'monto': 350, 'fecha': '2026-10-12', 'coincide': true, 'comprobantes': []},
              {'monto': 350, 'fecha': '2026-11-03', 'coincide': true, 'comprobantes': [
@@ -1335,14 +1340,14 @@ void main() {
     for (final t in ['Puede ser', 'Gasto · Personal', 'Conciliar', '6011866', 'registró misael@x', 'Ver evidencia (1)']) {
       expect(find.text(t), findsWidgets, reason: t);
     }
-    // A store order brings its whole Pago part, with the voucher as an image (no link) and the day it was uploaded.
+    // A store order brings its Pago part with the order detail's own design, only to look: no Agregar, no Revertir.
     final lista = find.byType(Scrollable).last;
-    await tester.scrollUntilVisible(find.text('Total S/ 4,800 · Pagado S/ 4,800 · Debe S/ 0'), 200, scrollable: lista);
-    await tester.scrollUntilVisible(find.text('Subido el Martes 3 de noviembre · verificado S/ 350 · operación 7396343'), 200, scrollable: lista);
-    expect(find.text('este pago'), findsOneWidget); // only the payment within 7 days of the bank line
-    expect(find.text('Sin comprobante'), findsOneWidget);
-    expect(find.byType(Image), findsWidgets);
-    expect(find.text('Ver comprobante'), findsNothing);
+    await tester.scrollUntilVisible(find.text('Historial de pagos'), 200, scrollable: lista);
+    await tester.scrollUntilVisible(find.text('Pago Completado'), 200, scrollable: lista);
+    expect(find.text('Pago 2'), findsOneWidget);
+    expect(find.text('Agregar'), findsNothing);
+    expect(find.text('Revertir todos los pagos'), findsNothing);
+    expect(find.text('Registrar Pago'), findsNothing);
     await tester.scrollUntilVisible(find.text('Gasto · Personal'), -200, scrollable: lista);
     await http.runWithClient(() async {
       await tester.tap(find.text('Conciliar').first);

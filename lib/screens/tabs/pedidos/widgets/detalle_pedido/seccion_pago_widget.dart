@@ -17,6 +17,9 @@ class SeccionPagoWidget extends StatelessWidget {
   final Future<void> Function(ImageSource source, {String? paymentId}) onAgregarComprobante;
   final Future<void> Function(String pagoId)? onEliminarPago;
   final Future<void> Function(Map<String, dynamic> evidencia)? onEliminarEvidencia;
+  /// Sólo para ver (Finanzas → Movimientos, al conciliar una línea del banco, 5 nov 2026): sin Agregar comprobante,
+  /// Registrar pago ni Revertir. Para no borrar, no se pasan onEliminarPago ni onEliminarEvidencia.
+  final bool soloLectura;
 
   const SeccionPagoWidget({
     super.key,
@@ -31,6 +34,7 @@ class SeccionPagoWidget extends StatelessWidget {
     required this.onAgregarComprobante,
     this.onEliminarPago,
     this.onEliminarEvidencia,
+    this.soloLectura = false,
   });
 
   // ── Dialogo registrar pago ────────────────────────────────────────────────
@@ -552,7 +556,7 @@ class SeccionPagoWidget extends StatelessWidget {
                   ...linked.map((ev) => _thumbnail(context, ev)),
 
                 // Botón agregar
-                if (!subiendoEvidencia)
+                if (!subiendoEvidencia && !soloLectura)
                   GestureDetector(
                     onTap: () => _mostrarPickerComprobante(context, paymentId: pagoId),
                     child: Container(
@@ -618,8 +622,11 @@ class SeccionPagoWidget extends StatelessWidget {
       Row(children: [
         Icon(Icons.payments, size: 20, color: colorEstado),
         const SizedBox(width: 8),
-        const Text('Estado de Pago', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        const Spacer(),
+        // Se acorta en vez de salirse cuando la sección va dentro de una tarjeta angosta (Finanzas → Movimientos).
+        const Expanded(
+          child: Text('Estado de Pago',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
@@ -746,7 +753,7 @@ class SeccionPagoWidget extends StatelessWidget {
 
 
       // ── Botón registrar pago / confirmación pagado ───────────────────────
-      if (estadoPago != EstadoPagoHelper.PAGADO)
+      if (estadoPago != EstadoPagoHelper.PAGADO && !soloLectura)
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
@@ -782,10 +789,11 @@ class SeccionPagoWidget extends StatelessWidget {
               Text('S/ ${total.toStringAsFixed(2)}${pagos.length > 1 ? ' · ${pagos.length} abonos' : ''}',
                   style: TextStyle(fontSize: 12, color: Colors.green.shade600)),
             ])),
-            TextButton(
-              onPressed: () => onCambiarEstadoPago(EstadoPagoHelper.PENDIENTE_PAGO, monto: 0, esNuevoPago: false),
-              child: const Text('Revertir todos los pagos', style: TextStyle(fontSize: 12)),
-            ),
+            if (!soloLectura)
+              TextButton(
+                onPressed: () => onCambiarEstadoPago(EstadoPagoHelper.PENDIENTE_PAGO, monto: 0, esNuevoPago: false),
+                child: const Text('Revertir todos los pagos', style: TextStyle(fontSize: 12)),
+              ),
           ]),
         ),
     ]);

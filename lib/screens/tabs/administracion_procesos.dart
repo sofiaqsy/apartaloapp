@@ -3907,7 +3907,7 @@ class _MovimientoDetalleScreenState extends State<_MovimientoDetalleScreen> {
           ]),
         ),
         if (pago.isNotEmpty) _Evidencia(evidencia: _mapa(pago['evidencia']), titulo: datos.first.$2 ?? 'Movimiento'),
-        if (pedido.isNotEmpty) _PagoPedido(seccion: _mapa(pedido['pago_pedido']), fechaBanco: m['fecha']),
+        if (pedido.isNotEmpty) _PagoDelPedido(pedidoApp: _mapa(pedido['pedido_app']), seccion: _mapa(pedido['pago_pedido']), fechaBanco: m['fecha']),
         // Sin nada que se le parezca, se dice aquí (General Manager, 5 nov 2026).
         if (m['sin_coincidencias'] == true) ...[
           const SizedBox(height: 16),
@@ -3945,7 +3945,7 @@ class _MovimientoDetalleScreenState extends State<_MovimientoDetalleScreen> {
                   Text([if (s['nota'] != null) '${s['nota']}', if (s['por'] != null) 'registró ${s['por']}'].join(' · '),
                       style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
                 if (s['tipo'] == 'pedido')
-                  _PagoPedido(seccion: _mapa(s['pago_pedido']), fechaBanco: m['fecha'])
+                  _PagoDelPedido(pedidoApp: _mapa(s['pedido_app']), seccion: _mapa(s['pago_pedido']), fechaBanco: m['fecha'])
                 else
                   _Evidencia(evidencia: _mapa(s['evidencia']), titulo: '${s['titulo'] ?? ''}'),
                 const SizedBox(height: 8),
@@ -3990,6 +3990,38 @@ class _Evidencia extends StatelessWidget {
       );
     }
     return Padding(padding: const EdgeInsets.only(top: 8), child: Wrap(spacing: 8, runSpacing: 8, children: botones));
+  }
+}
+
+/// La parte de Pago de un pedido con el mismo diseño que el detalle del pedido (General Manager, 5 nov 2026: "just
+/// re-use this design, it is more understandable"): SeccionPagoWidget sólo para ver, con el pedido como lo trae la
+/// pestaña Pedidos. Si el servidor no pudo traerlo, el resumen de la base (_PagoPedido).
+class _PagoDelPedido extends StatelessWidget {
+  const _PagoDelPedido({required this.pedidoApp, required this.seccion, required this.fechaBanco});
+  final Map<String, dynamic> pedidoApp;
+  final Map<String, dynamic> seccion;
+  final dynamic fechaBanco;
+
+  @override
+  Widget build(BuildContext context) {
+    if (pedidoApp.isEmpty) return _PagoPedido(seccion: seccion, fechaBanco: fechaBanco);
+    final vistas = <String>{};
+    final evidencias = _lista(pedidoApp['evidencias']).where((e) => vistas.add('${e['url'] ?? ''}')).toList();
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: SeccionPagoWidget(
+        pedido: pedidoApp,
+        estadoPago: EstadoPagoHelper.determinarEstadoPago(pedidoApp),
+        montoPagado: ((pedidoApp['montoPagado'] ?? 0) as num).toDouble(),
+        pagos: _lista(pedidoApp['pagos']),
+        evidencias: evidencias,
+        actualizando: false,
+        subiendoEvidencia: false,
+        onCambiarEstadoPago: (_, {monto, esNuevoPago}) {},
+        onAgregarComprobante: (_, {paymentId}) async {},
+        soloLectura: true,
+      ),
+    );
   }
 }
 
