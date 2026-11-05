@@ -275,8 +275,9 @@ void main() {
         'filas': caja
             ? []
             : [
-                {'id': 'PY-0009', 'fecha': '2026-11-04', 'tipo': 'Gasto', 'categoria': 'Combustible', 'metodo': 'transfer', 'monto': -150, 'saldo': 3554.37},
-                {'id': 'PY-0008', 'fecha': '2026-11-04', 'tipo': 'Compra', 'quien': 'Jhonatan', 'metodo': 'yape', 'monto': -308.95, 'saldo': 3704.37},
+                {'id': 'b12', 'fecha': '2026-11-05', 'banco': 'TRAN.CTAS.TERC.HK', 'operacion': '6011866', 'estado': 'Falta en la app', 'monto': -350, 'saldo': 3204.37},
+                {'id': 'PY-0009', 'fecha': '2026-11-04', 'tipo': 'Gasto', 'categoria': 'Combustible', 'metodo': 'transfer', 'estado': 'Conciliado', 'monto': -150, 'saldo': 3554.37},
+                {'id': 'PY-0008', 'fecha': '2026-11-04', 'tipo': 'Compra', 'quien': 'Jhonatan', 'metodo': 'yape', 'estado': 'No está en el banco', 'monto': -308.95, 'saldo': 3704.37},
               ],
         'hayMas': false,
         'inicial': {'fecha': '2026-11-01', 'saldo': caja ? 0 : 4013.32},
@@ -1260,7 +1261,8 @@ void main() {
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     // The bank's statement: what leaves in orange with the balance after it, and the opening balance at the end.
-    for (final t in ['Gasto · Combustible', 'Compra · Jhonatan', '−S/ 150', '−S/ 308.95', 'Saldo S/ 3,554.37', 'Saldo inicial', 'Saldo S/ 4,013.32']) {
+    for (final t in ['Gasto · Combustible', 'Compra · Jhonatan', '−S/ 150', '−S/ 308.95', 'Saldo S/ 3,554.37', 'Saldo inicial', 'Saldo S/ 4,013.32',
+        'TRAN.CTAS.TERC.HK', 'Falta en la app', 'Conciliado', 'No está en el banco']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     expect(pedidos.any((r) => r.url.path.endsWith('/personas/buscar') && r.url.queryParameters['area'] == 'finance'), isFalse);

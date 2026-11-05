@@ -3700,6 +3700,9 @@ class _LineaCuenta extends StatelessWidget {
 
 /// Una línea del estado de una cuenta (Finanzas → Movimientos), con la forma de _LineaCuenta: lo que entra en verde,
 /// lo que sale en naranja, y el saldo después. Es información, no se toca. La última es el saldo inicial.
+/// En el banco cada línea dice si cruzó (General Manager, 5 nov 2026): Conciliado (está en el banco y en la app),
+/// Falta en la app (está en el banco y nadie lo registró), No está en el banco (registrado en la app, el banco todavía
+/// no lo trae: no mueve el saldo) o Ignorada.
 class _LineaMovimiento extends StatelessWidget {
   const _LineaMovimiento({required this.movimiento});
   final Map<String, dynamic> movimiento;
@@ -3720,6 +3723,12 @@ class _LineaMovimiento extends StatelessWidget {
       'Saldo inicial': Icons.flag_outlined,
     };
     final quien = m['tipo'] == 'Gasto' ? m['categoria'] : (m['quien'] ?? m['otra_cuenta']);
+    final estado = m['estado']?.toString();
+    final colorEstado = switch (estado) {
+      'Conciliado' => Colors.green.shade700,
+      'Falta en la app' || 'No está en el banco' => Colors.orange.shade800,
+      _ => Colors.grey.shade600,
+    };
     final detalle = [
       _fechaLarga(m['fecha']),
       if (m['metodo'] != null && m['metodo'] != 'withdrawal') _metodosPago[m['metodo']] ?? '${m['metodo']}',
@@ -3732,9 +3741,11 @@ class _LineaMovimiento extends StatelessWidget {
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text([m['tipo'] ?? 'Movimiento', if (quien != null) quien].join(' · '),
+            // Una línea del banco que nadie registró se nombra con el texto del banco.
+            Text(m['tipo'] == null && m['banco'] != null ? '${m['banco']}' : [m['tipo'] ?? 'Movimiento', if (quien != null) quien].join(' · '),
                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
             Text(detalle, style: TextStyle(fontSize: 13, color: Colors.grey.shade700), maxLines: 2, overflow: TextOverflow.ellipsis),
+            if (estado != null) Text(estado, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: colorEstado)),
           ]),
         ),
         const SizedBox(width: 8),
