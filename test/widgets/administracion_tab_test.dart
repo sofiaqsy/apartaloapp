@@ -285,7 +285,13 @@ void main() {
         'id': 12, 'fecha': '2026-11-05', 'banco': 'TRAN.CTAS.TERC.HK', 'operacion': '6011866', 'monto': -350, 'cuenta': 'BCP Corriente Soles',
         'estado': 'Falta en la app',
         'sugerencias': [{'tipo': 'gasto', 'ref': 'EX-0003', 'titulo': 'Gasto · Personal', 'detalle': 'EX-0003 · Ayudante', 'fecha': '2026-11-04', 'monto': 350,
-          'por': 'misael@x', 'evidencia': {'tipo': 'expense', 'id': 'EX-0003', 'n': 1}}],
+          'por': 'misael@x', 'evidencia': {'tipo': 'expense', 'id': 'EX-0003', 'n': 1}},
+          {'tipo': 'pedido', 'ref': 'ord-uuid', 'titulo': 'Cirilo Peña Carbajal', 'detalle': 'ORD-20260817-52cd9d7a', 'fecha': '2026-11-03', 'monto': 350,
+           'pago_pedido': {'total': 4800, 'pagado': 4800, 'debe': 0, 'pagos': [
+             {'monto': 350, 'fecha': '2026-10-12', 'coincide': true, 'comprobantes': []},
+             {'monto': 350, 'fecha': '2026-11-03', 'coincide': true, 'comprobantes': [
+               {'url': 'https://example.test/voucher.jpg', 'verificado': true, 'subido': '2026-11-03', 'monto_verificado': 350, 'operacion': '7396343'}]},
+           ]}}],
       }}), 200);
     }
     if (p.endsWith('/finanzas/movimientos/11')) {
@@ -1329,8 +1335,17 @@ void main() {
     for (final t in ['Puede ser', 'Gasto · Personal', 'Conciliar', '6011866', 'registró misael@x', 'Ver evidencia (1)']) {
       expect(find.text(t), findsWidgets, reason: t);
     }
+    // A store order brings its whole Pago part, with the voucher as an image (no link) and the day it was uploaded.
+    final lista = find.byType(Scrollable).last;
+    await tester.scrollUntilVisible(find.text('Total S/ 4,800 · Pagado S/ 4,800 · Debe S/ 0'), 200, scrollable: lista);
+    await tester.scrollUntilVisible(find.text('Subido el Martes 3 de noviembre · verificado S/ 350 · operación 7396343'), 200, scrollable: lista);
+    expect(find.text('este pago'), findsOneWidget); // only the payment within 7 days of the bank line
+    expect(find.text('Sin comprobante'), findsOneWidget);
+    expect(find.byType(Image), findsWidgets);
+    expect(find.text('Ver comprobante'), findsNothing);
+    await tester.scrollUntilVisible(find.text('Gasto · Personal'), -200, scrollable: lista);
     await http.runWithClient(() async {
-      await tester.tap(find.text('Conciliar'));
+      await tester.tap(find.text('Conciliar').first);
       await tester.pumpAndSettle();
       expect(find.textContaining('Se registra el pago de Gasto · Personal por S/ 350'), findsOneWidget);
       await tester.tap(find.widgetWithText(ElevatedButton, 'Conciliar').last);

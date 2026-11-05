@@ -3906,8 +3906,8 @@ class _MovimientoDetalleScreenState extends State<_MovimientoDetalleScreen> {
               ),
           ]),
         ),
-        if (pago.isNotEmpty || pedido.isNotEmpty)
-          _Evidencia(evidencia: _mapa(pago['evidencia']), comprobantes: _lista(pedido['comprobantes']), titulo: datos.first.$2 ?? 'Movimiento'),
+        if (pago.isNotEmpty) _Evidencia(evidencia: _mapa(pago['evidencia']), titulo: datos.first.$2 ?? 'Movimiento'),
+        if (pedido.isNotEmpty) _PagoPedido(seccion: _mapa(pedido['pago_pedido']), fechaBanco: m['fecha']),
         // Sin nada que se le parezca, se dice aquí (General Manager, 5 nov 2026).
         if (m['sin_coincidencias'] == true) ...[
           const SizedBox(height: 16),
@@ -3944,7 +3944,10 @@ class _MovimientoDetalleScreenState extends State<_MovimientoDetalleScreen> {
                 if (s['por'] != null || s['nota'] != null)
                   Text([if (s['nota'] != null) '${s['nota']}', if (s['por'] != null) 'registró ${s['por']}'].join(' · '),
                       style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
-                _Evidencia(evidencia: _mapa(s['evidencia']), comprobantes: _lista(s['comprobantes']), titulo: '${s['titulo'] ?? ''}'),
+                if (s['tipo'] == 'pedido')
+                  _PagoPedido(seccion: _mapa(s['pago_pedido']), fechaBanco: m['fecha'])
+                else
+                  _Evidencia(evidencia: _mapa(s['evidencia']), titulo: '${s['titulo'] ?? ''}'),
                 const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
@@ -3962,12 +3965,11 @@ class _MovimientoDetalleScreenState extends State<_MovimientoDetalleScreen> {
   }
 }
 
-/// La foto de un pago para conciliar (General Manager, 5 nov 2026): Ver evidencia (n) del gasto, compra o adelanto, o
-/// los comprobantes de un pedido de la tienda (verificado o no). Sin foto lo dice, sin parecer botón.
+/// La foto de un pago para conciliar (General Manager, 5 nov 2026): Ver evidencia (n) del gasto, compra o adelanto.
+/// Sin foto lo dice, sin parecer botón. Los comprobantes de un pedido de la tienda se ven en _PagoPedido.
 class _Evidencia extends StatelessWidget {
-  const _Evidencia({required this.evidencia, required this.comprobantes, required this.titulo});
+  const _Evidencia({required this.evidencia, required this.titulo});
   final Map<String, dynamic> evidencia;
-  final List<Map<String, dynamic>> comprobantes;
   final String titulo;
 
   @override
@@ -3980,12 +3982,6 @@ class _Evidencia extends StatelessWidget {
           icon: const Icon(Icons.photo_library_outlined),
           label: Text('Ver evidencia ($n)'),
         ),
-      for (var i = 0; i < comprobantes.length; i++)
-        OutlinedButton.icon(
-          onPressed: () => launchUrl(Uri.parse('${comprobantes[i]['url']}'), mode: LaunchMode.externalApplication),
-          icon: const Icon(Icons.receipt_long_outlined),
-          label: Text('Ver comprobante${comprobantes.length > 1 ? ' ${i + 1}' : ''}${comprobantes[i]['verificado'] == true ? ' · verificado' : ''}'),
-        ),
     ];
     if (botones.isEmpty) {
       return Padding(
@@ -3994,6 +3990,99 @@ class _Evidencia extends StatelessWidget {
       );
     }
     return Padding(padding: const EdgeInsets.only(top: 8), child: Wrap(spacing: 8, runSpacing: 8, children: botones));
+  }
+}
+
+/// La parte de Pago de un pedido de la tienda, dentro del detalle de la línea del banco (General Manager, 5 nov 2026:
+/// "show the image of the comprobante, I don't want to go to another link", y luego toda la parte de Pago del pedido):
+/// total, pagado y lo que debe; cada pago registrado con su monto y su día, y sus comprobantes como imagen, con el día
+/// en que se subieron y si están verificados. El pago del mismo monto a 7 días del banco se marca "este pago".
+class _PagoPedido extends StatelessWidget {
+  const _PagoPedido({required this.seccion, required this.fechaBanco});
+  final Map<String, dynamic> seccion;
+  final dynamic fechaBanco;
+
+  bool _esEste(Map<String, dynamic> p) {
+    final a = DateTime.tryParse('${p['fecha'] ?? ''}');
+    final b = DateTime.tryParse('${fechaBanco ?? ''}');
+    return p['coincide'] == true && a != null && b != null && a.difference(b).inDays.abs() <= 7;
+  }
+
+  void _verImagen(BuildContext context, String url) {
+    showDialog<void>(
+      context: context,
+      builder: (d) => Dialog(
+        insetPadding: const EdgeInsets.all(12),
+        child: Stack(children: [
+          InteractiveViewer(child: Image.network(url, fit: BoxFit.contain)),
+          Positioned(
+            top: 4,
+            right: 4,
+            child: IconButton(tooltip: 'Cerrar', icon: const Icon(Icons.close), onPressed: () => Navigator.pop(d)),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pagos = _lista(seccion['pagos']);
+    final gris = TextStyle(fontSize: 13, color: Colors.grey.shade700);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(
+            [
+              if (seccion['total'] != null) 'Total ${_soles(seccion['total'])}',
+              'Pagado ${_soles(seccion['pagado'])}',
+              if (seccion['debe'] != null) 'Debe ${_soles(seccion['debe'])}',
+            ].join(' · '),
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+        if (pagos.isEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text('Sin pagos registrados en el pedido', style: gris)),
+        for (final p in pagos) ...[
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(child: Text('Pago de ${_soles(p['monto'])} · ${_fechaLarga(p['fecha'])}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600))),
+            if (_esEste(p)) Text('este pago', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.green.shade700)),
+          ]),
+          if (_lista(p['comprobantes']).isEmpty) Text('Sin comprobante', style: gris),
+          for (final c in _lista(p['comprobantes'])) ...[
+            const SizedBox(height: 6),
+            GestureDetector(
+              onTap: () => _verImagen(context, '${c['url']}'),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.network(
+                  '${c['url']}',
+                  height: 220,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (_, child, progreso) =>
+                      progreso == null ? child : const SizedBox(height: 220, child: Center(child: CircularProgressIndicator())),
+                  errorBuilder: (_, __, ___) => Container(
+                    height: 60,
+                    alignment: Alignment.center,
+                    color: Colors.grey.shade100,
+                    child: Text('No se pudo cargar la imagen', style: gris),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+                [
+                  'Subido el ${_fechaLarga(c['subido'])}',
+                  c['verificado'] == true
+                      ? 'verificado${c['monto_verificado'] != null ? ' ${_soles(c['monto_verificado'])}' : ''}'
+                      : 'sin verificar',
+                  if (c['operacion'] != null) 'operación ${c['operacion']}',
+                ].join(' · '),
+                style: gris),
+          ],
+        ],
+      ]),
+    );
   }
 }
 
@@ -4087,7 +4176,7 @@ class _PagoDetalleScreenState extends State<_PagoDetalleScreen> {
                       ),
                   ]),
                 ),
-                _Evidencia(evidencia: _mapa(p['evidencia']), comprobantes: const [], titulo: '${p['tipo'] ?? 'Pago'} · ${p['id']}'),
+                _Evidencia(evidencia: _mapa(p['evidencia']), titulo: '${p['tipo'] ?? 'Pago'} · ${p['id']}'),
                 if (p['puede_operacion'] == true) ...[
                   const SizedBox(height: 20),
                   _Acciones(acciones: [(Icons.tag, p['operacion'] == null ? 'Agregar número de operación' : 'Cambiar número de operación', _agregarOperacion)]),
