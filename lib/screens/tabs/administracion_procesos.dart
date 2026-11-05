@@ -1161,11 +1161,12 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
             ]),
           ),
         const SizedBox(height: 8),
-        // Cada línea del banco abre su detalle, donde se concilia (General Manager, 5 nov 2026); el ITF no importa.
+        // Cada línea del banco abre su detalle, donde se concilia (General Manager, 5 nov 2026); los cargos del banco
+        // (Impuesto ITF, Comisión del banco) no importan y no se abren.
         for (final m in _movimientos)
           _LineaMovimiento(
             movimiento: m,
-            onTap: m['movimiento'] != null && m['estado'] != 'Impuesto ITF' ? () => _abrirMovimiento(m) : null,
+            onTap: m['movimiento'] != null && !const {'Impuesto ITF', 'Comisión del banco'}.contains(m['estado']) ? () => _abrirMovimiento(m) : null,
           ),
         if (_errorMov != null)
           Padding(padding: const EdgeInsets.all(16), child: Text(_errorMov!, textAlign: TextAlign.center))
@@ -3741,6 +3742,7 @@ class _LineaMovimiento extends StatelessWidget {
       'Transferencia': Icons.swap_horiz,
       'Venta': Icons.storefront_outlined,
       'Saldo inicial': Icons.flag_outlined,
+      'Comisión del banco': Icons.account_balance_outlined,
     };
     final quien = m['tipo'] == 'Gasto' ? m['categoria'] : (m['quien'] ?? m['otra_cuenta']);
     final estado = m['estado']?.toString();

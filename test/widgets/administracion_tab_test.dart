@@ -1306,7 +1306,7 @@ void main() {
       await tester.tap(find.text('Movimientos').last);
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    // ITF does not open.
+    // ITF does not open (the bank's fees, Comisión del banco, follow the same rule).
     final n = pedidos.length;
     await tester.tap(find.text('IMPUESTO ITF'));
     await tester.pumpAndSettle();
