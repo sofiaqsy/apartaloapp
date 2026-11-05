@@ -19,12 +19,16 @@ class _ClientesTabState extends State<ClientesTab> with SingleTickerProviderStat
   String? _filtroEstado = 'ACTIVO';
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
+  // Mientras se escribe en Buscar, los botones flotantes se esconden: tapaban la lista sobre el teclado
+  // (General Manager, 5 nov 2026, como en Pedidos). Vuelven al cerrar el teclado.
+  bool _buscando = false;
 
   @override
   void initState() {
     super.initState();
     _shimmerCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))
       ..repeat(reverse: true);
+    _searchFocus.addListener(_alCambiarBusqueda);
     _cargarClientes();
   }
 
@@ -32,8 +36,13 @@ class _ClientesTabState extends State<ClientesTab> with SingleTickerProviderStat
   void dispose() {
     _shimmerCtrl.dispose();
     _searchController.dispose();
+    _searchFocus.removeListener(_alCambiarBusqueda);
     _searchFocus.dispose();
     super.dispose();
+  }
+
+  void _alCambiarBusqueda() {
+    if (mounted && _buscando != _searchFocus.hasFocus) setState(() => _buscando = _searchFocus.hasFocus);
   }
 
   Future<void> _cargarClientes() async {
@@ -174,7 +183,7 @@ class _ClientesTabState extends State<ClientesTab> with SingleTickerProviderStat
         ],
       ),
       ),
-      floatingActionButton: Column(
+      floatingActionButton: _buscando ? null : Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [

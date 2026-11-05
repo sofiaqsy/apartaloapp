@@ -26,6 +26,9 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
   final ScrollController _scrollController = ScrollController();
   final FocusNode _scannerFocusNode = FocusNode();
   final FocusNode _searchFocusNode = FocusNode();
+  // Mientras se escribe en Buscar, los botones flotantes se esconden: tapaban la lista sobre el teclado
+  // (General Manager, 5 nov 2026, como en Pedidos). Vuelven al cerrar el teclado.
+  bool _buscando = false;
   final TextEditingController _codigoController = TextEditingController();
   
   bool _isLoading = true;
@@ -53,6 +56,7 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
     // teléfono redibuje la pantalla sin descanso (gasta batería), aunque no se vea.
     _shimmerCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
     _scrollController.addListener(_onScroll);
+    _searchFocusNode.addListener(_alCambiarBusqueda);
     _cargarProductos();
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
   }
@@ -63,10 +67,15 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _scannerFocusNode.dispose();
+    _searchFocusNode.removeListener(_alCambiarBusqueda);
     _searchFocusNode.dispose();
     _codigoController.dispose();
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     super.dispose();
+  }
+
+  void _alCambiarBusqueda() {
+    if (mounted && _buscando != _searchFocusNode.hasFocus) setState(() => _buscando = _searchFocusNode.hasFocus);
   }
 
   bool _handleKeyEvent(KeyEvent event) {
@@ -707,7 +716,7 @@ class _ProductosTabState extends State<ProductosTab> with SingleTickerProviderSt
       ),
       ),
       // Una sola acción: muestra un indicador mientras se abre el formulario.
-      floatingActionButton: NuevoProductoFab(abriendo: _abriendoNuevo, onPressed: _nuevoProducto),
+      floatingActionButton: _buscando ? null : NuevoProductoFab(abriendo: _abriendoNuevo, onPressed: _nuevoProducto),
     );
   }
 
