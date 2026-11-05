@@ -267,6 +267,21 @@ void main() {
         'recientes': [{'id': 'DL-0001', 'fecha': '2026-11-03', 'estado': 'parchment', 'kg': 100}],
       }}), 200);
     }
+    if (p.endsWith('/finanzas/movimientos')) {
+      final caja = req.url.queryParameters['cuenta'] == 'AC-02';
+      return http.Response(jsonEncode({
+        'cuenta': caja ? {'id': 'AC-02', 'nombre': 'Caja (efectivo)'} : {'id': 'AC-01', 'nombre': 'BCP Corriente Soles'},
+        'cuentas': [{'id': 'AC-01', 'nombre': 'BCP Corriente Soles'}, {'id': 'AC-02', 'nombre': 'Caja (efectivo)'}],
+        'filas': caja
+            ? []
+            : [
+                {'id': 'PY-0009', 'fecha': '2026-11-04', 'tipo': 'Gasto', 'categoria': 'Combustible', 'metodo': 'transfer', 'monto': -150, 'saldo': 3554.37},
+                {'id': 'PY-0008', 'fecha': '2026-11-04', 'tipo': 'Compra', 'quien': 'Jhonatan', 'metodo': 'yape', 'monto': -308.95, 'saldo': 3704.37},
+              ],
+        'hayMas': false,
+        'inicial': {'fecha': '2026-11-01', 'saldo': caja ? 0 : 4013.32},
+      }), 200);
+    }
     if (p.endsWith('/finanzas/lista')) {
       final filas = {
         'compras': [
@@ -472,7 +487,7 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
     await entrarFinanzas(tester);
-    for (final t in ['Registrar retiro de efectivo', 'Compras', 'Gastos', 'Adelantos', 'Proveedores', 'Pedro Ramírez Ñique']) {
+    for (final t in ['Registrar retiro de efectivo', 'Compras', 'Gastos', 'Adelantos', 'Movimientos', 'Pedro Ramírez Ñique']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
   });
@@ -1229,7 +1244,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Finanzas redesigned with Finance (4 Nov 2026): no data on top, tabs without numbers, Proveedores and the PDF', (tester) async {
+  testWidgets('Finanzas redesigned with Finance (4 Nov 2026): no data on top, tabs without numbers, Movimientos and the PDF', (tester) async {
     await abrir(tester, rol: 'owner');
     await tester.scrollUntilVisible(find.text('Finanzas'), 200, scrollable: find.byType(Scrollable).last);
     await http.runWithClient(() async {
@@ -1239,11 +1254,24 @@ void main() {
     expect(find.textContaining('Compras ('), findsNothing);
     expect(find.text('Adelantos por aprobar'), findsNothing); // the indicators stay on the Procesos card
     expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
+    expect(find.text('Proveedores'), findsNothing); // Movimientos in its place (5 Nov 2026)
     await http.runWithClient(() async {
-      await tester.tap(find.text('Proveedores').last);
+      await tester.tap(find.text('Movimientos').last);
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    expect(pedidos.any((r) => r.url.path.endsWith('/personas/buscar') && r.url.queryParameters['area'] == 'finance'), isTrue);
+    // The bank's statement: what leaves in orange with the balance after it, and the opening balance at the end.
+    for (final t in ['Gasto · Combustible', 'Compra · Jhonatan', '−S/ 150', '−S/ 308.95', 'Saldo S/ 3,554.37', 'Saldo inicial', 'Saldo S/ 4,013.32']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    expect(pedidos.any((r) => r.url.path.endsWith('/personas/buscar') && r.url.queryParameters['area'] == 'finance'), isFalse);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Caja (efectivo)'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(pedidos.any((r) => r.url.path.endsWith('/finanzas/movimientos') && r.url.queryParameters['cuenta'] == 'AC-02'), isTrue);
+    expect(find.text('Compra · Jhonatan'), findsNothing);
+    expect(find.text('Esta cuenta no tiene movimientos todavía.'), findsOneWidget);
+    expect(find.text('Saldo S/ 0'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

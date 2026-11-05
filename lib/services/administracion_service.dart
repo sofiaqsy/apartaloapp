@@ -55,6 +55,11 @@ class AdministracionService {
   static Future<ApiResponse<Map<String, dynamic>>> finanzasLista(String tipo, {int offset = 0, int limit = 20}) =>
       _get('finanzas/lista?tipo=${Uri.encodeComponent(tipo)}&offset=$offset&limit=$limit');
 
+  /// Finanzas → Movimientos (dueños): el estado de una cuenta ([cuenta]; sin ella, el banco), del más nuevo al más
+  /// antiguo, de 20 en 20, con el saldo después de cada movimiento; la última página trae el saldo inicial.
+  static Future<ApiResponse<Map<String, dynamic>>> movimientosCuenta({String? cuenta, int offset = 0, int limit = 20}) =>
+      _get('finanzas/movimientos?${cuenta == null ? '' : 'cuenta=${Uri.encodeComponent(cuenta)}&'}offset=$offset&limit=$limit');
+
   /// Compras → Adelantos: los pedidos por aprobar (en la primera página) y los adelantos, del más nuevo al más antiguo.
   static Future<ApiResponse<Map<String, dynamic>>> adelantos({int offset = 0, int limit = 20}) => _get('adelantos?offset=$offset&limit=$limit');
 

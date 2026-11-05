@@ -1045,16 +1045,11 @@ class _FinanzasScreen extends StatefulWidget {
   State<_FinanzasScreen> createState() => _FinanzasScreenState();
 }
 
-class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ProveedoresDelProceso, _ReporteDelProceso {
+class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteDelProceso {
   // Rediseñada con el área (General Manager, 4 nov 2026; la propuesta de Finanzas): sin datos arriba, los mismos pagos
-  // y aprobaciones de siempre, Proveedores y el reporte en PDF. Sin pestaña "Gastos del área": Finanzas paga los gastos
-  // de todas las áreas en Gastos.
-  int _pestana = 0; // 0 Compras, 1 Gastos, 2 Adelantos, 3 Proveedores
-
-  @override
-  String? get areaProveedores => 'finance';
-  @override
-  String get vacioProveedores => 'Todavía no hay proveedores de Finanzas.';
+  // y aprobaciones de siempre y el reporte en PDF. Sin pestaña "Gastos del área": Finanzas paga los gastos de todas las
+  // áreas en Gastos. Movimientos en lugar de Proveedores (General Manager, 5 nov 2026).
+  int _pestana = 0; // 0 Compras, 1 Gastos, 2 Adelantos, 3 Movimientos
 
   @override
   String get nombreReporte => 'Finanzas';
@@ -1085,8 +1080,83 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _Proveedo
       _hayMas[i] = true;
       _errores[i] = null;
     }
-    await Future.wait([super.cargar(), if (_pestana < 3) _mas(_pestana)]);
+    _movimientos.clear();
+    _cargandoMov = false;
+    _hayMasMov = true;
+    _errorMov = null;
+    _inicial = null;
+    await Future.wait([super.cargar(), if (_pestana < 3) _mas(_pestana) else _masMovimientos()]);
   }
+
+  // Movimientos (General Manager, 5 nov 2026): el estado de una cuenta, como el Estado de lote; lo que entra en verde y
+  // lo que sale en naranja, con el saldo después de cada uno, de 20 en 20, y el saldo inicial al final.
+  List<Map<String, dynamic>> _cuentas = [];
+  String? _cuenta; // sin elegir, el servidor da el banco
+  final List<Map<String, dynamic>> _movimientos = [];
+  bool _cargandoMov = false;
+  bool _hayMasMov = true;
+  String? _errorMov;
+  Map<String, dynamic>? _inicial;
+
+  Future<void> _masMovimientos() async {
+    if (_cargandoMov || !_hayMasMov) return;
+    _cargandoMov = true;
+    final vuelta = _vuelta;
+    final cuenta = _cuenta;
+    final r = await AdministracionService.movimientosCuenta(cuenta: cuenta, offset: _movimientos.length);
+    if (!mounted || vuelta != _vuelta || cuenta != _cuenta) return;
+    setState(() {
+      _cargandoMov = false;
+      if (r.isSuccess) {
+        _cuentas = _lista(r.data!['cuentas']);
+        _cuenta ??= _mapa(r.data!['cuenta'])['id']?.toString();
+        _movimientos.addAll(_lista(r.data!['filas']));
+        _hayMasMov = r.data!['hayMas'] == true;
+        if (r.data!['inicial'] != null) _inicial = _mapa(r.data!['inicial']);
+      } else {
+        _errorMov = r.error;
+        _hayMasMov = false;
+      }
+    });
+  }
+
+  void _elegirCuenta(String id) {
+    if (id == _cuenta) return;
+    setState(() {
+      _cuenta = id;
+      _movimientos.clear();
+      _cargandoMov = false;
+      _hayMasMov = true;
+      _errorMov = null;
+      _inicial = null;
+    });
+    _masMovimientos();
+  }
+
+  List<Widget> _listaMovimientos() => [
+        if (_cuentas.length > 1)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final c in _cuentas)
+                ChoiceChip(
+                  label: Text('${c['nombre'] ?? c['id']}'),
+                  selected: c['id']?.toString() == _cuenta,
+                  onSelected: (_) => _elegirCuenta('${c['id']}'),
+                ),
+            ]),
+          ),
+        const SizedBox(height: 8),
+        for (final m in _movimientos) _LineaMovimiento(movimiento: m),
+        if (_errorMov != null)
+          Padding(padding: const EdgeInsets.all(16), child: Text(_errorMov!, textAlign: TextAlign.center))
+        else if (_cargandoMov || _hayMasMov)
+          const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
+        else ...[
+          if (_movimientos.isEmpty) _vacio('Esta cuenta no tiene movimientos todavía.'),
+          if (_inicial != null) _LineaMovimiento(movimiento: {'tipo': 'Saldo inicial', 'fecha': _inicial!['fecha'], 'saldo': _inicial!['saldo']}),
+        ],
+      ];
 
   Future<void> _mas(int i) async {
     if (_cargando[i] || !_hayMas[i]) return;
@@ -1295,7 +1365,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _Proveedo
   Widget build(BuildContext context) {
     return pantalla('Finanzas', botonFlotante: datos?['solo_duenos'] == true ? null : botonReporte(), alFinal: () {
       if (_pestana < 3) _mas(_pestana);
-      if (_pestana == 3) masProveedores();
+      if (_pestana == 3) _masMovimientos();
     }, (d) {
       if (d['solo_duenos'] == true) return [_vacio('Finanzas es sólo para los dueños.')];
       final filas = _pestana < 3 ? _filas[_pestana] : const <Map<String, dynamic>>[];
@@ -1307,16 +1377,16 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _Proveedo
         ]),
         // Sin números en las pestañas: un número no parece botón (4 nov 2026). Cada lista trae primero lo que espera.
         _Pestanas(
-          nombres: const ['Compras', 'Gastos', 'Adelantos', 'Proveedores'],
+          nombres: const ['Compras', 'Gastos', 'Adelantos', 'Movimientos'],
           anchoPorNombre: true,
           elegida: _pestana,
           onElegir: (i) {
             setState(() => _pestana = i);
             if (i < 3 && _filas[i].isEmpty) _mas(i);
-            if (i == 3) abrirProveedores();
+            if (i == 3 && _movimientos.isEmpty) _masMovimientos();
           },
         ),
-        if (_pestana == 3) ..._listaProveedores(),
+        if (_pestana == 3) ..._listaMovimientos(),
         if (_pestana < 3) const SizedBox(height: 12),
         for (final f in filas)
           if (_pestana == 0) _filaCompra(f) else if (_pestana == 1) _filaGasto(f) else _filaAdelanto(f),
@@ -3622,6 +3692,58 @@ class _LineaCuenta extends StatelessWidget {
           Text('${entra ? '+' : '−'}${_kg(kg.abs())}',
               style: TextStyle(fontWeight: FontWeight.w700, color: entra ? Colors.green.shade800 : Colors.orange.shade800)), // lo que sale, en naranja (General Manager, 4 nov 2026)
           Text('Saldo ${_kg(linea['saldo'])}', style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+        ]),
+      ]),
+    );
+  }
+}
+
+/// Una línea del estado de una cuenta (Finanzas → Movimientos), con la forma de _LineaCuenta: lo que entra en verde,
+/// lo que sale en naranja, y el saldo después. Es información, no se toca. La última es el saldo inicial.
+class _LineaMovimiento extends StatelessWidget {
+  const _LineaMovimiento({required this.movimiento});
+  final Map<String, dynamic> movimiento;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = movimiento;
+    final monto = num.tryParse('${m['monto']}');
+    final entra = (monto ?? 0) > 0;
+    final iconos = {
+      'Compra': Icons.add_shopping_cart,
+      'Gasto': Icons.receipt_long,
+      'Adelanto': Icons.savings_outlined,
+      'Devolución de adelanto': Icons.savings_outlined,
+      'Retiro': Icons.account_balance_wallet,
+      'Transferencia': Icons.swap_horiz,
+      'Venta': Icons.storefront_outlined,
+      'Saldo inicial': Icons.flag_outlined,
+    };
+    final quien = m['tipo'] == 'Gasto' ? m['categoria'] : (m['quien'] ?? m['otra_cuenta']);
+    final detalle = [
+      _fechaLarga(m['fecha']),
+      if (m['metodo'] != null && m['metodo'] != 'withdrawal') _metodosPago[m['metodo']] ?? '${m['metodo']}',
+    ].where((t) => t.isNotEmpty).join(' · ');
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade200))),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _InsigniaIcono(iconos[m['tipo']] ?? Icons.circle_outlined, tono: monto == null ? Colors.blueGrey : (entra ? Colors.green : Colors.orange)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text([m['tipo'] ?? 'Movimiento', if (quien != null) quien].join(' · '),
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
+            Text(detalle, style: TextStyle(fontSize: 13, color: Colors.grey.shade700), maxLines: 2, overflow: TextOverflow.ellipsis),
+          ]),
+        ),
+        const SizedBox(width: 8),
+        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          if (monto != null)
+            Text('${entra ? '+' : '−'}${_soles(monto.abs())}',
+                style: TextStyle(fontWeight: FontWeight.w700, color: entra ? Colors.green.shade800 : Colors.orange.shade800)),
+          Text('Saldo ${_soles(m['saldo'])}',
+              style: monto == null ? const TextStyle(fontWeight: FontWeight.w700) : TextStyle(fontSize: 12, color: Colors.grey.shade700)),
         ]),
       ]),
     );
