@@ -4,7 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
+import '../services/proveedor_pdf_service.dart';
 import 'crear_pedido_screen.dart';
+import 'tabs/administracion_tab.dart' show fichaPedidoCliente, generarReportePdf;
 import 'tabs/pedidos/widgets/detalle_pedido/detalle_pedido_sheet.dart';
 
 class DetalleClienteScreen extends StatefulWidget {
@@ -24,9 +26,13 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
   // Feature flags del negocio
   bool _preciosPersonalizadosEnabled = true;
 
-  // Stats calculados desde pedidos reales
-  Map<String, dynamic> _stats = {};
-  bool _statsLoading = false;
+  // Pedidos del cliente, en lugar de Estadísticas (General Manager, 5 nov 2026): de 20 en 20 al llegar abajo.
+  final List<Map<String, dynamic>> _pedidos = [];
+  bool _pedidosCargando = false;
+  bool _pedidosHayMas = true;
+  String? _pedidosError;
+  int _pedidosVuelta = 0; // al recargar, las respuestas viejas se descartan
+  bool _generandoReporte = false;
 
   // Direcciones guardadas en customer_addresses
   List<Map<String, dynamic>> _direcciones = [];
@@ -74,6 +80,7 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
     if (!_esNuevo) {
       _cargarEstadisticas();
       _cargarDirecciones();
+      _masPedidos();
     }
   }
 
@@ -81,8 +88,6 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
 
   Future<void> _cargarEstadisticas() async {
     if (_esNuevo || _esInvitado) return;
-    setState(() => _statsLoading = true);
-
     try {
       final clienteId = widget.cliente!['id'] as String;
       final response = await http.get(
@@ -94,8 +99,6 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
         final data = jsonDecode(response.body);
         final c = Map<String, dynamic>.from(data['cliente'] ?? {});
         setState(() {
-          _stats = Map<String, dynamic>.from(data['estadisticas'] ?? {});
-          _statsLoading = false;
           if (c.isNotEmpty) {
             if ((c['nombreResponsable'] ?? '').toString().isNotEmpty)
               _nombreResponsableController.text = c['nombreResponsable'];
@@ -125,13 +128,52 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
               _estado = c['estado'];
           }
         });
-      } else {
-        setState(() => _statsLoading = false);
       }
-    } catch (e) {
-      if (mounted) setState(() => _statsLoading = false);
+    } catch (_) {
+      // Sin señal: quedan los datos que ya tenía la lista de clientes.
     }
   }
+
+  Future<void> _masPedidos() async {
+    if (_esNuevo || _esInvitado || _pedidosCargando || !_pedidosHayMas) return;
+    _pedidosCargando = true;
+    final vuelta = _pedidosVuelta;
+    final r = await ApiService.pedidosCliente(widget.cliente!['id'] as String, offset: _pedidos.length);
+    if (!mounted || vuelta != _pedidosVuelta) return;
+    setState(() {
+      _pedidosCargando = false;
+      if (r.isSuccess) {
+        _pedidos.addAll(((r.data!['pedidos'] as List?) ?? []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)));
+        _pedidosHayMas = r.data!['hayMas'] == true;
+      } else {
+        _pedidosError = r.error;
+        _pedidosHayMas = false;
+      }
+    });
+  }
+
+  /// Después de cambiar un pedido en su detalle, la lista vuelve a empezar.
+  void _recargarPedidos() {
+    if (!mounted) return;
+    setState(() {
+      _pedidosVuelta++;
+      _pedidos.clear();
+      _pedidosCargando = false;
+      _pedidosHayMas = true;
+      _pedidosError = null;
+    });
+    _masPedidos();
+  }
+
+  Future<void> _generarReporte() => generarReportePdf(
+        context,
+        nombre: 'Cliente $_nombreCliente',
+        pedir: (desde, hasta) => ApiService.reporteCliente(widget.cliente!['id'] as String, desde, hasta),
+        armar: ClientePdfService.generarBytes,
+        alGenerar: (g) {
+          if (mounted) setState(() => _generandoReporte = g);
+        },
+      );
 
   void _initControllers() {
     final c = widget.cliente ?? {};
@@ -393,7 +435,13 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
           behavior: HitTestBehavior.translucent,
           child: _isLoading
             ? const Center(child: CircularProgressIndicator())
-            : CustomScrollView(
+            : NotificationListener<ScrollNotification>(
+                // Cerca del final se piden los 20 pedidos siguientes.
+                onNotification: (n) {
+                  if (n.metrics.extentAfter < 300) _masPedidos();
+                  return false;
+                },
+                child: CustomScrollView(
                 slivers: [
                   _buildSliverAppBar(),
                   SliverToBoxAdapter(
@@ -413,9 +461,9 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
                                   const SizedBox(height: 16),
                                 ],
                                 _buildSeccionEnvio(),
-                                if (!_esNuevo) ...[
+                                if (!_esNuevo && !_esInvitado) ...[
                                   const SizedBox(height: 16),
-                                  _buildSeccionEstadisticas(),
+                                  _buildSeccionPedidos(),
                                 ],
                                 const SizedBox(height: 16),
                                 _buildSeccionNotas(),
@@ -428,6 +476,7 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
                     ),
                   ),
                 ],
+              ),
               ),
           ),
         floatingActionButton: _hasChanges
@@ -607,7 +656,9 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
         const SizedBox(height: 8),
         const Text('Estado', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
         const SizedBox(height: 8),
-        Row(
+        // Wrap: en una pantalla angosta los tres pasan a la línea siguiente en vez de desbordar.
+        Wrap(
+          runSpacing: 4,
           children: ['ACTIVO', 'PROSPECTO', 'INACTIVO'].map((e) => Padding(
             padding: const EdgeInsets.only(right: 8),
             child: ChoiceChip(
@@ -897,93 +948,46 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
     );
   }
 
-  Widget _buildSeccionEstadisticas() {
-    if (_statsLoading) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-        child: const Center(
-          child: Padding(
-            padding: EdgeInsets.all(24),
-            child: CircularProgressIndicator(),
-          ),
-        ),
-      );
-    }
-
-    final totalPedidos = _stats['totalPedidos'] ?? widget.cliente?['totalPedidos'] ?? 0;
-    final totalComprado = (_stats['totalComprado'] ?? widget.cliente?['totalComprado'] ?? 0).toDouble();
-    final totalCobrado = (_stats['totalCobrado'] ?? 0).toDouble();
-    final totalPorCobrar = (_stats['totalPorCobrar'] ?? widget.cliente?['totalPorCobrar'] ?? 0).toDouble();
-    final totalKg = (_stats['totalKg'] ?? widget.cliente?['totalKg'] ?? 0).toDouble();
-    final pedidosActivos = _stats['pedidosActivos'] ?? widget.cliente?['pedidosActivos'] ?? 0;
-    final pedidosPorCobrar = _stats['pedidosPorCobrar'] ?? 0;
-    final pedidosPagados = _stats['pedidosPagados'] ?? 0;
-    final ultimaCompra = _stats['ultimaCompra'] ?? widget.cliente?['ultimaCompra'] ?? '';
-    final fechaRegistro = widget.cliente?['fechaRegistro'] ?? '-';
-
-    return _buildSeccion(
-      titulo: 'Estadísticas',
-      icon: Icons.bar_chart,
-      children: [
-        // Resumen visual de pagos
-        if (totalComprado > 0) ...[  
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.indigo.shade50, Colors.blue.shade50],
+  /// Pedidos del cliente (General Manager, 5 nov 2026, en lugar de Estadísticas): del más nuevo al más antiguo, de 20 en
+  /// 20; cada uno abre el mismo detalle que la pestaña Pedidos. Arriba a la derecha, Generar reporte (PDF).
+  Widget _buildSeccionPedidos() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.shopping_bag_outlined, size: 20, color: Colors.green.shade600),
+              const SizedBox(width: 8),
+              Expanded(child: Text('Pedidos', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade800))),
+              IconButton(
+                tooltip: 'Generar reporte',
+                onPressed: _generandoReporte ? null : _generarReporte,
+                icon: _generandoReporte
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5))
+                    : Icon(Icons.picture_as_pdf_outlined, color: Colors.green.shade700),
               ),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.indigo.shade100),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _buildMiniStat('Vendido', 'S/ ${totalComprado.toStringAsFixed(0)}', Colors.indigo),
-                ),
-                Container(width: 1, height: 36, color: Colors.indigo.shade200),
-                Expanded(
-                  child: _buildMiniStat('Cobrado', 'S/ ${totalCobrado.toStringAsFixed(0)}', Colors.green),
-                ),
-                Container(width: 1, height: 36, color: Colors.indigo.shade200),
-                Expanded(
-                  child: _buildMiniStat(
-                    'Por cobrar',
-                    'S/ ${totalPorCobrar.toStringAsFixed(0)}',
-                    totalPorCobrar > 0 ? Colors.red : Colors.grey,
-                  ),
-                ),
-              ],
-            ),
+            ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
+          for (final p in _pedidos)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: fichaPedidoCliente(context, p, onActualizado: _recargarPedidos),
+            ),
+          if (_pedidosError != null)
+            Padding(padding: const EdgeInsets.all(12), child: Text(_pedidosError!, textAlign: TextAlign.center))
+          else if (_pedidosCargando)
+            const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
+          else if (_pedidos.isEmpty && !_pedidosHayMas)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text('Este cliente todavía no tiene pedidos.', style: TextStyle(color: Colors.grey.shade600)),
+            ),
         ],
-        _buildStatItem('Total Pedidos', '$totalPedidos', Icons.shopping_bag),
-        if (pedidosActivos > 0)
-          _buildStatItem('Pedidos Activos', '$pedidosActivos', Icons.pending_actions, color: Colors.orange),
-        if (pedidosPorCobrar > 0)
-          _buildStatItem('Pedidos por Cobrar', '$pedidosPorCobrar', Icons.warning_amber_rounded, color: Colors.red),
-        if (pedidosPagados > 0)
-          _buildStatItem('Pedidos Pagados', '$pedidosPagados', Icons.check_circle, color: Colors.green),
-        if (totalKg > 0)
-          _buildStatItem('Total Kg', '${totalKg.toStringAsFixed(1)} kg', Icons.scale),
-        _buildStatItem('Última Compra', ultimaCompra.isNotEmpty ? ultimaCompra : 'Sin compras', Icons.calendar_today),
-        _buildStatItem('Registrado', fechaRegistro, Icons.event),
-      ],
-    );
-  }
-
-  Widget _buildMiniStat(String label, String value, Color color) {
-    return Column(
-      children: [
-        Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: color),
-        ),
-      ],
+      ),
     );
   }
 
@@ -1055,21 +1059,6 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
               focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.green.shade400, width: 1.5)),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatItem(String label, String value, IconData icon, {Color? color}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: color ?? Colors.grey.shade500),
-          const SizedBox(width: 12),
-          Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
-          const Spacer(),
-          Text(value, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: color)),
         ],
       ),
     );

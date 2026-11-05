@@ -1419,3 +1419,82 @@ class ComercialPdfService {
     );
   }
 }
+
+/// Reporte de un cliente (General Manager, 5 nov 2026): con el mismo formulario de Administración (Mensual o Anual), cada
+/// pedido registrado en el periodo, también los cancelados, con su estado, si está pagado, en parte o sin pagar, su día de
+/// registro y el día en que se completó; y cada pago con su día, su monto y el número de operación del BCP.
+class ClientePdfService {
+  static const _estados = {
+    'PENDIENTE': 'Pendiente',
+    'CONFIRMADO': 'Confirmado',
+    'EN_PREPARACION': 'Preparando',
+    'ENVIADO': 'En camino',
+    'COMPLETADO': 'Completado',
+    'CANCELADO': 'Cancelado',
+  };
+
+  static Future<Uint8List> generarBytes(Map<String, dynamic> reporte, {String? businessName, pw.Font? base, pw.Font? bold}) {
+    const tabla = ProveedorPdfService._tabla;
+    final franja = ProveedorPdfService._mapa(reporte['franja']);
+    final pedidos = ProveedorPdfService._lista(reporte['pedidos']);
+    String soles(dynamic v) => ProveedorPdfService.soles(v ?? 0);
+    String fecha(dynamic v) => v == null ? '—' : ProveedorPdfService.fecha(v);
+    final pagos = [
+      for (final p in pedidos)
+        for (final pg in ProveedorPdfService._lista(p['pagos'])) (p, pg),
+    ];
+    return _ReporteBase.documento(
+      () => [
+        _ReporteBase.cabecera(businessName ?? ApiService.businessName, 'CLIENTE', reporte),
+        pw.Text('${reporte['cliente'] ?? 'Cliente'}',
+            style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: ProveedorPdfService._textDark)),
+        pw.SizedBox(height: 10),
+        _ReporteBase.franja([
+          ('Pedidos', '${ComprasPdfService._n(franja['pedidos'])}${(franja['cancelados'] ?? 0) == 0 ? '' : ' (${ComprasPdfService._cuantos(franja['cancelados'], 'cancelado', 'cancelados')})'}'),
+          ('Total', soles(franja['total'])),
+          ('Pagado', soles(franja['pagado'])),
+          ('Debe', soles(franja['debe'])),
+        ]),
+        pw.SizedBox(height: 12),
+        if (pedidos.isEmpty)
+          _ReporteBase.nada('PEDIDOS', 'El cliente no registró pedidos en el periodo.')
+        else ...[
+          ...tabla(
+            'PEDIDOS',
+            ['Pedido', 'Registrado', 'Estado', 'Pago', 'Total', 'Pagado', 'Debe', 'Completado'],
+            [
+              for (final p in pedidos)
+                [
+                  '${p['pedido'] ?? ''}',
+                  fecha(p['registrado']),
+                  _estados[p['estado']] ?? '${p['estado'] ?? ''}',
+                  p['estado'] == 'CANCELADO' ? '—' : '${p['pago'] ?? ''}',
+                  soles(p['total']),
+                  soles(p['pagado']),
+                  p['estado'] == 'CANCELADO' ? '—' : soles(p['debe']),
+                  fecha(p['completado']),
+                ],
+            ],
+            {4, 5, 6},
+          ),
+          pw.SizedBox(height: 12),
+          if (pagos.isEmpty)
+            _ReporteBase.nada('PAGOS', 'Los pedidos del periodo no tienen pagos registrados.')
+          else
+            ...tabla(
+              'PAGOS',
+              ['Fecha de pago', 'Pedido', 'Monto', 'N.º de operación'],
+              [for (final (p, pg) in pagos) [fecha(pg['fecha']), '${p['pedido'] ?? ''}', soles(pg['monto']), '${pg['operacion'] ?? '—'}']],
+              {2},
+            ),
+        ],
+        _ReporteBase.nota('Entran los pedidos registrados en el periodo. Pagado suma los pagos registrados en cada pedido; un pedido '
+            'cancelado no suma al total ni a lo que se debe. El número de operación es el del BCP en el comprobante verificado; '
+            '"—" si el pago todavía no tiene comprobante verificado.'),
+      ],
+      conMontos: true,
+      base: base,
+      bold: bold,
+    );
+  }
+}

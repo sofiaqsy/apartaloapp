@@ -252,4 +252,24 @@ void main() {
     expect(ComprasPdfService.nombreMes(1), 'Enero');
     expect(ComprasPdfService.nombreMes(11), 'Noviembre');
   });
+
+  // Client report (General Manager, 5 Nov 2026). Fake data only.
+  test('client report: builds a PDF with orders, cancelled ones and payments, and with no orders', () async {
+    final conPedidos = {
+      'cliente': 'Café Ejemplo', 'desde': '2026-10-01', 'hasta': '2026-10-31', 'meses': 1, 'anual': false,
+      'franja': {'pedidos': 3, 'cancelados': 1, 'total': 5300, 'pagado': 5000, 'debe': 300},
+      'pedidos': [
+        {'pedido': 'ORD-2', 'registrado': '2026-10-12', 'estado': 'COMPLETADO', 'pago': 'Pagado', 'total': 4800, 'pagado': 4800, 'debe': 0,
+         'completado': '2026-11-04', 'pagos': [{'fecha': '2026-10-12', 'monto': 2400, 'operacion': null}, {'fecha': '2026-11-03', 'monto': 2400, 'operacion': '7396343'}]},
+        {'pedido': 'ORD-3', 'registrado': '2026-10-20', 'estado': 'CONFIRMADO', 'pago': 'Parcial', 'total': 500, 'pagado': 200, 'debe': 300,
+         'completado': null, 'pagos': [{'fecha': '2026-10-21', 'monto': 200, 'operacion': null}]},
+        {'pedido': 'ORD-4', 'registrado': '2026-10-25', 'estado': 'CANCELADO', 'pago': 'Sin pagar', 'total': 300, 'pagado': 0, 'debe': 0, 'completado': null, 'pagos': []},
+      ],
+    };
+    final vacio = {...conPedidos, 'franja': {'pedidos': 0, 'cancelados': 0, 'total': 0, 'pagado': 0, 'debe': 0}, 'pedidos': []};
+    for (final r in [conPedidos, vacio]) {
+      final bytes = await ClientePdfService.generarBytes(r, businessName: 'Negocio Ejemplo', base: pw.Font.helvetica(), bold: pw.Font.helveticaBold());
+      expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+    }
+  });
 }

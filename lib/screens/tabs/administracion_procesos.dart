@@ -1777,6 +1777,42 @@ class _FincaScreenState extends _ProcesoState<_FincaScreen> with _ProveedoresDel
 /// Botón flotante de reporte en PDF de un proceso (General Manager, 4 nov 2026: Compras, luego Producción): abre
 /// Generar reporte (Mensual con fecha de inicio y de fin, o Anual), pide el reporte recién entonces y muestra el PDF
 /// para compartir. Cada proceso dice su nombre, cómo pedir su reporte y cómo armar su PDF.
+/// Generar reporte con el mismo formulario de Administración (Mensual o Anual, Desde y Hasta; como máximo 12 meses) y
+/// el PDF en pantalla, para compartir. Lo usan los procesos y, desde el 5 nov 2026, el detalle de un cliente.
+/// [alGenerar] avisa cuándo empieza (true) y termina (false), para mostrar la carga en el botón.
+Future<void> generarReportePdf(
+  BuildContext context, {
+  required String nombre,
+  required Future<ApiResponse<Map<String, dynamic>>> Function(DateTime desde, DateTime hasta) pedir,
+  required Future<Uint8List> Function(Map<String, dynamic> reporte) armar,
+  ValueChanged<bool>? alGenerar,
+}) async {
+  final rango = await _abrirPantalla<(DateTime, DateTime)>(context, const _ReporteComprasForm());
+  if (rango == null || !context.mounted) return;
+  final (desde, hasta) = rango;
+  alGenerar?.call(true);
+  try {
+    final r = await pedir(desde, hasta);
+    if (!context.mounted) return;
+    if (!r.isSuccess) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.error ?? 'No se pudo generar el reporte')));
+      return;
+    }
+    final bytes = await armar(_mapa(r.data!['reporte']));
+    if (!context.mounted) return;
+    String m(DateTime d) => '${d.year}_${d.month.toString().padLeft(2, '0')}';
+    final base = nombre.toLowerCase().replaceAll('ó', 'o').replaceAll(RegExp(r'[^a-z0-9]+'), '_');
+    final archivo = desde == hasta ? '${base}_${m(desde)}.pdf' : '${base}_${m(desde)}_a_${m(hasta)}.pdf';
+    await _abrirPantalla<void>(context, _ReportePdfScreen(bytes: bytes, archivo: archivo, titulo: '$nombre · ${ComprasPdfService.periodo(desde, hasta)}'));
+  } catch (_) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo generar el PDF: revisa la señal.')));
+    }
+  } finally {
+    alGenerar?.call(false);
+  }
+}
+
 mixin _ReporteDelProceso<T extends StatefulWidget> on State<T> {
   String get nombreReporte;
   Future<ApiResponse<Map<String, dynamic>>> pedirReporte(DateTime desde, DateTime hasta);
@@ -1791,34 +1827,13 @@ mixin _ReporteDelProceso<T extends StatefulWidget> on State<T> {
             : const Icon(Icons.picture_as_pdf_outlined),
       );
 
-  Future<void> _elegirReporte() async {
-    final rango = await _abrirPantalla<(DateTime, DateTime)>(context, const _ReporteComprasForm());
-    if (rango == null || !mounted) return;
-    final (desde, hasta) = rango;
-    setState(() => _generando = true);
-    final r = await pedirReporte(desde, hasta);
-    if (!mounted) return;
-    if (!r.isSuccess) {
-      setState(() => _generando = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.error ?? 'No se pudo generar el reporte')));
-      return;
-    }
-    try {
-      final bytes = await armarPdf(_mapa(r.data!['reporte']));
-      if (!mounted) return;
-      String m(DateTime d) => '${d.year}_${d.month.toString().padLeft(2, '0')}';
-      final base = nombreReporte.toLowerCase().replaceAll('ó', 'o');
-      final nombre = desde == hasta ? '${base}_${m(desde)}.pdf' : '${base}_${m(desde)}_a_${m(hasta)}.pdf';
-      await _abrirPantalla<void>(
-          context, _ReportePdfScreen(bytes: bytes, archivo: nombre, titulo: '$nombreReporte · ${ComprasPdfService.periodo(desde, hasta)}'));
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo generar el PDF: revisa la señal.')));
-      }
-    } finally {
-      if (mounted) setState(() => _generando = false);
-    }
-  }
+  Future<void> _elegirReporte() => generarReportePdf(context,
+      nombre: nombreReporte,
+      pedir: pedirReporte,
+      armar: armarPdf,
+      alGenerar: (g) {
+        if (mounted) setState(() => _generando = g);
+      });
 }
 
 /// Pestaña Gastos de un proceso (General Manager, 4 nov 2026: Compras, luego Producción): los gastos de su área con su
@@ -3299,6 +3314,7 @@ const _estadosPedido = {
   'LISTO': 'Listo',
   'ENVIADO': 'En camino',
   'ENTREGADO': 'Entregado',
+  'COMPLETADO': 'Completado',
   'CANCELADO': 'Cancelado',
 };
 
@@ -3311,7 +3327,7 @@ String _fechaPedidoCorta(dynamic f) {
 
 Widget _fichaPedido(BuildContext context, Map<String, dynamic> p, {required VoidCallback onActualizado}) {
   final estado = '${p['estado'] ?? ''}';
-  final color = estado == 'ENTREGADO'
+  final color = estado == 'ENTREGADO' || estado == 'COMPLETADO'
       ? Colors.green
       : estado == 'CANCELADO'
           ? Colors.grey
@@ -3322,6 +3338,41 @@ Widget _fichaPedido(BuildContext context, Map<String, dynamic> p, {required Void
     inicio: _Insignia(_fechaPedidoCorta(p['fecha']), tono: color),
     titulo: '${(p['cliente'] ?? '').toString().isEmpty ? 'Sin nombre' : p['cliente']}',
     detalle: 'Pedido ${p['id'] ?? ''}',
+    fin: _Pildora(_estadosPedido[estado] ?? estado, color),
+    onTap: () => showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DetallePedidoSheet(pedido: p, onActualizado: onActualizado),
+    ),
+  );
+}
+
+/// Un pedido en el detalle de un cliente (General Manager, 5 nov 2026, en lugar de Estadísticas): la fecha, el número,
+/// el total y si está pagado, en parte o sin pagar (por los pagos registrados), y su estado; abre el mismo detalle que
+/// la pestaña Pedidos.
+Widget fichaPedidoCliente(BuildContext context, Map<String, dynamic> p, {required VoidCallback onActualizado}) {
+  final estado = '${p['estado'] ?? ''}';
+  final color = estado == 'ENTREGADO' || estado == 'COMPLETADO'
+      ? Colors.green
+      : estado == 'CANCELADO'
+          ? Colors.grey
+          : estado == 'ENVIADO'
+              ? Colors.blue
+              : Colors.orange;
+  final total = num.tryParse('${p['total']}') ?? 0;
+  final pagado = num.tryParse('${p['montoPagado']}') ?? 0;
+  final pago = estado == 'CANCELADO'
+      ? null
+      : pagado >= total && total > 0
+          ? 'Pagado'
+          : pagado > 0
+              ? 'Parcial · debe ${_soles(total - pagado)}'
+              : 'Sin pagar';
+  return _Ficha(
+    inicio: _Insignia(_fechaPedidoCorta(p['fecha']), tono: color),
+    titulo: 'Pedido ${p['id'] ?? ''}',
+    detalle: [_soles(total), if (pago != null) pago].join(' · '),
     fin: _Pildora(_estadosPedido[estado] ?? estado, color),
     onTap: () => showModalBottomSheet(
       context: context,

@@ -1168,6 +1168,29 @@ class ApiService {
   // ==================== PRECIOS PERSONALIZADOS ====================
 
   /// Obtener precios personalizados de un cliente
+  /// Detalle de un cliente → Pedidos (General Manager, 5 nov 2026): sus pedidos, del más nuevo al más antiguo, de 20 en
+  /// 20, con la forma de la pestaña Pedidos ({pedidos, total, hayMas}).
+  static Future<ApiResponse<Map<String, dynamic>>> pedidosCliente(String clienteId, {int offset = 0, int limit = 20}) =>
+      _getMapa('$baseUrl/api/clientes/$businessId/${Uri.encodeComponent(clienteId)}/pedidos?offset=$offset&limit=$limit');
+
+  /// El reporte en PDF de un cliente ({reporte}): sus pedidos registrados entre [desde] y [hasta] (meses), con su estado,
+  /// si están pagados o en parte, los días de pago, el número de operación, y los días de registro y de completado.
+  static Future<ApiResponse<Map<String, dynamic>>> reporteCliente(String clienteId, DateTime desde, DateTime hasta) {
+    String mes(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}';
+    return _getMapa('$baseUrl/api/clientes/$businessId/${Uri.encodeComponent(clienteId)}/reporte?desde=${mes(desde)}&hasta=${mes(hasta)}');
+  }
+
+  static Future<ApiResponse<Map<String, dynamic>>> _getMapa(String url) async {
+    try {
+      final response = await http.get(Uri.parse(url), headers: headers).timeout(const Duration(seconds: 30));
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data is Map) return ApiResponse.success(Map<String, dynamic>.from(data));
+      return ApiResponse.error(data is Map && data['error'] != null ? '${data['error']}' : 'No se pudo cargar');
+    } catch (_) {
+      return ApiResponse.error('Sin conexión');
+    }
+  }
+
   static Future<ApiResponse<Map<String, double>>> getPreciosCliente({
     required String clienteId,
   }) async {
