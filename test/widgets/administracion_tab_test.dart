@@ -267,6 +267,23 @@ void main() {
         'recientes': [{'id': 'DL-0001', 'fecha': '2026-11-03', 'estado': 'parchment', 'kg': 100}],
       }}), 200);
     }
+    if (p.contains('/finanzas/movimientos/') && p.endsWith('/conciliar')) {
+      return http.Response(jsonEncode({'ok': true, 'resultado': {'movimiento': 12, 'estado': 'Conciliado', 'pago': 'PY-0010'}}), 200);
+    }
+    if (p.endsWith('/finanzas/movimientos/12')) {
+      // The S/ 350 bank line: a gasto of the same amount waits to be paid.
+      return http.Response(jsonEncode({'movimiento': {
+        'id': 12, 'fecha': '2026-11-05', 'banco': 'TRAN.CTAS.TERC.HK', 'operacion': '6011866', 'monto': -350, 'cuenta': 'BCP Corriente Soles',
+        'estado': 'Falta en la app',
+        'sugerencias': [{'tipo': 'gasto', 'ref': 'EX-0003', 'titulo': 'Gasto · Personal', 'detalle': 'EX-0003 · Ayudante', 'fecha': '2026-11-04', 'monto': 350}],
+      }}), 200);
+    }
+    if (p.endsWith('/finanzas/movimientos/11')) {
+      return http.Response(jsonEncode({'movimiento': {
+        'id': 11, 'fecha': '2026-11-04', 'banco': 'TRAN.CTAS.TERC.HK', 'operacion': '6053814', 'monto': -150, 'estado': 'Sin conciliar',
+        'sin_coincidencias': true, 'sugerencias': [],
+      }}), 200);
+    }
     if (p.endsWith('/finanzas/movimientos')) {
       final caja = req.url.queryParameters['cuenta'] == 'AC-02';
       return http.Response(jsonEncode({
@@ -275,8 +292,9 @@ void main() {
         'filas': caja
             ? []
             : [
-                {'id': 'b12', 'fecha': '2026-11-05', 'banco': 'TRAN.CTAS.TERC.HK', 'operacion': '6011866', 'estado': 'Falta en la app', 'monto': -350, 'saldo': 3204.37},
-                {'id': 'PY-0009', 'fecha': '2026-11-04', 'tipo': 'Gasto', 'categoria': 'Combustible', 'metodo': 'transfer', 'estado': 'Conciliado', 'monto': -150, 'saldo': 3554.37},
+                {'id': 'b12', 'movimiento': 12, 'fecha': '2026-11-05', 'banco': 'TRAN.CTAS.TERC.HK', 'operacion': '6011866', 'estado': 'Falta en la app', 'monto': -350, 'saldo': 3204.37},
+                {'id': 'b14', 'movimiento': 14, 'fecha': '2026-11-04', 'banco': 'IMPUESTO ITF', 'estado': 'Impuesto ITF', 'monto': -0.10, 'saldo': 3554.37},
+                {'id': 'PY-0009', 'movimiento': 11, 'fecha': '2026-11-04', 'tipo': 'Gasto', 'categoria': 'Combustible', 'metodo': 'transfer', 'estado': 'Conciliado', 'monto': -150, 'saldo': 3554.47},
                 {'id': 'PY-0008', 'fecha': '2026-11-04', 'tipo': 'Compra', 'quien': 'Jhonatan', 'metodo': 'yape', 'estado': 'No está en el banco', 'monto': -308.95, 'saldo': 3704.37},
               ],
         'hayMas': false,
@@ -1261,10 +1279,12 @@ void main() {
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     // The bank's statement: what leaves in orange with the balance after it, and the opening balance at the end.
-    for (final t in ['Gasto · Combustible', 'Compra · Jhonatan', '−S/ 150', '−S/ 308.95', 'Saldo S/ 3,554.37', 'Saldo inicial', 'Saldo S/ 4,013.32',
-        'TRAN.CTAS.TERC.HK', 'Falta en la app', 'Conciliado', 'No está en el banco']) {
+    for (final t in ['Gasto · Combustible', 'Compra · Jhonatan', '−S/ 150', '−S/ 308.95', 'Saldo S/ 3,554.47',
+        'TRAN.CTAS.TERC.HK', 'Falta en la app', 'Conciliado', 'No está en el banco', 'Impuesto ITF']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
+    await tester.scrollUntilVisible(find.text('Saldo inicial'), 200, scrollable: find.byType(Scrollable).last);
+    expect(find.text('Saldo S/ 4,013.32'), findsOneWidget);
     expect(pedidos.any((r) => r.url.path.endsWith('/personas/buscar') && r.url.queryParameters['area'] == 'finance'), isFalse);
     await http.runWithClient(() async {
       await tester.tap(find.text('Caja (efectivo)'));
@@ -1274,6 +1294,50 @@ void main() {
     expect(find.text('Compra · Jhonatan'), findsNothing);
     expect(find.text('Esta cuenta no tiene movimientos todavía.'), findsOneWidget);
     expect(find.text('Saldo S/ 0'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a bank line opens its detail: Conciliar a suggestion, or Sin coincidencias; ITF does not open (5 Nov 2026)', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await tester.scrollUntilVisible(find.text('Finanzas'), 200, scrollable: find.byType(Scrollable).last);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Finanzas'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Movimientos').last);
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    // ITF does not open.
+    final n = pedidos.length;
+    await tester.tap(find.text('IMPUESTO ITF'));
+    await tester.pumpAndSettle();
+    expect(pedidos.length, n);
+    // The S/ 350 line: a gasto waiting to be paid; Conciliar pays it from this bank line.
+    await http.runWithClient(() async {
+      await tester.tap(find.text('TRAN.CTAS.TERC.HK'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    for (final t in ['Puede ser', 'Gasto · Personal', 'Conciliar', '6011866']) {
+      expect(find.text(t), findsWidgets, reason: t);
+    }
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Conciliar'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Se registra el pago de Gasto · Personal por S/ 350'), findsOneWidget);
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Conciliar').last);
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final c = pedidos.lastWhere((r) => r.url.path.endsWith('/conciliar'));
+    expect(c.url.path, endsWith('/finanzas/movimientos/12/conciliar'));
+    expect(jsonDecode(c.body), containsPair('tipo', 'gasto'));
+    expect(jsonDecode(c.body), containsPair('ref', 'EX-0003'));
+    expect(find.text('Puede ser'), findsNothing); // back in Movimientos
+    // A line with nothing of its amount says so in the detail.
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Gasto · Combustible'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.textContaining('Sin coincidencias'), findsOneWidget);
+    expect(find.text('Conciliar'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

@@ -61,6 +61,15 @@ class AdministracionService {
   static Future<ApiResponse<Map<String, dynamic>>> movimientosCuenta({String? cuenta, int offset = 0, int limit = 20}) =>
       _get('finanzas/movimientos?${cuenta == null ? '' : 'cuenta=${Uri.encodeComponent(cuenta)}&'}offset=$offset&limit=$limit');
 
+  /// Una línea del banco ({movimiento}, dueños): con qué se concilió o, si no, los registros del mismo monto que
+  /// podrían ser (sugerencias) o sin_coincidencias.
+  static Future<ApiResponse<Map<String, dynamic>>> movimiento(int id) => _get('finanzas/movimientos/$id');
+
+  /// Conciliar una línea del banco con una sugerencia: [tipo] pago, pedido, gasto o compra y su [ref]. Un gasto o
+  /// una compra se pagan con esa línea del banco.
+  static Future<ApiResponse<Map<String, dynamic>>> conciliarMovimiento(int id, String tipo, String ref, {required String clave}) =>
+      _post('finanzas/movimientos/$id/conciliar', {'tipo': tipo, 'ref': ref, 'clientRef': clave});
+
   /// Compras → Adelantos: los pedidos por aprobar (en la primera página) y los adelantos, del más nuevo al más antiguo.
   static Future<ApiResponse<Map<String, dynamic>>> adelantos({int offset = 0, int limit = 20}) => _get('adelantos?offset=$offset&limit=$limit');
 

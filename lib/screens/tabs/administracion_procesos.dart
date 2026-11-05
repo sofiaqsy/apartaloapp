@@ -1120,6 +1120,20 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
     });
   }
 
+  Future<void> _abrirMovimiento(Map<String, dynamic> m) async {
+    final cambio = await _abrirPantalla<bool>(context, _MovimientoDetalleScreen(id: (m['movimiento'] as num).toInt()));
+    if (cambio == true && mounted) {
+      setState(() {
+        _movimientos.clear();
+        _cargandoMov = false;
+        _hayMasMov = true;
+        _errorMov = null;
+        _inicial = null;
+      });
+      _masMovimientos();
+    }
+  }
+
   void _elegirCuenta(String id) {
     if (id == _cuenta) return;
     setState(() {
@@ -1147,7 +1161,12 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
             ]),
           ),
         const SizedBox(height: 8),
-        for (final m in _movimientos) _LineaMovimiento(movimiento: m),
+        // Cada línea del banco abre su detalle, donde se concilia (General Manager, 5 nov 2026); el ITF no importa.
+        for (final m in _movimientos)
+          _LineaMovimiento(
+            movimiento: m,
+            onTap: m['movimiento'] != null && m['estado'] != 'Impuesto ITF' ? () => _abrirMovimiento(m) : null,
+          ),
         if (_errorMov != null)
           Padding(padding: const EdgeInsets.all(16), child: Text(_errorMov!, textAlign: TextAlign.center))
         else if (_cargandoMov || _hayMasMov)
@@ -3704,8 +3723,9 @@ class _LineaCuenta extends StatelessWidget {
 /// Falta en la app (está en el banco y nadie lo registró), No está en el banco (registrado en la app, el banco todavía
 /// no lo trae: no mueve el saldo) o Ignorada.
 class _LineaMovimiento extends StatelessWidget {
-  const _LineaMovimiento({required this.movimiento});
+  const _LineaMovimiento({required this.movimiento, this.onTap});
   final Map<String, dynamic> movimiento;
+  final VoidCallback? onTap; // una línea del banco abre su detalle
 
   @override
   Widget build(BuildContext context) {
@@ -3733,7 +3753,7 @@ class _LineaMovimiento extends StatelessWidget {
       _fechaLarga(m['fecha']),
       if (m['metodo'] != null && m['metodo'] != 'withdrawal') _metodosPago[m['metodo']] ?? '${m['metodo']}',
     ].where((t) => t.isNotEmpty).join(' · ');
-    return Container(
+    final linea = Container(
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade200))),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -3756,6 +3776,166 @@ class _LineaMovimiento extends StatelessWidget {
           Text('Saldo ${_soles(m['saldo'])}',
               style: monto == null ? const TextStyle(fontWeight: FontWeight.w700) : TextStyle(fontSize: 12, color: Colors.grey.shade700)),
         ]),
+        if (onTap != null) Padding(padding: const EdgeInsets.only(left: 4, top: 8), child: Icon(Icons.chevron_right, color: Colors.grey.shade600)),
+      ]),
+    );
+    return onTap == null ? linea : InkWell(onTap: onTap, child: linea);
+  }
+}
+
+/// El detalle de una línea del banco (General Manager, 5 nov 2026): sus datos y con qué se concilió; si no está
+/// conciliada, los registros de la app del mismo monto que podrían ser, cada uno con Conciliar; si no hay ninguno, lo
+/// dice. Un gasto o una compra se pagan con esta línea al conciliar. Vuelve con true si se concilió.
+class _MovimientoDetalleScreen extends StatefulWidget {
+  const _MovimientoDetalleScreen({required this.id});
+  final int id;
+
+  @override
+  State<_MovimientoDetalleScreen> createState() => _MovimientoDetalleScreenState();
+}
+
+class _MovimientoDetalleScreenState extends State<_MovimientoDetalleScreen> {
+  Map<String, dynamic>? _m;
+  String? _error;
+  bool _guardando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    final r = await AdministracionService.movimiento(widget.id);
+    if (!mounted) return;
+    setState(() {
+      if (r.isSuccess) {
+        _m = _mapa(r.data!['movimiento']);
+      } else {
+        _error = r.error;
+      }
+    });
+  }
+
+  Future<void> _conciliar(Map<String, dynamic> s) async {
+    final m = _m!;
+    final paga = s['tipo'] == 'gasto' || s['tipo'] == 'compra';
+    final monto = _soles((num.tryParse('${m['monto']}') ?? 0).abs());
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('¿Conciliar?'),
+        content: Text(paga
+            ? 'Se registra el pago de ${s['titulo']} por $monto con esta línea del banco (transferencia del '
+                '${_fechaCorta(m['fecha'])}${m['operacion'] != null ? ', operación ${m['operacion']}' : ''}).'
+            : 'Esta línea del banco y ${s['titulo']} quedan conciliadas.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancelar')),
+          ElevatedButton(onPressed: () => Navigator.pop(d, true), child: const Text('Conciliar')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _guardando = true);
+    final r = await AdministracionService.conciliarMovimiento(widget.id, '${s['tipo']}', '${s['ref']}',
+        clave: AdministracionService.nuevaClave('conciliar'));
+    if (!mounted) return;
+    setState(() => _guardando = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.isSuccess ? 'Conciliado ✓' : (r.error ?? 'No se guardó'))));
+    if (r.isSuccess) Navigator.of(context).pop(true); // Movimientos se recarga
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = _m;
+    if (m == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Movimiento')),
+        body: Center(
+            child: _error != null
+                ? Padding(padding: const EdgeInsets.all(16), child: Text(_error!, textAlign: TextAlign.center))
+                : const CircularProgressIndicator()),
+      );
+    }
+    final monto = num.tryParse('${m['monto']}') ?? 0;
+    final pago = _mapa(m['pago']);
+    final pedido = _mapa(m['pedido']);
+    final datos = <(String, String?)>[
+      ('Estado', m['estado']?.toString()),
+      ('Monto', '${monto > 0 ? '+' : '−'}${_soles(monto.abs())}'),
+      ('Fecha', _fechaLarga(m['fecha'])),
+      ('En el banco', m['banco']?.toString()),
+      ('Operación', m['operacion']?.toString()),
+      ('Cuenta', m['cuenta']?.toString()),
+      if (pago.isNotEmpty) ('Conciliado con', [pago['tipo'], pago['quien'] ?? pago['categoria'], pago['id']].where((t) => t != null).join(' · ')),
+      if (pedido.isNotEmpty) ('Conciliado con', ['Pedido ${pedido['numero'] ?? ''}', pedido['cliente']].where((t) => t != null).join(' · ')),
+      ('Cómo', m['como']?.toString()),
+      ('Conciliado por', m['conciliado_por']?.toString()),
+      ('Nota', m['nota']?.toString()),
+    ].where((d) => d.$2 != null && d.$2!.isNotEmpty).toList();
+    final sugerencias = _lista(m['sugerencias']);
+    return Scaffold(
+      appBar: AppBar(title: Text('${monto > 0 ? 'Ingreso' : 'Salida'} · ${_fechaCorta(m['fecha'])}')),
+      body: ListView(padding: const EdgeInsets.all(16), children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(16)),
+          child: Column(children: [
+            for (final d in datos)
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade300))),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  SizedBox(width: 120, child: Text(d.$1, style: TextStyle(color: Colors.grey.shade700))),
+                  Expanded(child: Text(d.$2!, style: const TextStyle(fontWeight: FontWeight.w600))),
+                ]),
+              ),
+          ]),
+        ),
+        // Sin nada que se le parezca, se dice aquí (General Manager, 5 nov 2026).
+        if (m['sin_coincidencias'] == true) ...[
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(12)),
+            child: Text(
+                'Sin coincidencias: no hay en la app ningún ${monto > 0 ? 'pago de un pedido' : 'gasto, compra o pago'} de '
+                '${_soles(monto.abs())} cerca de esta fecha. Regístralo en su proceso y vuelve a abrir esta línea.',
+                style: TextStyle(color: Colors.orange.shade900)),
+          ),
+        ],
+        if (sugerencias.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          const Text('Puede ser', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          for (final s in sugerencias)
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(12),
+              decoration:
+                  BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${s['titulo'] ?? ''}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                Text(
+                    [
+                      if (s['detalle'] != null) '${s['detalle']}',
+                      _fechaLarga(s['fecha']),
+                      _soles(s['monto']),
+                      if (s['tipo'] == 'gasto' || s['tipo'] == 'compra') 'por pagar',
+                    ].where((t) => t.isNotEmpty).join(' · '),
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _guardando ? null : () => _conciliar(s),
+                    icon: const Icon(Icons.link),
+                    label: const Text('Conciliar'),
+                  ),
+                ),
+              ]),
+            ),
+        ],
       ]),
     );
   }
