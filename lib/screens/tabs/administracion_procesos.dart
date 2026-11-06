@@ -4945,7 +4945,8 @@ class _Saco extends StatelessWidget {
   @override
   Widget build(BuildContext context) => bolsa
       ? SizedBox(width: 20, height: 30, child: CustomPaint(painter: _PintorBolsa(lleno)))
-      : SizedBox(width: 22, height: 34, child: CustomPaint(painter: _PintorSaco(lleno)));
+      // Los sacos de café verde más grandes que las bolsas de tostado, para distinguirlos (General Manager, 6 nov 2026).
+      : SizedBox(width: 30, height: 46, child: CustomPaint(painter: _PintorSaco(lleno)));
 }
 
 /// Una bolsa de café tostado: bolsa de pie con el borde de arriba doblado, café marrón que la llena desde abajo.
