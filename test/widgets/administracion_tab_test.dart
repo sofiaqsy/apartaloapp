@@ -1311,6 +1311,43 @@ void main() {
     expect(jsonDecode(req.body)['area'], 'production');
   });
 
+  testWidgets('Registrar gasto: the optional Proveedor is chosen from the search and sent (6 Nov 2026)', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Producción'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Registrar gasto'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Monto (S/)'), '120');
+      final proveedor = find.text('Proveedor (opcional)');
+      await tester.ensureVisible(proveedor);
+      await tester.tap(proveedor);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pedro Ramírez Ñique'));
+      await tester.pumpAndSettle();
+      expect(find.text('Pedro Ramírez Ñique'), findsOneWidget); // shown in the field
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final req = pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/gasto'));
+    expect(jsonDecode(req.body)['proveedorId'], 'P-0001');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a gasto without a provider sends none', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Producción'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Registrar gasto'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Monto (S/)'), '45');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect((jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/gasto')).body) as Map).containsKey('proveedorId'), isFalse);
+  });
+
   testWidgets('cards in the GM\'s order (Comercialización, Producción, Compras, Finca), three in sight on an iPhone', (tester) async {
     await abrir(tester, rol: 'owner');
     final arriba = [for (final t in ['Comercialización', 'Producción', 'Compras']) tester.getTopLeft(find.text(t)).dy];

@@ -166,6 +166,8 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('categoria', 'Categoría', _Tipo.opcion), // las opciones son la guía de categorías (_guia)
     const _Campo('monto', 'Monto (S/)', _Tipo.monto),
     const _Campo('descripcion', 'Descripción', _Tipo.texto, requerido: false),
+    // A quién se le paga (General Manager, 6 nov 2026), opcional: al pagar se ven su Yape, sus cuentas o su Nº de servicio.
+    const _Campo('proveedorId', 'Proveedor', _Tipo.persona, requerido: false),
     // Quien registra elige el área que responde por el gasto; se llena sola según la categoría.
     const _Campo('area', 'Área', _Tipo.opcion, opciones: _areas, porDefecto: 'shared', avanzado: true),
     const _Campo('centro', 'Centro de costo', _Tipo.opcion,
