@@ -3846,12 +3846,18 @@ class _TostadoDetalleScreenState extends State<_TostadoDetalleScreen> {
                   _dato('Café tostado que salió', t['kg_tostado'] == null ? null : _kg(t['kg_tostado'])),
                   _dato('Merma', t['merma_pct'] == null ? null : '${t['merma_pct']}%'),
                 ]),
-                for (final p in productos)
+                for (final p in productos) ...[
                   _panel(productos.length > 1 ? '${p['nombre'] ?? 'Producto'}' : 'Para el producto', [
                     _dato('Asignado', _kg(p['asignado'])),
                     _dato('Vendido', _kg(p['vendido'])),
                     _dato('Disponible', _kg(p['disponible'])),
                   ]),
+                  // Lo disponible en bolsas de 12 kg dibujadas (General Manager, 6 nov 2026).
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10, left: 4),
+                    child: _BolsasTostado(kg: num.tryParse('${p['disponible']}')?.toDouble() ?? 0),
+                  ),
+                ],
                 _panel('Tueste', [
                   _dato('Empezó', _fechaHora(t['tostado_el'])),
                   _dato('Terminó', _fechaHora(t['terminado_el'])),
@@ -3904,7 +3910,7 @@ class _TostadoDetalleScreenState extends State<_TostadoDetalleScreen> {
                 if (widget.productoId != null) ...[
                   _encabezado('Estado de lote', _cuenta['total'] == null ? '' : '${_cuenta['total']}'),
                   // Sin panel de saldo: "Para el producto" ya muestra asignado, vendido y disponible (los kilos una sola vez).
-                  for (final m in _lineas) _LineaCuenta(linea: m),
+                  for (final m in _lineas) _LineaCuenta(linea: m, bolsas: true),
                   if (_lineas.isEmpty && !_cargandoMas) _vacio('Este lote todavía no tiene movimientos.'),
                   if (_cargandoMas) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
                 ],
@@ -3918,8 +3924,9 @@ class _TostadoDetalleScreenState extends State<_TostadoDetalleScreen> {
 /// Una línea del estado de cuenta de un lote verde: qué fue y cuándo a la izquierda; a la derecha los kilos con su signo
 /// (+ entra en verde, − sale en naranja) y, debajo, el saldo después de esa línea. Sólo información: sin caja ni flecha.
 class _LineaCuenta extends StatelessWidget {
-  const _LineaCuenta({required this.linea});
+  const _LineaCuenta({required this.linea, this.bolsas = false});
   final Map<String, dynamic> linea;
+  final bool bolsas; // café tostado: el movimiento en bolsas de 12 kg; café verde: en sacos de 69 kg
 
   @override
   Widget build(BuildContext context) {
@@ -3945,6 +3952,13 @@ class _LineaCuenta extends StatelessWidget {
             Text('${linea['titulo'] ?? ''}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
             Text([_fechaLarga(linea['fecha']), if (linea['detalle'] != null) '${linea['detalle']}'].where((t) => t.isNotEmpty).join(' · '),
                 style: TextStyle(fontSize: 13, color: Colors.grey.shade700), maxLines: 2, overflow: TextOverflow.ellipsis),
+            // Lo que entró o salió, en sacos o bolsas dibujados (General Manager, 6 nov 2026: "the same with the detail").
+            if (kg != 0) ...[
+              const SizedBox(height: 6),
+              _Sacos(kg: kg.abs().toDouble(), bolsas: bolsas),
+              Text(bolsas ? _textoBolsas(kg.abs().toDouble()) : _textoSacos(kg.abs().toDouble()),
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+            ],
           ]),
         ),
         const SizedBox(width: 8),
@@ -4908,7 +4922,7 @@ String _textoUnidades(double kg, double porUnidad, String una, String varias) {
   final llenos = (kg / porUnidad).floor();
   final suelto = (kg - llenos * porUnidad).round();
   final unidades = '$llenos ${llenos == 1 ? una : varias}';
-  if (llenos == 0) return '$suelto kg';
+  if (llenos == 0) return _kg(kg);
   return suelto > 0 ? '$unidades + $suelto kg' : unidades;
 }
 
@@ -5172,6 +5186,18 @@ class _LoteVerdeDetalleScreenState extends State<_LoteVerdeDetalleScreen> {
                           onPressed: () => _cerrar(l), icon: const Icon(Icons.inventory_2_outlined), label: const Text('Cerrar lote')),
                     ),
                   ],
+                  // El saldo en sacos dibujados, como en la lista (General Manager, 6 nov 2026).
+                  Builder(builder: (_) {
+                    final saldo = num.tryParse('${cuenta['saldo'] ?? l['kg_ahora']}')?.toDouble() ?? 0;
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 14),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        _Sacos(kg: saldo),
+                        const SizedBox(height: 4),
+                        Text(_textoSacos(saldo), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                      ]),
+                    );
+                  }),
                   _panel([
                     // Como un estado de cuenta (General Manager, 4 nov 2026): el saldo es el café verde de ahora.
                     _dato('Saldo', _kg(cuenta['saldo'] ?? l['kg_ahora'])),

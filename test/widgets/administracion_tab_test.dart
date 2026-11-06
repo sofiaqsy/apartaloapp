@@ -1140,12 +1140,19 @@ void main() {
         'Tostadora Villa Rica', '13:00 min']) {
       expect(find.text(t), findsWidgets, reason: t);
     }
+    // What is available, drawn in 12 kg bags (6 Nov 2026).
+    await tester.scrollUntilVisible(find.text('28 bolsas + 4 kg · 340 kg'), 200, scrollable: find.byType(Scrollable).last);
+    expect(find.text('28 bolsas + 4 kg · 340 kg'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Buen desarrollo'), 200, scrollable: find.byType(Scrollable).last);
     expect(find.text('Finca Rosal'), findsWidgets);
     expect(find.text('Temperatura de carga'), findsNothing); // not recorded, so not shown
     // Estado de lote, like the green lots (4 Nov 2026): the roast adds, each sale takes out, with the balance.
     await tester.scrollUntilVisible(find.text('Venta · pedido ORD-9'), 200, scrollable: find.byType(Scrollable).last);
     for (final t in ['Estado de lote', 'Tueste · Essential', '+380 kg', '−40 kg', 'Saldo 340 kg']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    // Each line in 12 kg bags too (6 Nov 2026): 380 = 31 × 12 + 8; 40 = 3 × 12 + 4.
+    for (final t in ['31 bolsas + 8 kg', '3 bolsas + 4 kg']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     expect(pedidos.lastWhere((r) => r.url.path.endsWith('/tostados/r8/cuenta')).url.queryParameters['offset'], '0');
@@ -1216,6 +1223,8 @@ void main() {
     for (final t in ['Saldo', 'Entradas', '+1,071.0 kg', 'Salidas', '−586 kg']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
+    // The balance drawn in 69 kg sacks on top (6 Nov 2026): 484.96 kg = 7 × 69 + 2.
+    expect(find.text('7 sacos + 2 kg'), findsOneWidget);
     final lista = find.byType(Scrollable).last;
     await tester.scrollUntilVisible(find.text('Compra DL-0008 · José Luis Gamboa Villano'), 200, scrollable: lista);
     for (final t in ['Estado de lote', '+57.6 kg', 'Saldo 485.0 kg']) {
@@ -1229,6 +1238,9 @@ void main() {
     for (final t in ['Tueste · Blend de Caturra', 'Venta de café verde · pedido ORD-1', '−72 kg']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
+    // Each line in sacks too (6 Nov 2026): 72 kg = 1 saco + 3 kg; under one sack, only the kilos.
+    expect(find.text('1 saco + 3 kg'), findsOneWidget);
+    expect(find.text('1 saco + 31 kg'), findsOneWidget); // the roast of 100 kg
     // 20 lines a page: the second page is asked to the server only near the end of the list.
     final cuentas = () => pedidos.where((r) => r.url.path.endsWith('/lotes-verdes/g7/cuenta')).toList();
     expect(cuentas().map((r) => r.url.queryParameters['offset']), ['0']);
