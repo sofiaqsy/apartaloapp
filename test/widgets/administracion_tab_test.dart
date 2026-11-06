@@ -59,6 +59,7 @@ void main() {
       final offset = int.parse(req.url.queryParameters['offset'] ?? '0');
       final todos = [
         {'id': 'P-0001', 'nombre': 'Pedro Ramírez Ñique', 'detalle': 'También: Chato', 'agricultor': true, 'vende': 'parchment', 'recogidoPor': null},
+        if (req.url.queryParameters['area'] == 'commercial') {'id': 'P-0090', 'nombre': 'Entel', 'agricultor': false, 'comprador': false, 'servicio': true},
         for (var i = 0; i < 30; i++) {'id': 'P-F$i', 'nombre': 'Agricultor ${i.toString().padLeft(2, '0')}', 'agricultor': true, 'vende': 'cherry'},
       ].where((p) => q.isEmpty || '${p['nombre']} ${p['detalle'] ?? ''}'.toLowerCase().contains(q)).toList();
       final pagina = todos.skip(offset).take(20).toList();
@@ -1667,6 +1668,33 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('Registrar proveedor: Proveedor de servicios asks for its code and sends it (6 Nov 2026)', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Comercialización'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Registrar proveedor'));
+      await tester.pumpAndSettle();
+      expect(find.text('Código de pago (Nº de servicio)'), findsNothing); // only for a service provider
+      await tester.tap(find.text('Proveedor de servicios'));
+      await tester.pumpAndSettle();
+      expect(find.text('Código de pago (Nº de servicio)'), findsOneWidget);
+      await tester.enterText(find.widgetWithText(TextField, 'Nombre'), 'Entel');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Falta: Código de pago (Nº de servicio)'), findsOneWidget);
+      expect(pedidos.where((r) => r.url.path.endsWith('/registrar/proveedor')), isEmpty);
+      await tester.enterText(find.widgetWithText(TextField, 'Código de pago (Nº de servicio)'), '1234567');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final body = jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/proveedor')).body) as Map;
+    expect(body['rol'], 'service');
+    expect(body['codigo'], '1234567');
+    expect(body['area'], 'commercial');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Comercialización lists its own providers (6 Nov 2026)', (tester) async {
     await abrir(tester, rol: 'owner');
     await http.runWithClient(() async {
@@ -1682,6 +1710,7 @@ void main() {
     expect(r.url.queryParameters['area'], 'commercial');
     expect(r.url.queryParameters['limit'], '20');
     expect(find.text('Buscar por nombre o apodo'), findsOneWidget);
+    expect(find.text('Proveedor de servicios'), findsOneWidget); // Entel, a service provider
     expect(tester.takeException(), isNull);
   });
 

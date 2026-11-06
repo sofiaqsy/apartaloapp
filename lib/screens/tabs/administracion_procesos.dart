@@ -901,7 +901,7 @@ mixin _ProveedoresDelProceso<T extends StatefulWidget> on State<T> {
     final partes = [
       if (p['agricultor'] == true) 'Agricultor${p['vende'] != null ? ' · ${vende[p['vende']] ?? p['vende']}' : ''}',
       if (p['comprador'] == true) 'Comprador',
-      if (p['agricultor'] != true && p['comprador'] != true) 'Proveedor',
+      if (p['agricultor'] != true && p['comprador'] != true) p['servicio'] == true ? 'Proveedor de servicios' : 'Proveedor',
       if (p['recogidoPorNombre'] != null) 'lo recoge ${p['recogidoPorNombre']}',
       if ((p['detalle'] ?? '').toString().isNotEmpty) '${p['detalle']}',
     ];
@@ -2357,7 +2357,9 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
         : [
             if (p['agricultor'] == true) 'Agricultor',
             if (p['comprador'] == true) 'Comprador',
-            if (p['agricultor'] != true && p['comprador'] != true) 'Proveedor',
+            // Con Nº de servicio es un proveedor de servicios (Entel, la luz; las cuentas sólo llegan a los dueños).
+            if (p['agricultor'] != true && p['comprador'] != true)
+              cuentas.any((c) => c['tipo'] == 'service_number') ? 'Proveedor de servicios' : 'Proveedor',
           ].join(' y ');
     return Scaffold(
       appBar: AppBar(title: const Text('Proveedor')),

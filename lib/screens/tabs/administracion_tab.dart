@@ -194,7 +194,11 @@ final Map<String, List<_Campo>> _formularios = {
   ],
   'proveedor': [
     const _Campo('nombre', 'Nombre', _Tipo.texto),
-    const _Campo('rol', 'Es', _Tipo.opcion, opciones: {'farmer': 'Agricultor', 'buyer': 'Comprador', 'supplier': 'Proveedor de insumos'}),
+    // Proveedor de servicios (Entel, la luz, el agua; General Manager, 6 nov 2026): se paga con un código, que queda
+    // como su cuenta Nº de servicio.
+    const _Campo('rol', 'Es', _Tipo.opcion,
+        opciones: {'farmer': 'Agricultor', 'buyer': 'Comprador', 'supplier': 'Proveedor de insumos', 'service': 'Proveedor de servicios'}),
+    _Campo('codigo', 'Código de pago (Nº de servicio)', _Tipo.texto, visibleSi: (v) => v['rol'] == 'service'),
     _Campo('vende', 'Vende', _Tipo.opcion,
         opciones: const {'parchment': 'Pergamino', 'cherry': 'Cereza', 'both': 'Ambos'},
         porDefecto: 'parchment',
