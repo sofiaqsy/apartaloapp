@@ -1088,7 +1088,11 @@ void main() {
     for (final t in ['L-1', 'Catimor · cosecha 2026', '760 kg / 1,000 kg', '76%']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
-    expect(find.text('Finalizar'), findsNothing);
+    // A roast in progress shows under Tostar café and Registrar gasto on every tab, with its counter (5 Nov 2026).
+    expect(find.text('Tostando · Omagua 250 g'), findsOneWidget);
+    expect(find.textContaining('L-1 · 20 kg verde · desde'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^\d+:\d{2}(:\d{2})?$')), findsOneWidget); // the running counter
+    expect(find.text('Finalizar'), findsOneWidget);
     await tester.tap(find.text('Tostado').last);
     await tester.pump();
     // Roasted coffee by product, the same as the product screen (4 Nov 2026): each product with its kilos, its lots
@@ -1131,7 +1135,7 @@ void main() {
     for (final t in ['16.7%', '820 kg → 683 kg', '1 tostando ahora']) {
       expect(find.text(t), findsNothing, reason: t);
     }
-    expect(find.text('Finalizar'), findsOneWidget); // the roast in progress
+    expect(find.text('Finalizar'), findsNWidgets(2)); // the roast in progress: on its counter and on its row (5 Nov 2026)
     expect(find.text('Iniciar'), findsOneWidget); // the planned one
   });
 
@@ -1277,7 +1281,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Tostado').last); // Café verde is the first tab now (4 Nov 2026)
       await tester.pump();
-      await tester.tap(find.text('Finalizar'));
+      await tester.tap(find.text('Finalizar').first); // the counter's, under the two buttons (5 Nov 2026)
       await tester.pumpAndSettle();
       await tester.enterText(find.widgetWithText(TextField, 'Kilos de café tostado'), '25');
       await tester.tap(find.widgetWithText(ElevatedButton, 'Finalizar tueste'));

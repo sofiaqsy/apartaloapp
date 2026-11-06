@@ -3596,6 +3596,10 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
             () => formulario('gasto', fijos: const {'area': 'production'}, subtitulo: 'Área: Producción')
           ),
         ]),
+        // Lo que se está tostando, con su contador, debajo de los dos botones y en cualquier pestaña: al iniciar un
+        // tueste la persona se queda en Producción y lo ve en marcha (General Manager, 5 nov 2026).
+        for (final t in tuestes.where((t) => t['estado'] == 'in_progress'))
+          Padding(padding: const EdgeInsets.only(top: 10), child: _ContadorTueste(tueste: t, onFinalizar: () => _finalizar(t))),
         _Pestanas(
           // Gastos, y "Lotes de tostado" y "Café verde" en vez de Tuestes y Lotes: General Manager, 4 nov 2026
           // Café verde antes que Tostado (antes "Lotes de tostado"; General Manager, 4 nov 2026).
@@ -4998,6 +5002,74 @@ class _LoteVerdeDetalleScreenState extends State<_LoteVerdeDetalleScreen> {
 }
 
 /// Finalizar tueste: cuántos kilos de café tostado salieron, y notas.
+/// Un tueste en marcha (General Manager, 5 nov 2026): el producto, el lote y los kilos de verde, y un contador que corre
+/// cada segundo desde que se inició, con Finalizar al lado. El contador es información; sólo Finalizar es un botón.
+class _ContadorTueste extends StatefulWidget {
+  const _ContadorTueste({required this.tueste, required this.onFinalizar});
+  final Map<String, dynamic> tueste;
+  final VoidCallback onFinalizar;
+
+  @override
+  State<_ContadorTueste> createState() => _ContadorTuesteState();
+}
+
+class _ContadorTuesteState extends State<_ContadorTueste> {
+  Timer? _reloj;
+
+  @override
+  void initState() {
+    super.initState();
+    _reloj = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _reloj?.cancel();
+    super.dispose();
+  }
+
+  static String _duracion(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return h > 0 ? '$h:$m:$s' : '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = widget.tueste;
+    final inicio = DateTime.tryParse('${t['fecha'] ?? ''}')?.toLocal();
+    final pasado = inicio == null ? Duration.zero : DateTime.now().difference(inicio);
+    final hora = inicio == null ? null : '${inicio.hour.toString().padLeft(2, '0')}:${inicio.minute.toString().padLeft(2, '0')}';
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      decoration: BoxDecoration(
+        color: Colors.deepOrange.shade50,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.deepOrange.shade200),
+      ),
+      child: Row(children: [
+        Icon(Icons.local_fire_department, color: Colors.deepOrange.shade700, size: 30),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(['Tostando', if (t['producto'] != null) '${t['producto']}'].join(' · '),
+                style: TextStyle(fontWeight: FontWeight.w700, color: Colors.deepOrange.shade900), maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text([if (t['lote'] != null) '${t['lote']}', '${_kg(t['kg_verde'])} verde', if (hora != null) 'desde $hora'].join(' · '),
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade800), maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text(_duracion(pasado.isNegative ? Duration.zero : pasado),
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: Colors.deepOrange.shade800,
+                    fontFeatures: const [FontFeature.tabularFigures()])),
+          ]),
+        ),
+        ElevatedButton(onPressed: widget.onFinalizar, child: const Text('Finalizar')),
+      ]),
+    );
+  }
+}
+
 class _FinalizarTueste extends StatefulWidget {
   const _FinalizarTueste({required this.tueste});
   final Map<String, dynamic> tueste;
