@@ -1086,9 +1086,22 @@ void main() {
     // "Tuestes" is now "Lotes de tostado" and "Lotes" is "Café verde" (4 Nov 2026).
     expect(find.text('Tuestes'), findsNothing);
     expect(find.text('Lotes'), findsNothing);
-    for (final t in ['L-1', 'Catimor · cosecha 2026', '760 kg / 1,000 kg', '76%']) {
+    for (final t in ['L-1', 'Catimor · Cosecha 2026']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
+    // Sacks of 69 kg (6 Nov 2026): full sacks + loose kg, never rounded up; the kg stay; no bar or % any more.
+    expect(find.text('11 sacos + 1 kg · 760 kg de 1,000 kg'), findsOneWidget); // 760 = 11 × 69 + 1
+    final semantica = tester.ensureSemantics();
+    expect(find.bySemanticsLabel(RegExp(r'^L-1.*11 sacos \+ 1 kg', dotAll: true)), findsOneWidget); // the drawn sacks say what they show
+    semantica.dispose();
+    expect(find.text('6 sacos + 0 kg · 414 kg de 1,000 kg'), findsNothing);
+    expect(find.text('6 sacos · 414 kg de 1,000 kg'), findsOneWidget); // L-7: exactly 6 sacks
+    await tester.scrollUntilVisible(find.text('2 sacos + 2 kg · 140 kg de 1,000 kg'), 200, scrollable: find.byType(Scrollable).last); // L-8
+    expect(find.text('2 sacos + 2 kg · 140 kg de 1,000 kg'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Tostar café'), -200, scrollable: find.byType(Scrollable).last); // back to the top
+    expect(find.text('1 saco = 69 kg de café verde · según la app, sin contar'), findsOneWidget);
+    expect(find.text('76%'), findsNothing);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
     // A roast in progress shows under Tostar café and Registrar gasto on every tab, with its counter (5 Nov 2026).
     expect(find.text('Tostando · Omagua 250 g'), findsOneWidget);
     expect(find.textContaining('L-1 · 20 kg verde · desde'), findsOneWidget);
@@ -1149,6 +1162,8 @@ void main() {
         }, () => MockClient((req) async => responder(req)));
     await tocar(find.text('Producción'));
     expect(find.textContaining('Blend de Caturra · lote del Blend'), findsOneWidget);
+    // The cards are taller with the sacks (6 Nov 2026): L-8 is further down.
+    await tester.scrollUntilVisible(find.text('Essential'), 200, scrollable: find.byType(Scrollable).last);
     expect(find.text('Essential'), findsOneWidget);
     // Each Blend compra adds 80% of its parchment as estimated green to the lot by itself (4 Nov 2026).
     expect(find.text('2 compras · 71.0 kg de verde estimado'), findsOneWidget);

@@ -3679,6 +3679,12 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
           ],
         ] else ...[
           _encabezado('Lotes de café verde', '${lotes.length} ${lotes.length == 1 ? 'lote' : 'lotes'}'),
+          // Qué es un saco y que el dibujo sale de la app, no de un conteo (Producción y Logística, 6 nov 2026).
+          if (lotes.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text('1 saco = 69 kg de café verde · según la app, sin contar', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            ),
           if (lotes.isEmpty) _vacio('No hay lotes de café verde con stock.'),
           // Cada lote abre su detalle, y las acciones están adentro (General Manager, 4 nov 2026).
           for (final l in lotes)
@@ -4788,24 +4794,22 @@ class _FilaLote extends StatelessWidget {
   Widget build(BuildContext context) {
     final ahora = (lote['kg_ahora'] as num?)?.toDouble() ?? 0;
     final inicial = (lote['kg_inicial'] as num?)?.toDouble() ?? 0;
-    final parte = inicial > 0 ? (ahora / inicial).clamp(0.0, 1.0) : 0.0;
-    final detalle = [if (lote['variedad'] != null) '${lote['variedad']}', if (lote['cosecha'] != null) 'cosecha ${lote['cosecha']}'];
+    final detalle = [if (lote['variedad'] != null) '${lote['variedad']}', if (lote['cosecha'] != null) 'Cosecha ${lote['cosecha']}'];
     final fila = Row(children: [
-        _Insignia('${lote['codigo']}'),
-        const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
+              _Insignia('${lote['codigo']}'),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(detalle.isEmpty ? 'Café verde' : detalle.join(' · '),
-                    style: const TextStyle(fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
               ),
-              Text('${_kg(ahora).replaceAll(' kg', '')} kg / ${_kg(inicial)}', style: TextStyle(color: Colors.grey.shade800)),
             ]),
             // El producto que usa este lote, y si es el lote del Blend (General Manager, 4 nov 2026).
             if (lote['producto'] != null || lote['crece'] == true)
               Padding(
-                padding: const EdgeInsets.only(top: 2),
+                padding: const EdgeInsets.only(top: 4),
                 child: Text(
                     [if (lote['producto'] != null) '${lote['producto']}', if (lote['crece'] == true) 'lote del Blend: crece con café pilado'].join(' · '),
                     style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
@@ -4820,20 +4824,15 @@ class _FilaLote extends StatelessWidget {
                     '${lote['compras_n']} ${lote['compras_n'] == 1 ? 'compra' : 'compras'} · ${_kg(lote['estimado_kg'])} de verde estimado',
                     style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
               ),
-            const SizedBox(height: 6),
-            Row(children: [
-              Expanded(
-                child: LinearProgressIndicator(
-                  value: parte,
-                  minHeight: 8,
-                  borderRadius: BorderRadius.circular(4),
-                  color: Colors.green.shade600,
-                  backgroundColor: Colors.grey.shade200,
-                ),
-              ),
-              const SizedBox(width: 10),
-              _Pildora('${(parte * 100).round()}%', Colors.green),
-            ]),
+            // Los sacos en dibujo (General Manager, 6 nov 2026, con Producción y Logística): uno por cada 69 kg y el último
+            // a medio llenar; los kilos siguen siendo el registro. Es información: sin caja ni color de botón.
+            const SizedBox(height: 8),
+            _Sacos(kg: ahora),
+            const SizedBox(height: 4),
+            Text.rich(TextSpan(children: [
+              TextSpan(text: _textoSacos(ahora), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+              TextSpan(text: ' · ${_kg(ahora)} de ${_kg(inicial)}', style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+            ])),
           ]),
         ),
         if (onTap != null) Icon(Icons.chevron_right, color: Colors.grey.shade600),
@@ -4864,6 +4863,100 @@ class _FilaLote extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Un saco de café verde pesa 69 kg (General Manager, 6 nov 2026; lo propusieron Producción y Logística).
+const kgPorSaco = 69.0;
+
+/// "8 sacos + 36 kg": los sacos llenos y lo suelto, nunca redondeado hacia arriba (esconde café que no hay).
+String _textoSacos(double kg) {
+  if (kg <= 0) return 'Sin café';
+  final llenos = (kg / kgPorSaco).floor();
+  final suelto = (kg - llenos * kgPorSaco).round();
+  final sacos = '$llenos ${llenos == 1 ? 'saco' : 'sacos'}';
+  if (llenos == 0) return '$suelto kg';
+  return suelto > 0 ? '$sacos + $suelto kg' : sacos;
+}
+
+/// Los sacos dibujados: uno lleno por cada 69 kg y el último lleno en parte. Con muchos, los primeros 12 y "+N".
+class _Sacos extends StatelessWidget {
+  const _Sacos({required this.kg});
+  final double kg;
+  static const _maximo = 12;
+
+  @override
+  Widget build(BuildContext context) {
+    if (kg <= 0) return const SizedBox.shrink();
+    final llenos = (kg / kgPorSaco).floor();
+    final parte = (kg - llenos * kgPorSaco) / kgPorSaco;
+    final dibujados = llenos > _maximo ? _maximo : llenos;
+    return Semantics(
+      label: _textoSacos(kg),
+      excludeSemantics: true,
+      child: Wrap(spacing: 2, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.end, children: [
+        for (var i = 0; i < dibujados; i++) const _Saco(lleno: 1),
+        if (llenos > _maximo)
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 8),
+            child: Text('+${llenos - _maximo}', style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+          ),
+        if (parte >= 0.01) _Saco(lleno: parte),
+      ]),
+    );
+  }
+}
+
+class _Saco extends StatelessWidget {
+  const _Saco({required this.lleno});
+  final double lleno; // 0 a 1: cuánto del saco tiene café
+
+  @override
+  Widget build(BuildContext context) => SizedBox(width: 22, height: 34, child: CustomPaint(painter: _PintorSaco(lleno)));
+}
+
+class _PintorSaco extends CustomPainter {
+  _PintorSaco(this.lleno);
+  final double lleno;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final cuerpo = Path()
+      ..moveTo(w * 0.2, h * 0.22)
+      ..quadraticBezierTo(w * 0.08, h * 0.58, w * 0.14, h * 0.88)
+      ..quadraticBezierTo(w * 0.16, h * 0.98, w * 0.34, h * 0.98)
+      ..lineTo(w * 0.66, h * 0.98)
+      ..quadraticBezierTo(w * 0.84, h * 0.98, w * 0.86, h * 0.88)
+      ..quadraticBezierTo(w * 0.92, h * 0.58, w * 0.8, h * 0.22)
+      ..close();
+    // El café que hay: el saco se llena desde abajo.
+    canvas.save();
+    final alto = (h * 0.78) * lleno.clamp(0.0, 1.0);
+    canvas.clipRect(Rect.fromLTWH(0, h * 0.98 - alto, w, alto + 1));
+    canvas.drawPath(cuerpo, Paint()..color = const Color(0xFFFAC775));
+    canvas.restore();
+    final borde = Paint()
+      ..color = const Color(0xFFBA7517)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    canvas.drawPath(cuerpo, borde);
+    // La boca amarrada.
+    canvas.drawPath(
+        Path()
+          ..moveTo(w * 0.28, h * 0.22)
+          ..lineTo(w * 0.36, h * 0.06)
+          ..lineTo(w * 0.64, h * 0.06)
+          ..lineTo(w * 0.72, h * 0.22),
+        borde);
+    canvas.drawLine(Offset(w * 0.22, h * 0.22), Offset(w * 0.78, h * 0.22), Paint()
+      ..color = const Color(0xFF854F0B)
+      ..strokeWidth = 1.6);
+    // Un grano verde en los sacos con café.
+    if (lleno > 0.4) canvas.drawCircle(Offset(w * 0.5, h * 0.62), w * 0.12, Paint()..color = const Color(0xFF639922));
+  }
+
+  @override
+  bool shouldRepaint(_PintorSaco old) => old.lleno != lleno;
 }
 
 /// Detalle de un lote verde (General Manager, 4 nov 2026: "add the detail of each lote, and inside put the actions"):
