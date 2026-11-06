@@ -1078,6 +1078,9 @@ void main() {
 
   testWidgets('Producción shows the green lots and the roasts, with Iniciar and Finalizar', (tester) async {
     await abrir(tester, rol: 'staff');
+    // A tall iPhone-wide screen: with the sacks and bags drawn (6 Nov 2026) every card is taller.
+    tester.view.physicalSize = const Size(1170, 6000);
+    await tester.pumpAndSettle();
     await http.runWithClient(() async {
       await tester.tap(find.text('Producción'));
       await tester.pumpAndSettle();
@@ -1120,7 +1123,10 @@ void main() {
     // No title or total on top, and the kilos only once: on the lot (4 Nov 2026).
     expect(find.text('Café tostado por producto'), findsNothing);
     expect(find.text('385 kg'), findsNothing);
-    expect(find.text('340 kg'), findsOneWidget);
+    // Bags of 12 kg drawn on each roasted lot (6 Nov 2026): full bags + loose kg, then the kilos once.
+    expect(find.text('28 bolsas + 4 kg · 340 kg'), findsOneWidget); // 340 = 28 × 12 + 4
+    expect(find.text('340 kg'), findsNothing);
+    expect(find.text('1 bolsa = 12 kg de café tostado · según la app, sin contar'), findsOneWidget);
     // In the order the database sends: the order of the Productos tab.
     final orden = ['Essential', 'Omagua 250 g', 'Omagua 1 kg'].map((t) => tester.getTopLeft(find.text(t)).dy).toList();
     expect(orden[0] < orden[1] && orden[1] < orden[2], isTrue);

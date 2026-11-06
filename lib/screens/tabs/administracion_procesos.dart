@@ -763,10 +763,11 @@ class _Pildora extends StatelessWidget {
 
 /// Ficha blanca de una fila. Sin flecha: las filas de estas listas no abren otra pantalla.
 class _Ficha extends StatelessWidget {
-  const _Ficha({required this.inicio, required this.titulo, this.detalle, this.fin, this.onTap});
+  const _Ficha({required this.inicio, required this.titulo, this.detalle, this.debajo, this.fin, this.onTap});
   final Widget inicio;
   final String titulo;
   final String? detalle;
+  final Widget? debajo; // un dibujo bajo el texto, por ejemplo las bolsas de un lote tostado
   final Widget? fin;
   final VoidCallback? onTap; // con acción: ficha blanca y flecha; sin acción: fila simple con una línea debajo
 
@@ -780,6 +781,7 @@ class _Ficha extends StatelessWidget {
           Text(titulo, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
           if (detalle != null)
             Text(detalle!, style: TextStyle(fontSize: 13, color: Colors.grey.shade700), maxLines: 2, overflow: TextOverflow.ellipsis),
+          if (debajo != null) Padding(padding: const EdgeInsets.only(top: 6), child: debajo),
         ]),
       ),
       // La etiqueta siempre pegada a la derecha, junto a la flecha (General Manager, 3 nov 2026); el texto toma el
@@ -3654,6 +3656,12 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
         else if (pestana == 1) ...[
           // Sin título ni total arriba (General Manager, 4 nov 2026): los productos en el orden de la pestaña Productos.
           if (productos.isEmpty && sinProducto.isEmpty) _vacio('No hay café tostado ni lotes de tostado programados. Toca "Tostar café".'),
+          // Qué es una bolsa, como en Café verde (General Manager, 6 nov 2026).
+          if (productos.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text('1 bolsa = 12 kg de café tostado · según la app, sin contar', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            ),
           for (final p in productos) ...[
             // Los kilos una sola vez: en cada lote; el total del producto sólo si tiene más de un lote.
             _NombreProducto(nombre: '${p['nombre'] ?? 'Producto'}', kg: _lista(p['lotes']).length > 1 ? _kg(p['kg_tostado']) : null),
@@ -3663,7 +3671,9 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
                 inicio: _Insignia('${l['lote'] ?? '—'}', tono: Colors.orange),
                 // Sólo la fecha, sin "Tostado el": en esta pestaña todo es tostado; como "Lunes 2 de noviembre" (General Manager, 4 nov 2026).
                 titulo: _fechaLarga(l['fecha']),
-                fin: Text(_kg(l['kg']), style: const TextStyle(fontWeight: FontWeight.w600)),
+                // Las bolsas de 12 kg en dibujo, como los sacos del café verde (General Manager, 6 nov 2026); los kilos
+                // siguen al lado, una sola vez.
+                debajo: _BolsasTostado(kg: (l['kg'] as num?)?.toDouble() ?? 0),
                 // Cada lote tostado abre su detalle (General Manager, 4 nov 2026).
                 onTap: l['id'] == null
                     ? null
@@ -4868,50 +4878,114 @@ class _FilaLote extends StatelessWidget {
 /// Un saco de café verde pesa 69 kg (General Manager, 6 nov 2026; lo propusieron Producción y Logística).
 const kgPorSaco = 69.0;
 
+/// Las bolsas de un lote tostado y, debajo, "28 bolsas + 4 kg · 340 kg". En negativo, sólo los kilos.
+class _BolsasTostado extends StatelessWidget {
+  const _BolsasTostado({required this.kg});
+  final double kg;
+
+  @override
+  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _Sacos(kg: kg, bolsas: true),
+        if (kg > 0) const SizedBox(height: 4),
+        Text.rich(TextSpan(children: [
+          TextSpan(text: _textoBolsas(kg), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+          if (kg > 0) TextSpan(text: ' · ${_kg(kg)}', style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+        ])),
+      ]);
+}
+
+/// Una bolsa de café tostado pesa 12 kg (General Manager, 6 nov 2026: "the same with tostado, bolsas de 12 kg").
+const kgPorBolsa = 12.0;
+
 /// "8 sacos + 36 kg": los sacos llenos y lo suelto, nunca redondeado hacia arriba (esconde café que no hay).
-String _textoSacos(double kg) {
+String _textoSacos(double kg) => _textoUnidades(kg, kgPorSaco, 'saco', 'sacos');
+
+/// "3 bolsas + 4 kg" para el café tostado. Un lote tostado puede quedar en negativo: entonces sólo los kilos.
+String _textoBolsas(double kg) => kg < 0 ? _kg(kg) : _textoUnidades(kg, kgPorBolsa, 'bolsa', 'bolsas');
+
+String _textoUnidades(double kg, double porUnidad, String una, String varias) {
   if (kg <= 0) return 'Sin café';
-  final llenos = (kg / kgPorSaco).floor();
-  final suelto = (kg - llenos * kgPorSaco).round();
-  final sacos = '$llenos ${llenos == 1 ? 'saco' : 'sacos'}';
+  final llenos = (kg / porUnidad).floor();
+  final suelto = (kg - llenos * porUnidad).round();
+  final unidades = '$llenos ${llenos == 1 ? una : varias}';
   if (llenos == 0) return '$suelto kg';
-  return suelto > 0 ? '$sacos + $suelto kg' : sacos;
+  return suelto > 0 ? '$unidades + $suelto kg' : unidades;
 }
 
 /// Los sacos dibujados: uno lleno por cada 69 kg y el último lleno en parte. Con muchos, los primeros 12 y "+N".
+/// Con [bolsas], lo mismo con las bolsas de 12 kg del café tostado.
 class _Sacos extends StatelessWidget {
-  const _Sacos({required this.kg});
+  const _Sacos({required this.kg, this.bolsas = false});
   final double kg;
+  final bool bolsas;
   static const _maximo = 12;
 
   @override
   Widget build(BuildContext context) {
     if (kg <= 0) return const SizedBox.shrink();
-    final llenos = (kg / kgPorSaco).floor();
-    final parte = (kg - llenos * kgPorSaco) / kgPorSaco;
+    final porUnidad = bolsas ? kgPorBolsa : kgPorSaco;
+    final llenos = (kg / porUnidad).floor();
+    final parte = (kg - llenos * porUnidad) / porUnidad;
     final dibujados = llenos > _maximo ? _maximo : llenos;
+    Widget una(double lleno) => _Saco(lleno: lleno, bolsa: bolsas);
     return Semantics(
-      label: _textoSacos(kg),
+      label: bolsas ? _textoBolsas(kg) : _textoSacos(kg),
       excludeSemantics: true,
       child: Wrap(spacing: 2, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.end, children: [
-        for (var i = 0; i < dibujados; i++) const _Saco(lleno: 1),
+        for (var i = 0; i < dibujados; i++) una(1),
         if (llenos > _maximo)
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 8),
             child: Text('+${llenos - _maximo}', style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
           ),
-        if (parte >= 0.01) _Saco(lleno: parte),
+        if (parte >= 0.01) una(parte),
       ]),
     );
   }
 }
 
 class _Saco extends StatelessWidget {
-  const _Saco({required this.lleno});
+  const _Saco({required this.lleno, this.bolsa = false});
   final double lleno; // 0 a 1: cuánto del saco tiene café
+  final bool bolsa;
 
   @override
-  Widget build(BuildContext context) => SizedBox(width: 22, height: 34, child: CustomPaint(painter: _PintorSaco(lleno)));
+  Widget build(BuildContext context) => bolsa
+      ? SizedBox(width: 20, height: 30, child: CustomPaint(painter: _PintorBolsa(lleno)))
+      : SizedBox(width: 22, height: 34, child: CustomPaint(painter: _PintorSaco(lleno)));
+}
+
+/// Una bolsa de café tostado: bolsa de pie con el borde de arriba doblado, café marrón que la llena desde abajo.
+class _PintorBolsa extends CustomPainter {
+  _PintorBolsa(this.lleno);
+  final double lleno;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final cuerpo = RRect.fromRectAndRadius(Rect.fromLTWH(w * 0.12, h * 0.18, w * 0.76, h * 0.8), const Radius.circular(3));
+    canvas.save();
+    final alto = cuerpo.height * lleno.clamp(0.0, 1.0);
+    canvas.clipRect(Rect.fromLTWH(0, cuerpo.bottom - alto, w, alto + 1));
+    canvas.drawRRect(cuerpo, Paint()..color = const Color(0xFFA0522D));
+    canvas.restore();
+    final borde = Paint()
+      ..color = const Color(0xFF633806)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    canvas.drawRRect(cuerpo, borde);
+    // El borde doblado de arriba.
+    canvas.drawRect(Rect.fromLTWH(w * 0.12, h * 0.04, w * 0.76, h * 0.14), Paint()..color = const Color(0xFFFAC775));
+    canvas.drawRect(Rect.fromLTWH(w * 0.12, h * 0.04, w * 0.76, h * 0.14), borde);
+    // Un grano tostado en las bolsas con café.
+    if (lleno > 0.4) {
+      canvas.drawOval(Rect.fromCenter(center: Offset(w * 0.5, h * 0.62), width: w * 0.3, height: w * 0.22),
+          Paint()..color = const Color(0xFFFAC775));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_PintorBolsa old) => old.lleno != lleno;
 }
 
 class _PintorSaco extends CustomPainter {
