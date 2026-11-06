@@ -618,30 +618,42 @@ abstract class _ProcesoState<T extends StatefulWidget> extends State<T> {
     if (await _abrirFormulario(context, form, fijos: fijos, subtitulo: subtitulo, iniciales: iniciales)) cargar();
   }
 
+  /// Un campo de la pantalla tiene el foco (el teclado está abierto).
+  bool escribiendo = false;
+
   Widget pantalla(String titulo, List<Widget> Function(Map<String, dynamic> d) contenido, {VoidCallback? alFinal, Widget? botonFlotante}) {
     final d = datos;
     return Scaffold(
       appBar: AppBar(title: Text(titulo)),
-      floatingActionButton: botonFlotante,
-      body: NotificationListener<ScrollNotification>(
-        // Cerca del final de la lista se pide la página siguiente (listas largas, como los proveedores).
-        onNotification: (n) {
-          if (alFinal != null && n.metrics.extentAfter < 300) alFinal();
-          return false;
+      // El botón flotante se esconde mientras se escribe, para no tapar la lista sobre el teclado; vuelve al cerrarlo
+      // (General Manager, 6 nov 2026, como en Pedidos). Se mira el foco, no la altura del teclado.
+      floatingActionButton: escribiendo ? null : botonFlotante,
+      body: Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        onFocusChange: (f) {
+          if (mounted && f != escribiendo) setState(() => escribiendo = f);
         },
-        child: RefreshIndicator(
-          onRefresh: cargar,
-          child: d == null
-              ? ListView(children: [
-                  Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: error != null ? Text(error!, textAlign: TextAlign.center) : const Center(child: CircularProgressIndicator()),
-                  ),
-                ])
-              : ListView(
-                  // Con botón flotante, espacio al final para que no tape la última fila.
-                  padding: EdgeInsets.fromLTRB(16, 16, 16, botonFlotante == null ? 16 : 88),
-                  children: contenido(d)),
+        child: NotificationListener<ScrollNotification>(
+          // Cerca del final de la lista se pide la página siguiente (listas largas, como los proveedores).
+          onNotification: (n) {
+            if (alFinal != null && n.metrics.extentAfter < 300) alFinal();
+            return false;
+          },
+          child: RefreshIndicator(
+            onRefresh: cargar,
+            child: d == null
+                ? ListView(children: [
+                    Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: error != null ? Text(error!, textAlign: TextAlign.center) : const Center(child: CircularProgressIndicator()),
+                    ),
+                  ])
+                : ListView(
+                    // Con botón flotante, espacio al final para que no tape la última fila.
+                    padding: EdgeInsets.fromLTRB(16, 16, 16, botonFlotante == null ? 16 : 88),
+                    children: contenido(d)),
+          ),
         ),
       ),
     );
@@ -2367,6 +2379,16 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
           ].join(' y ');
     return Scaffold(
       appBar: AppBar(title: const Text('Proveedor')),
+      // Generar reporte es el botón flotante del PDF, como en los procesos (General Manager, 6 nov 2026).
+      floatingActionButton: p == null
+          ? null
+          : FloatingActionButton(
+              tooltip: 'Generar reporte',
+              onPressed: _generando ? null : _generarReporte,
+              child: _generando
+                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5))
+                  : const Icon(Icons.picture_as_pdf_outlined),
+            ),
       body: RefreshIndicator(
         onRefresh: _cargar,
         child: p == null
@@ -2376,19 +2398,19 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
                   child: _error != null ? Text(_error!, textAlign: TextAlign.center) : const Center(child: CircularProgressIndicator()),
                 ),
               ])
-            : ListView(padding: const EdgeInsets.all(16), children: [
+            // Espacio al final para que el botón flotante no tape la última fila.
+            : ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 88), children: [
                 Row(children: [
                   Expanded(child: Text('${p['nombre'] ?? ''}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
                   _Pildora(es, p['agricultor'] == true ? Colors.green : Colors.blue),
                 ]),
                 Text('${p['id']}${p['tipo'] == 'business' ? ' · Empresa' : ' · Persona'}', style: TextStyle(color: Colors.grey.shade700)),
                 const SizedBox(height: 12),
-                _Acciones(acciones: [
-                  (Icons.picture_as_pdf_outlined, _generando ? 'Generando…' : 'Generar reporte', _generarReporte),
-                  if (puedeEditar) (Icons.edit_outlined, 'Editar datos', () => _editarDatos(p)),
-                  if (puedeEditar)
+                if (puedeEditar)
+                  _Acciones(acciones: [
+                    (Icons.edit_outlined, 'Editar datos', () => _editarDatos(p)),
                     (Icons.add_card_outlined, 'Agregar cuenta', () => _formulario('cuentaProveedor', subtitulo: '${p['nombre'] ?? ''}')),
-                ]),
+                  ]),
                 _panel('Datos', [
                   _dato('Vende', _vende[p['vende']] ?? p['vende']?.toString()),
                   _dato('Lo recoge', p['recoge']?.toString()),

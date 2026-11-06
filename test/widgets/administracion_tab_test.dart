@@ -2223,9 +2223,29 @@ void main() {
     for (final t in ['DNI o RUC', 'Teléfono', 'Cuentas para pagarle', 'Le debemos', 'Editar datos', 'Agregar cuenta', 'Adelantos']) {
       expect(find.text(t), findsNothing, reason: t);
     }
-    expect(find.text('Generar reporte'), findsOneWidget); // everyone can make the report (without money for staff)
+    // Everyone can make the report (without money for staff): the round PDF floating button, as in the processes.
+    expect(find.widgetWithIcon(FloatingActionButton, Icons.picture_as_pdf_outlined), findsOneWidget);
+    expect(find.byTooltip('Generar reporte'), findsOneWidget);
     // Opening the detail never asks for the report: it is read only when Generar reporte is tapped.
     expect(pedidos.where((r) => r.url.path.endsWith('/reporte')), isEmpty);
+  });
+
+  testWidgets('Compras: the PDF floating button hides while the provider search has the keyboard, and comes back', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Proveedores'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final pdf = find.widgetWithIcon(FloatingActionButton, Icons.picture_as_pdf_outlined);
+    expect(pdf, findsOneWidget);
+    await tester.tap(find.widgetWithText(TextField, 'Buscar por nombre o apodo'));
+    await tester.pumpAndSettle();
+    expect(pdf, findsNothing); // typing: the button does not cover the list over the keyboard
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    expect(pdf, findsOneWidget); // keyboard closed: it is back
   });
 
   testWidgets('a process screen asks the server only for its own summary', (tester) async {
@@ -2250,12 +2270,15 @@ void main() {
       await tester.tap(find.text('Pedro Ramírez Ñique'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    for (final t in ['Generar reporte', 'Editar datos', 'Agregar cuenta']) {
+    for (final t in ['Editar datos', 'Agregar cuenta']) {
       expect(find.text(t), findsWidgets, reason: t);
     }
-    await tester.scrollUntilVisible(find.text('S/ 500 · ADV-007'), 200, scrollable: find.byType(Scrollable).last);
+    expect(find.text('Generar reporte'), findsNothing); // not a tile any more: the floating PDF button
+    expect(find.byTooltip('Generar reporte'), findsOneWidget);
+    final lista = find.ancestor(of: find.text('Datos'), matching: find.byType(Scrollable)).first;
+    await tester.scrollUntilVisible(find.text('S/ 500 · ADV-007'), 200, scrollable: lista);
     expect(find.text('Saldo S/ 200'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Editar datos'), -200, scrollable: find.byType(Scrollable).last);
+    await tester.scrollUntilVisible(find.text('Editar datos'), -200, scrollable: lista);
     await http.runWithClient(() async {
       await tester.tap(find.text('Editar datos'));
       await tester.pumpAndSettle();
@@ -2264,7 +2287,7 @@ void main() {
     expect(find.descendant(of: find.byType(TextFormField), matching: find.text('Pedro Ramírez Ñique')), findsOneWidget); // filled with today's data
     await tester.tap(find.byIcon(Icons.close).last);
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('000-0000000-0-00'), 200, scrollable: find.byType(Scrollable).last);
+    await tester.scrollUntilVisible(find.text('000-0000000-0-00'), 200, scrollable: lista);
     await tester.tap(find.text('000-0000000-0-00'));
     await tester.pumpAndSettle();
     expect(find.text('Editar cuenta'), findsOneWidget);
