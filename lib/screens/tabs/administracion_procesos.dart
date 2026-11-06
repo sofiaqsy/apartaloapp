@@ -2127,6 +2127,8 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
               if (c['producto'] != null) '${c['producto']}',
               if (c['descuento'] == true) 'Con descuento',
             ].join(' · '),
+            // El café de la compra en sacos de 69 kg dibujados, pergamino o cereza (General Manager, 6 nov 2026).
+            debajo: _SacosCompra(kg: (c['kg'] as num?)?.toDouble() ?? 0),
             // Cada compra lleva su marca de pago a la derecha (General Manager, 3 nov 2026): Sin precio, Por pagar,
             // Pago solicitado, Pagado en parte, Pagado o Rechazado. El precio va en la línea de abajo.
             fin: _Pildora('${c['situacion'] ?? ''}', _colorSituacion[c['situacion']] ?? Colors.grey),
@@ -4906,6 +4908,21 @@ class _BolsasTostado extends StatelessWidget {
           if (kg > 0) TextSpan(text: ' · ${_kg(kg)}', style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
         ])),
       ]);
+}
+
+/// Los sacos de una compra (69 kg, pergamino o cereza: General Manager, 6 nov 2026) y "1 saco + 31 kg" debajo.
+class _SacosCompra extends StatelessWidget {
+  const _SacosCompra({required this.kg});
+  final double kg;
+
+  @override
+  Widget build(BuildContext context) => kg <= 0
+      ? const SizedBox.shrink()
+      : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _Sacos(kg: kg),
+          const SizedBox(height: 2),
+          Text(_textoSacos(kg), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+        ]);
 }
 
 /// Una bolsa de café tostado pesa 12 kg (General Manager, 6 nov 2026: "the same with tostado, bolsas de 12 kg").

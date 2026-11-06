@@ -1167,6 +1167,17 @@ void main() {
     expect(find.text('Iniciar'), findsOneWidget); // the planned one
   });
 
+  testWidgets('Compras: each compra draws its coffee in 69 kg sacks, pergamino or cereza (6 Nov 2026)', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('1 saco + 31 kg'), findsOneWidget); // DL-0001: 100 kg of pergamino
+    expect(find.text('50 kg'), findsOneWidget); // DL-0002: under one sack, a part-full sack and its kilos
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Café verde: each lot opens its detail; the Blend lot lists its compras with the estimate; Cerrar lote after the count', (tester) async {
     await abrir(tester, rol: 'owner');
     Future<void> tocar(Finder f) => http.runWithClient(() async {
@@ -1938,6 +1949,8 @@ void main() {
     }, () => MockClient((req) async => responder(req)));
     expect(find.text('Pagado en parte'), findsOneWidget);
     expect(find.textContaining('falta S/ 500'), findsOneWidget);
+    // The rows are taller with the sacks (6 Nov 2026): the paid compras are further down.
+    await tester.scrollUntilVisible(find.text('Pagado'), 200, scrollable: find.byType(Scrollable).last);
     expect(find.text('Pagado'), findsWidgets); // a priced compra shows its mark, not its price
     expect(find.text('S/ 5/kg'), findsNothing);
     expect(find.textContaining('S/ 5/kg'), findsWidgets);
