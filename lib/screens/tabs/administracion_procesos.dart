@@ -4912,13 +4912,12 @@ String _textoUnidades(double kg, double porUnidad, String una, String varias) {
   return suelto > 0 ? '$unidades + $suelto kg' : unidades;
 }
 
-/// Los sacos dibujados: uno lleno por cada 69 kg y el último lleno en parte. Con muchos, los primeros 12 y "+N".
-/// Con [bolsas], lo mismo con las bolsas de 12 kg del café tostado.
+/// Los sacos dibujados: uno lleno por cada 69 kg y el último lleno en parte; todos, sin resumir con "+N" (General
+/// Manager, 6 nov 2026: el dibujo representa toda la cantidad). Con [bolsas], lo mismo con las bolsas de 12 kg.
 class _Sacos extends StatelessWidget {
   const _Sacos({required this.kg, this.bolsas = false});
   final double kg;
   final bool bolsas;
-  static const _maximo = 12;
 
   @override
   Widget build(BuildContext context) {
@@ -4926,18 +4925,12 @@ class _Sacos extends StatelessWidget {
     final porUnidad = bolsas ? kgPorBolsa : kgPorSaco;
     final llenos = (kg / porUnidad).floor();
     final parte = (kg - llenos * porUnidad) / porUnidad;
-    final dibujados = llenos > _maximo ? _maximo : llenos;
     Widget una(double lleno) => _Saco(lleno: lleno, bolsa: bolsas);
     return Semantics(
       label: bolsas ? _textoBolsas(kg) : _textoSacos(kg),
       excludeSemantics: true,
       child: Wrap(spacing: 2, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.end, children: [
-        for (var i = 0; i < dibujados; i++) una(1),
-        if (llenos > _maximo)
-          Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 8),
-            child: Text('+${llenos - _maximo}', style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
-          ),
+        for (var i = 0; i < llenos; i++) una(1),
         if (parte >= 0.01) una(parte),
       ]),
     );

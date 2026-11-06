@@ -1125,6 +1125,7 @@ void main() {
     expect(find.text('385 kg'), findsNothing);
     // Bags of 12 kg drawn on each roasted lot (6 Nov 2026): full bags + loose kg, then the kilos once.
     expect(find.text('28 bolsas + 4 kg · 340 kg'), findsOneWidget); // 340 = 28 × 12 + 4
+    expect(find.text('+16'), findsNothing); // every bag is drawn, never summarized (6 Nov 2026)
     expect(find.text('340 kg'), findsNothing);
     expect(find.text('1 bolsa = 12 kg de café tostado · según la app, sin contar'), findsOneWidget);
     // In the order the database sends: the order of the Productos tab.
