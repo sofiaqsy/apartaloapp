@@ -118,6 +118,11 @@ class AdministracionService {
   static Future<ApiResponse<Map<String, dynamic>>> conciliarMovimiento(int id, String tipo, String ref, {required String clave}) =>
       _post('finanzas/movimientos/$id/conciliar', {'tipo': tipo, 'ref': ref, 'clientRef': clave});
 
+  /// Tostar café (General Manager, 5 nov 2026): el lote con el que se tuesta un producto ({lote: {id, codigo, kg, de}},
+  /// vacío si ninguno tiene café): el que crece con sus compras, el suyo en la tienda o el más nuevo de sus compras.
+  static Future<ApiResponse<Map<String, dynamic>>> loteDelProducto(String productoId) =>
+      _get('produccion/lote-del-producto?producto=${Uri.encodeQueryComponent(productoId)}');
+
   /// A quién y dónde se paga (General Manager, 5 nov 2026): para una compra, un gasto o un adelanto ([tipo] compra,
   /// gasto o adelanto), la persona, su teléfono y sus cuentas activas ({destino}). Sólo dueños.
   static Future<ApiResponse<Map<String, dynamic>>> destinoPago(String tipo, String id) =>

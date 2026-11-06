@@ -2544,7 +2544,11 @@ class _RoastTimerDisplayState extends State<_RoastTimerDisplay> {
 }
 
 /// Abre "Nuevo evento de tueste" para un producto. Lo usa también Administración → Producción → Tostar café.
-Future<void> abrirProgramarTueste(BuildContext context, Map<String, dynamic> producto, {VoidCallback? onCreado}) async {
+/// [iniciarAhora] (Administración → Producción → Tostar café, General Manager 5 nov 2026): el formulario es para empezar
+/// a tostar ya: sin fecha ni estimado; el evento se crea por dentro y se inicia en el mismo paso. [loteId] y
+/// [loteCodigo]: el lote del producto que se elige por defecto (si no, el del producto en la tienda).
+Future<void> abrirProgramarTueste(BuildContext context, Map<String, dynamic> producto,
+    {VoidCallback? onCreado, bool iniciarAhora = false, String? loteId, String? loteCodigo}) async {
   final productId = producto['codigo']?.toString() ?? '';
   if (productId.isEmpty) return;
   await showModalBottomSheet<void>(
@@ -2554,7 +2558,10 @@ Future<void> abrirProgramarTueste(BuildContext context, Map<String, dynamic> pro
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
     builder: (_) => _CrearEventoSheet(
       productId: productId,
-      defaultLoteId: producto['green_lot_id'] as String?,
+      productoNombre: producto['nombre']?.toString(),
+      defaultLoteId: loteId ?? producto['green_lot_id'] as String?,
+      defaultLoteCode: loteCodigo,
+      iniciarAhora: iniciarAhora,
       onCreado: onCreado ?? () {},
     ),
   );
@@ -2563,14 +2570,18 @@ Future<void> abrirProgramarTueste(BuildContext context, Map<String, dynamic> pro
 // ── Bottom sheet: crear evento de tueste ──────────────────────────────────────
 class _CrearEventoSheet extends StatefulWidget {
   final String productId;
+  final String? productoNombre;
   final String? defaultLoteId;
   final String? defaultLoteCode;
+  final bool iniciarAhora;
   final VoidCallback onCreado;
 
   const _CrearEventoSheet({
     required this.productId,
+    this.productoNombre,
     this.defaultLoteId,
     this.defaultLoteCode,
+    this.iniciarAhora = false,
     required this.onCreado,
   });
 
@@ -2722,11 +2733,26 @@ class _CrearEventoSheetState extends State<_CrearEventoSheet> {
     final res = await ApiService.crearEventoTueste(
       greenLotId:    _loteId!,
       greenInKg:     kg,
-      roastedAt:     _fechaHora.toUtc().toIso8601String(),
+      // Al tostar ya, el evento es de este momento.
+      roastedAt:     (widget.iniciarAhora ? DateTime.now() : _fechaHora).toUtc().toIso8601String(),
       productId:     widget.productId,
       roastedOutKg:  kgSalida,
     );
     if (!mounted) return;
+    if (res.isSuccess && widget.iniciarAhora) {
+      // El evento se creó por dentro; se inicia en el mismo paso (General Manager, 5 nov 2026).
+      final inicio = await ApiService.iniciarTueste(res.data ?? '');
+      if (!mounted) return;
+      Navigator.pop(context);
+      widget.onCreado();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(inicio.isSuccess
+            ? 'Tueste iniciado ✓ ${_fmtKgLote(kg)} kg de ${_loteSel?['lot_code'] ?? 'café verde'}'
+            : 'El tueste quedó programado, pero no se inició: ${inicio.error ?? ''}. Tócalo y elige Iniciar.'),
+        backgroundColor: inicio.isSuccess ? Colors.green.shade600 : Colors.orange.shade800,
+      ));
+      return;
+    }
     if (res.isSuccess) {
       Navigator.pop(context);
       widget.onCreado();
@@ -2755,11 +2781,16 @@ class _CrearEventoSheetState extends State<_CrearEventoSheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              Text('Nuevo evento de tueste',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
-                      color: Colors.orange.shade800)),
-              const Spacer(),
-              IconButton(icon: const Icon(Icons.close),
+              Expanded(
+                child: Text(
+                    widget.iniciarAhora
+                        ? ['Tostar café', if ((widget.productoNombre ?? '').isNotEmpty) widget.productoNombre!].join(' · ')
+                        : 'Nuevo evento de tueste',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
+                        color: Colors.orange.shade800)),
+              ),
+              IconButton(icon: const Icon(Icons.close), tooltip: 'Cerrar',
                   onPressed: () => Navigator.pop(context)),
             ]),
             const SizedBox(height: 16),
@@ -2780,6 +2811,7 @@ class _CrearEventoSheetState extends State<_CrearEventoSheet> {
             else
               DropdownButtonFormField<String>(
                 value: _loteId,
+                isExpanded: true, // un lote con nombre largo se corta con "…" en vez de desbordar
                 decoration: InputDecoration(
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -2797,7 +2829,7 @@ class _CrearEventoSheetState extends State<_CrearEventoSheet> {
                   ].join(' · ');
                   return DropdownMenuItem<String>(
                     value: l['id'] as String,
-                    child: Text(label, style: const TextStyle(fontSize: 13)),
+                    child: Text(label, style: const TextStyle(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
                   );
                 }).toList(),
                 onChanged: (v) => setState(() => _loteId = v),
@@ -2844,6 +2876,8 @@ class _CrearEventoSheetState extends State<_CrearEventoSheet> {
             ),
             const SizedBox(height: 14),
 
+            // Al tostar ya no se piden el estimado ni la fecha: se escribe la salida al finalizar.
+            if (!widget.iniciarAhora) ...[
             Text('Estimado de salida (opcional)',
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600,
                     fontWeight: FontWeight.w600)),
@@ -2882,6 +2916,7 @@ class _CrearEventoSheetState extends State<_CrearEventoSheet> {
                 ]),
               ),
             ),
+            ],
             const SizedBox(height: 20),
 
             SizedBox(
@@ -2897,8 +2932,8 @@ class _CrearEventoSheetState extends State<_CrearEventoSheet> {
                 child: _submitting
                     ? const SizedBox(height: 18, width: 18,
                         child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Text('Crear evento',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                    : Text(widget.iniciarAhora ? 'Iniciar tueste' : 'Crear evento',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
               ),
             ),
           ],

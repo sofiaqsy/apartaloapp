@@ -3507,11 +3507,17 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
   @override
   String get clave => 'produccion';
 
-  /// Tostar café: se elige el producto (el café que sale del tueste) y se programa con su lote verde.
+  /// Tostar café: se elige el producto (el café que sale del tueste) y se abre el formulario para empezar a tostar, con
+  /// el lote del producto ya elegido; el evento se crea por dentro y se inicia en el mismo paso (General Manager, 5 nov
+  /// 2026).
   Future<void> _tostar() async {
     final producto = await _abrirPantalla<Map<String, dynamic>>(context, const _ElegirProducto());
     if (producto == null || !mounted) return;
-    await abrirProgramarTueste(context, producto, onCreado: cargar);
+    final r = await AdministracionService.loteDelProducto('${producto['codigo'] ?? ''}');
+    if (!mounted) return;
+    final lote = r.isSuccess ? _mapa(r.data!['lote']) : const <String, dynamic>{};
+    await abrirProgramarTueste(context, producto,
+        onCreado: cargar, iniciarAhora: true, loteId: lote['id']?.toString(), loteCodigo: lote['codigo']?.toString());
     cargar();
   }
 

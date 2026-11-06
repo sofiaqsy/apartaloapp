@@ -444,6 +444,16 @@ void main() {
         ]},
       }), 200);
     }
+    if (p.endsWith('/produccion/lote-del-producto')) {
+      return http.Response(jsonEncode({'lote': {'id': 'gl-9', 'codigo': 'L-9', 'kg': 24, 'de': 'compra'}}), 200);
+    }
+    if (p.endsWith('/tostador/green-lots')) {
+      return http.Response(jsonEncode([
+        {'id': 'gl-7', 'lot_code': 'L-7', 'current_kg': 588, 'harvest_year': 2026, 'variety': {'name': 'Blend'}},
+        {'id': 'gl-9', 'lot_code': 'L-9', 'current_kg': 24, 'harvest_year': 2026, 'variety': {'name': 'Geisha'}},
+      ]), 200);
+    }
+    if (p.endsWith('/tostador/events/create')) return http.Response(jsonEncode({'ok': true, 'eventId': 'ev-1'}), 201);
     if (p.contains('/tostador/events/')) return http.Response(jsonEncode({'ok': true}), 200);
     if (p.endsWith('/resumen')) return http.Response(jsonEncode({'rol': 'owner', 'meses': []}), 200);
     if (p.contains('/registrar/')) return http.Response(jsonEncode({'ok': true, 'result': {'expense_id': 'EX-0001'}}), 200);
@@ -1027,6 +1037,42 @@ void main() {
     final req = pedidos.single;
     expect(req.url.toString(), 'https://api.test/api/administracion/BIZ-002/registrar/gasto');
     expect(jsonDecode(req.body), {'monto': 80, 'clientRef': 'gasto-123-abcdefgh'});
+  });
+
+  // General Manager, 5 Nov 2026: Tostar café opens the form to start roasting, with the product's lot chosen; the event is
+  // created inside and started in the same step.
+  testWidgets('Tostar café: the product\'s lot is chosen, no date, and Iniciar tueste creates and starts the roast', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Producción'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Tostado').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Tostar café'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Geisha'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(pedidos.last.url.path, endsWith('/tostador/green-lots'));
+    expect(pedidos.any((r) => r.url.path.endsWith('/produccion/lote-del-producto') && r.url.queryParameters['producto'] == 'prod-geisha'), isTrue);
+    expect(find.text('Tostar café · Geisha'), findsOneWidget);
+    expect(find.textContaining('L-9 · Geisha · 2026 · 24 kg · lote del producto'), findsOneWidget);
+    for (final t in ['Fecha / hora', 'Estimado de salida (opcional)', 'Crear evento']) {
+      expect(find.text(t), findsNothing, reason: t);
+    }
+    await http.runWithClient(() async {
+      await tester.enterText(find.byType(TextField).first, '10');
+      await tester.pump();
+      await tester.tap(find.text('Iniciar tueste'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final crear = pedidos.lastWhere((r) => r.url.path.endsWith('/tostador/events/create'));
+    expect(jsonDecode(crear.body), containsPair('green_lot_id', 'gl-9'));
+    expect(jsonDecode(crear.body), containsPair('green_in_kg', 10));
+    final iCrear = pedidos.indexOf(crear);
+    final iIniciar = pedidos.indexWhere((r) => r.url.path.endsWith('/tostador/events/ev-1/start-admin'));
+    expect(iIniciar > iCrear, isTrue, reason: 'started right after it was created');
+    expect(find.text('Tueste iniciado ✓ 10 kg de L-9'), findsOneWidget);
   });
 
   testWidgets('Producción shows the green lots and the roasts, with Iniciar and Finalizar', (tester) async {
