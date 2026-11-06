@@ -1646,6 +1646,27 @@ void main() {
     expect(pedidos.lastWhere((r) => r.url.path.endsWith('/personas/buscar')).url.queryParameters['area'], 'farm');
   });
 
+  testWidgets('Comercialización: Registrar proveedor puts the provider in Comercial (6 Nov 2026)', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Comercialización'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Registrar proveedor'));
+      await tester.pumpAndSettle();
+      expect(find.text('Área: Comercial'), findsOneWidget);
+      expect(find.text('Vende'), findsNothing); // Proveedor de insumos comes chosen
+      await tester.enterText(find.widgetWithText(TextField, 'Nombre'), 'Imprenta Uno');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final r = pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/proveedor'));
+    final body = jsonDecode(r.body) as Map;
+    expect(body['nombre'], 'Imprenta Uno');
+    expect(body['rol'], 'supplier');
+    expect(body['area'], 'commercial');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Comercialización lists its own providers (6 Nov 2026)', (tester) async {
     await abrir(tester, rol: 'owner');
     await http.runWithClient(() async {

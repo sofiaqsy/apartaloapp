@@ -842,6 +842,19 @@ mixin _ProveedoresDelProceso<T extends StatefulWidget> on State<T> {
     super.dispose();
   }
 
+  /// Otra vez desde el principio, por ejemplo después de Registrar proveedor.
+  void recargarProveedores() {
+    setState(() {
+      _proveedores.clear();
+      _hayMasProv = true;
+      _totalProv = null;
+      _errorProv = null;
+      _cargandoProv = false;
+      _pedidoProv++;
+    });
+    masProveedores();
+  }
+
   /// Primera página al abrir la pestaña.
   void abrirProveedores() {
     if (_proveedores.isEmpty && _hayMasProv && !_cargandoProv) masProveedores();
@@ -3208,6 +3221,7 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Provee
       _erroresFilas[i] = null;
     }
     final l = _listaDe(_pestana);
+    if (_pestana == 1) recargarProveedores();
     if (_pestana == 2) cargarGastos();
     await Future.wait([super.cargar(), if (l != null) _mas(l)]);
   }
@@ -3296,6 +3310,13 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Provee
             Icons.receipt_long,
             _titulos['gasto']!, // el mismo nombre en cada proceso; el área va fija (General Manager, 3 nov 2026)
             () => formulario('gasto', fijos: const {'area': 'commercial'}, subtitulo: 'Área: Comercial')
+          ),
+          // Registrar proveedor (General Manager, 6 nov 2026): el proveedor queda en Comercialización (su pestaña
+          // Proveedores); el área va fija y "Proveedor de insumos" ya viene elegido.
+          (
+            Icons.person_add_alt_1,
+            _titulos['proveedor']!,
+            () => formulario('proveedor', fijos: const {'area': 'commercial'}, subtitulo: 'Área: Comercial', iniciales: const {'rol': 'supplier'})
           ),
         ]),
         _Pestanas(
