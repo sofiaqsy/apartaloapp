@@ -1508,7 +1508,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Comercialización (4 Nov 2026): no data on top, Clientes, Gastos and Últimos pagos 20 a page, PDF; no Pedidos, Productos or Proveedores', (tester) async {
+  testWidgets('Comercialización (4 Nov 2026): no data on top, Clientes, Proveedores, Gastos and Últimos pagos 20 a page, PDF; no Pedidos or Productos', (tester) async {
     await abrir(tester, rol: 'owner');
     await tester.scrollUntilVisible(find.text('Vendido este mes'), 200, scrollable: find.byType(Scrollable).last);
     expect(find.text('Comercialización'), findsOneWidget); // the first card keeps its indicators
@@ -1518,16 +1518,17 @@ void main() {
     }, () => MockClient((req) async => responder(req)));
     expect(find.text('Reporte de ventas'), findsNothing);
     expect(find.text('Ticket promedio'), findsNothing); // no data on top
-    for (final t in ['Registrar gasto', 'Últimos pagos', 'Clientes', 'Gastos']) {
+    for (final t in ['Registrar gasto', 'Últimos pagos', 'Clientes', 'Proveedores', 'Gastos']) {
       expect(find.text(t), findsWidgets, reason: t);
     }
-    for (final t in ['Registrar pedido', 'Pedidos', 'Productos', 'Proveedores']) {
+    for (final t in ['Registrar pedido', 'Pedidos', 'Productos']) {
       expect(find.text(t), findsNothing, reason: t);
     }
     expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
-    // The tabs in her order (4 Nov 2026): Clientes, Gastos, Últimos pagos; it opens on Clientes.
-    final x = ['Clientes', 'Gastos', 'Últimos pagos'].map((t) => tester.getCenter(find.text(t).last).dx).toList();
-    expect(x[0] < x[1] && x[1] < x[2], isTrue);
+    // The tabs in her order (4 Nov 2026, Proveedores added 6 Nov): Clientes, Proveedores, Gastos, Últimos pagos; it opens
+    // on Clientes.
+    final x = ['Clientes', 'Proveedores', 'Gastos', 'Últimos pagos'].map((t) => tester.getCenter(find.text(t).last).dx).toList();
+    expect(x[0] < x[1] && x[1] < x[2] && x[2] < x[3], isTrue);
     expect(pedidos.any((r) => r.url.path.endsWith('/comercial/pagos')), isFalse); // asked only when opened
     // Clientes: from the orders, 20 a page.
     expect(pedidos.any((r) => r.url.path.endsWith('/comercial/clientes') && r.url.queryParameters['limit'] == '20'), isTrue);
@@ -1643,6 +1644,24 @@ void main() {
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     expect(pedidos.lastWhere((r) => r.url.path.endsWith('/personas/buscar')).url.queryParameters['area'], 'farm');
+  });
+
+  testWidgets('Comercialización lists its own providers (6 Nov 2026)', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Comercialización'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(pedidos.any((r) => r.url.path.endsWith('/personas/buscar')), isFalse); // asked only when opened
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Proveedores'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final r = pedidos.lastWhere((r) => r.url.path.endsWith('/personas/buscar'));
+    expect(r.url.queryParameters['area'], 'commercial');
+    expect(r.url.queryParameters['limit'], '20');
+    expect(find.text('Buscar por nombre o apodo'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('all the Compras buttons are the same size', (tester) async {

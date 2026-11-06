@@ -3160,18 +3160,23 @@ class _ComercialScreen extends StatefulWidget {
 }
 
 /// Comercialización como los demás procesos (General Manager, 4 nov 2026; lo propuso el área Comercial y la General
-/// Manager lo ajustó el mismo día): sin datos arriba, Registrar gasto, pestañas Clientes | Gastos | Últimos pagos (de 20
-/// en 20) y el reporte en PDF. Sin pestañas Pedidos, Productos ni Proveedores, ni Registrar pedido. Sin "Por cobrar":
-/// el estado de pago de los pedidos todavía no cuadra.
-class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _GastosDelArea, _ReporteDelProceso {
-  // Primero Clientes, luego Gastos y al final Últimos pagos (General Manager, 4 nov 2026).
-  int _pestana = 0; // 0 Clientes, 1 Gastos, 2 Últimos pagos
+/// Manager lo ajustó el mismo día): sin datos arriba, Registrar gasto, pestañas Clientes | Proveedores | Gastos |
+/// Últimos pagos (de 20 en 20) y el reporte en PDF. Sin pestañas Pedidos ni Productos, ni Registrar pedido. Sin "Por
+/// cobrar": el estado de pago de los pedidos todavía no cuadra.
+class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _ProveedoresDelProceso, _GastosDelArea, _ReporteDelProceso {
+  // Primero Clientes, luego Gastos y al final Últimos pagos (General Manager, 4 nov 2026); Proveedores después de
+  // Clientes, como en los demás procesos (General Manager, 6 nov 2026).
+  int _pestana = 0; // 0 Clientes, 1 Proveedores, 2 Gastos, 3 Últimos pagos
 
-  /// La lista de cada pestaña: 0 pagos, 1 clientes (Gastos tiene la suya).
-  static int? _listaDe(int pestana) => pestana == 0 ? 1 : (pestana == 2 ? 0 : null);
+  /// La lista de cada pestaña: 0 pagos, 1 clientes (Proveedores y Gastos tienen la suya).
+  static int? _listaDe(int pestana) => pestana == 0 ? 1 : (pestana == 3 ? 0 : null);
 
   @override
   String get clave => 'comercial';
+  @override
+  String? get areaProveedores => 'commercial';
+  @override
+  String get vacioProveedores => 'Todavía no hay proveedores de Comercialización.';
   @override
   String get areaGastos => 'commercial';
   @override
@@ -3203,7 +3208,7 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Gastos
       _erroresFilas[i] = null;
     }
     final l = _listaDe(_pestana);
-    if (_pestana == 1) cargarGastos();
+    if (_pestana == 2) cargarGastos();
     await Future.wait([super.cargar(), if (l != null) _mas(l)]);
   }
 
@@ -3281,7 +3286,8 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Gastos
     return pantalla('Comercialización', botonFlotante: botonReporte(), alFinal: () {
       final l = _listaDe(_pestana);
       if (l != null) _mas(l);
-      if (_pestana == 1) masGastos();
+      if (_pestana == 1) masProveedores();
+      if (_pestana == 2) masGastos();
     }, (d) {
       return [
         // Sin datos arriba (General Manager, 4 nov 2026): la tarjeta de Procesos ya los muestra.
@@ -3293,17 +3299,23 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Gastos
           ),
         ]),
         _Pestanas(
-          nombres: const ['Clientes', 'Gastos', 'Últimos pagos'],
+          nombres: const ['Clientes', 'Proveedores', 'Gastos', 'Últimos pagos'],
           anchoPorNombre: true,
           elegida: _pestana,
           onElegir: (i) {
             setState(() => _pestana = i);
             final l = _listaDe(i);
             if (l != null && _filas[l].isEmpty) _mas(l);
-            if (i == 1) cargarGastos();
+            if (i == 1) abrirProveedores();
+            if (i == 2) cargarGastos();
           },
         ),
-        if (_pestana == 1) ...listaGastos() else ..._listaComercial(_listaDe(_pestana)!),
+        if (_pestana == 1)
+          ..._listaProveedores()
+        else if (_pestana == 2)
+          ...listaGastos()
+        else
+          ..._listaComercial(_listaDe(_pestana)!),
       ];
     });
   }
