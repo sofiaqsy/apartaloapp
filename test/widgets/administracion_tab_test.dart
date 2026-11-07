@@ -1157,16 +1157,18 @@ void main() {
     // Roasted coffee by product, the same as the product screen (4 Nov 2026): each product with its kilos, its lots
     // and its roasts in progress or planned.
     for (final t in ['Tostar café', 'Registrar gasto', 'Essential', 'Omagua 250 g', 'Omagua 1 kg',
-        'Martes 20 de octubre', 'Lunes 2 de noviembre', 'T-261020-1', 'Café verde L-8', 'L-7', 'Tostando', 'Programado']) {
+        'Martes 20 de octubre', 'Lunes 2 de noviembre', 'T-261020-1', 'Café verde L-8 · 28 bolsas + 4 kg · 340 kg', 'L-7',
+        'Tostando', 'Programado']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     // Each roasted lot has its own code, and its green lot under the date (7 Nov 2026).
     expect(find.text('L-8'), findsNothing);
-    // Her design (7 Nov 2026): the code at the top left, the date at the top right, the green lot under them.
-    final codigo = tester.getRect(find.text('T-261020-1'));
-    final fecha = tester.getRect(find.text('Martes 20 de octubre'));
-    expect(fecha.left > codigo.right && (fecha.top - codigo.top).abs() < 16, isTrue);
-    expect(tester.getTopLeft(find.text('Café verde L-8')).dy > codigo.bottom, isTrue);
+    // One card per product, like a green lot in Café verde, with its roasted lots inside (7 Nov 2026).
+    expect(find.text('1 lote tostado'), findsNWidgets(2));
+    final ficha = tester.getRect(find.ancestor(of: find.text('Essential'), matching: find.byType(Container)).first);
+    for (final t in ['28 bolsas + 4 kg · 340 kg', 'T-261020-1', 'Martes 20 de octubre']) {
+      expect(ficha.contains(tester.getCenter(find.text(t))), isTrue, reason: t);
+    }
     // Only the date on each lot: everything here is roasted, so "Tostado" is not repeated (4 Nov 2026).
     expect(find.textContaining('Tostado el'), findsNothing);
     // No title or total on top, and the kilos only once: on the lot (4 Nov 2026).

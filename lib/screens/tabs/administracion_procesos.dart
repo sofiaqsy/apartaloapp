@@ -775,42 +775,17 @@ class _Pildora extends StatelessWidget {
 
 /// Ficha blanca de una fila. Sin flecha: las filas de estas listas no abren otra pantalla.
 class _Ficha extends StatelessWidget {
-  const _Ficha({required this.inicio, required this.titulo, this.detalle, this.debajo, this.fin, this.onTap, this.codigoArriba = false});
+  const _Ficha({required this.inicio, required this.titulo, this.detalle, this.debajo, this.fin, this.onTap});
   final Widget inicio;
-  // El código arriba a la izquierda y la fecha arriba a la derecha, el resto debajo a lo ancho: el diseño de la
-  // General Manager para los lotes tostados (7 nov 2026: "the code looks better there").
-  final bool codigoArriba;
   final String titulo;
   final String? detalle;
   final Widget? debajo; // un dibujo bajo el texto, por ejemplo las bolsas de un lote tostado
   final Widget? fin;
   final VoidCallback? onTap; // con acción: ficha blanca y flecha; sin acción: fila simple con una línea debajo
 
-  Widget _codigoArriba() => Row(children: [
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              inicio,
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(titulo,
-                    textAlign: TextAlign.right, style: TextStyle(fontSize: 14, color: Colors.grey.shade800), maxLines: 1, overflow: TextOverflow.ellipsis),
-              ),
-            ]),
-            if (detalle != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(detalle!, style: TextStyle(fontSize: 13, color: Colors.grey.shade700), maxLines: 2, overflow: TextOverflow.ellipsis),
-              ),
-            if (debajo != null) Padding(padding: const EdgeInsets.only(top: 8), child: debajo),
-          ]),
-        ),
-        if (onTap != null) ...[const SizedBox(width: 4), Icon(Icons.chevron_right, color: Colors.grey.shade600)],
-      ]);
-
   @override
   Widget build(BuildContext context) {
-    final fila = codigoArriba ? _codigoArriba() : Row(children: [
+    final fila = Row(children: [
       inicio,
       const SizedBox(width: 12),
       Expanded(
@@ -3726,6 +3701,65 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
   }
 
   /// Un tueste en curso o programado, con Iniciar o Finalizar. Bajo su producto no repite el nombre.
+  /// Un producto en su ficha, como un lote de Café verde: el nombre, las bolsas en dibujo y sus kilos; debajo, cada lote
+  /// tostado (su código, la fecha, el lote verde y sus bolsas) que abre su detalle, y los tuestes programados o en marcha.
+  Widget _fichaProducto(Map<String, dynamic> p) {
+    final lotes = _lista(p['lotes']);
+    final tuestes = _lista(p['tuestes']);
+    final kg = (p['kg_tostado'] as num?)?.toDouble() ?? 0;
+    Widget linea() => Divider(height: 1, color: Colors.grey.shade200);
+    Widget filaLote(Map<String, dynamic> l) {
+      final kgLote = (l['kg'] as num?)?.toDouble() ?? 0;
+      final fila = Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(children: [
+          _Insignia('${l['lote'] ?? '—'}', tono: Colors.orange),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // Sólo la fecha, sin "Tostado el": en esta pestaña todo es tostado (General Manager, 4 nov 2026).
+              Text(_fechaLarga(l['fecha']), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+              // El lote verde del que salió y sus bolsas (General Manager, 7 nov 2026).
+              Text([if (l['verde'] != null) 'Café verde ${l['verde']}', _textoBolsas(kgLote), _kg(kgLote)].join(' · '),
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade700), maxLines: 2, overflow: TextOverflow.ellipsis),
+            ]),
+          ),
+          if (l['id'] != null) Icon(Icons.chevron_right, color: Colors.grey.shade600),
+        ]),
+      );
+      // Cada lote tostado abre su detalle (General Manager, 4 nov 2026).
+      return l['id'] == null
+          ? fila
+          : InkWell(
+              onTap: () => _abrirPantalla<void>(
+                  context, _TostadoDetalleScreen(id: '${l['id']}', producto: '${p['nombre'] ?? ''}', productoId: p['id']?.toString())),
+              child: fila,
+            );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 12, 6, 4),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade300)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${p['nombre'] ?? 'Producto'}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600), maxLines: 2),
+          if (lotes.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(lotes.length == 1 ? '1 lote tostado' : '${lotes.length} lotes tostados', style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+            ),
+          // Las bolsas de 12 kg en dibujo, como los sacos de un lote verde (General Manager, 6 nov 2026).
+          if (kg > 0) ...[const SizedBox(height: 8), _BolsasTostado(kg: kg)],
+          const SizedBox(height: 8),
+          if (lotes.isEmpty && tuestes.isEmpty) ...[linea(), _vacio('Sin lotes tostados disponibles.')],
+          for (final l in lotes) ...[linea(), filaLote(l)],
+          for (final t in tuestes) ...[linea(), _filaTueste(t, conProducto: true)],
+        ]),
+      ),
+    );
+  }
+
   Widget _filaTueste(Map<String, dynamic> t, {bool conProducto = false}) {
     final tostando = t['estado'] == 'in_progress';
     final estado = tostando ? 'Tostando' : 'Programado';
@@ -3793,32 +3827,12 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
               padding: const EdgeInsets.only(top: 10),
               child: Text('1 bolsa = 12 kg de café tostado · según la app, sin contar', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
             ),
-          for (final p in productos) ...[
-            // Los kilos una sola vez: en cada lote; el total del producto sólo si tiene más de un lote.
-            _NombreProducto(nombre: '${p['nombre'] ?? 'Producto'}', kg: _lista(p['lotes']).length > 1 ? _kg(p['kg_tostado']) : null),
-            if (_lista(p['lotes']).isEmpty && _lista(p['tuestes']).isEmpty) _vacio('Sin lotes tostados disponibles.'),
-            for (final l in _lista(p['lotes']))
-              _Ficha(
-                inicio: _Insignia('${l['lote'] ?? '—'}', tono: Colors.orange),
-                // Sólo la fecha, sin "Tostado el": en esta pestaña todo es tostado; como "Lunes 2 de noviembre" (General Manager, 4 nov 2026).
-                titulo: _fechaLarga(l['fecha']),
-                // Cada lote tostado tiene su propio código (T-261107-1); el lote verde del que salió, debajo (General Manager, 7 nov 2026).
-                detalle: l['verde'] == null ? null : 'Café verde ${l['verde']}',
-                codigoArriba: true,
-                // Las bolsas de 12 kg en dibujo, como los sacos del café verde (General Manager, 6 nov 2026); los kilos
-                // siguen al lado, una sola vez.
-                debajo: _BolsasTostado(kg: (l['kg'] as num?)?.toDouble() ?? 0),
-                // Cada lote tostado abre su detalle (General Manager, 4 nov 2026).
-                onTap: l['id'] == null
-                    ? null
-                    : () => _abrirPantalla<void>(
-                        context, _TostadoDetalleScreen(id: '${l['id']}', producto: '${p['nombre'] ?? ''}', productoId: p['id']?.toString())),
-              ),
-            for (final t in _lista(p['tuestes'])) _filaTueste(t, conProducto: true),
-          ],
+          // Una ficha por producto, como cada lote en Café verde, con sus lotes tostados dentro (General Manager, 7 nov 2026:
+          // "try to group by product and inside put the values or lotes").
+          for (final p in productos) _fichaProducto(p),
           // Un tueste sin producto (no debería pasar) se ve igual, para poder iniciarlo o finalizarlo.
           if (sinProducto.isNotEmpty) ...[
-            _NombreProducto(nombre: 'Sin producto'),
+            const _NombreProducto(nombre: 'Sin producto'),
             for (final t in sinProducto) _filaTueste(t),
           ],
         ] else ...[
@@ -4928,16 +4942,14 @@ class _CerrarLoteDialogState extends State<_CerrarLoteDialog> {
 
 /// Nombre de un producto con su café tostado disponible a la derecha (información, no botón).
 class _NombreProducto extends StatelessWidget {
-  const _NombreProducto({required this.nombre, this.kg});
+  const _NombreProducto({required this.nombre});
   final String nombre;
-  final String? kg;
 
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.fromLTRB(4, 14, 4, 2),
         child: Row(children: [
           Expanded(child: Text(nombre, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700), maxLines: 2)),
-          if (kg != null) Text(kg!, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.orange.shade800)),
         ]),
       );
 }
