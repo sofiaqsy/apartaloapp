@@ -238,7 +238,7 @@ void main() {
     if (p.endsWith('/produccion/tostados/r8')) {
       return http.Response(jsonEncode({
         'tostado': {
-          'id': 'r8', 'lote': 'L-8', 'tostado_el': '2026-10-20T15:00:00Z', 'terminado_el': '2026-10-20T15:14:00Z', 'kg_verde': 100, 'kg_tostado': 80,
+          'id': 'r8', 'lote': 'T-261020-1', 'tostado_el': '2026-10-20T15:00:00Z', 'terminado_el': '2026-10-20T15:14:00Z', 'kg_verde': 100, 'kg_tostado': 80,
           'merma_pct': 20, 'tostadora': 'Tostadora Villa Rica', 'tiempo_s': 780, 'notas': 'Buen desarrollo',
           'verde': {'lote': 'L-8', 'variedad': 'Geisha', 'cosecha': 2026, 'origen': 'Finca Rosal'},
           'productos': [{'nombre': 'Essential', 'asignado': 380, 'vendido': 40, 'disponible': 340}],
@@ -408,7 +408,7 @@ void main() {
           'tostado_kg': 385, 'por_procesar': [{'estado': 'parchment', 'calidad': 'pending', 'lotes': 2, 'kg': 88.7}],
           // By product, as the product screen counts it (production_summary_v2, 4 Nov 2026).
           'productos': [
-            {'id': 'p3', 'nombre': 'Essential', 'kg_tostado': 340, 'lotes': [{'id': 'r8', 'lote': 'L-8', 'fecha': '2026-10-20', 'kg': 340}], 'tuestes': []},
+            {'id': 'p3', 'nombre': 'Essential', 'kg_tostado': 340, 'lotes': [{'id': 'r8', 'lote': 'T-261020-1', 'verde': 'L-8', 'fecha': '2026-10-20', 'kg': 340}], 'tuestes': []},
             {'id': 'p1', 'nombre': 'Omagua 250 g', 'kg_tostado': 45, 'lotes': [{'lote': 'L-7', 'fecha': '2026-11-02', 'kg': 45}],
               'tuestes': [{'id': 'e1', 'estado': 'in_progress', 'fecha': '2026-11-03T15:00:00Z', 'kg_verde': 20, 'lote': 'L-1'}]},
             {'id': 'p2', 'nombre': 'Omagua 1 kg', 'kg_tostado': 0, 'lotes': [],
@@ -1157,9 +1157,11 @@ void main() {
     // Roasted coffee by product, the same as the product screen (4 Nov 2026): each product with its kilos, its lots
     // and its roasts in progress or planned.
     for (final t in ['Tostar café', 'Registrar gasto', 'Essential', 'Omagua 250 g', 'Omagua 1 kg',
-        'Martes 20 de octubre', 'Lunes 2 de noviembre', 'L-8', 'L-7', 'Tostando', 'Programado']) {
+        'Martes 20 de octubre', 'Lunes 2 de noviembre', 'T-261020-1', 'Café verde L-8', 'L-7', 'Tostando', 'Programado']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
+    // Each roasted lot has its own code, and its green lot under the date (7 Nov 2026).
+    expect(find.text('L-8'), findsNothing);
     // Only the date on each lot: everything here is roasted, so "Tostado" is not repeated (4 Nov 2026).
     expect(find.textContaining('Tostado el'), findsNothing);
     // No title or total on top, and the kilos only once: on the lot (4 Nov 2026).
@@ -1179,7 +1181,7 @@ void main() {
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
     for (final t in ['Lote de tostado', 'Café verde que entró', '100 kg', '80 kg', '20%', 'Asignado', '380 kg', 'Vendido', '40 kg', 'Disponible',
-        'Tostadora Villa Rica', '13:00 min']) {
+        'Tostadora Villa Rica', '13:00 min', 'T-261020-1']) {
       expect(find.text(t), findsWidgets, reason: t);
     }
     // What is available, drawn in 12 kg bags (6 Nov 2026).

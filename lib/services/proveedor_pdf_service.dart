@@ -723,11 +723,13 @@ class ProduccionPdfService {
           else
             ...tabla(
               'LOTES DE TOSTADO DEL MES',
-              ['Fecha', 'Producto', 'Lote verde', 'Verde', 'Tostado', 'Merma', 'Estado'],
+              // Cada lote tostado con su propio código, T-261107-1; el lote verde aparte (General Manager, 7 nov 2026).
+              ['Fecha', 'Lote', 'Producto', 'Lote verde', 'Verde', 'Tostado', 'Merma', 'Estado'],
               [
                 for (final t in tuestes)
                   [
                     ProveedorPdfService.fecha(t['fecha']),
+                    '${t['codigo'] ?? '—'}',
                     '${t['producto'] ?? '—'}',
                     '${t['lote'] ?? '—'}',
                     _kg(t['kg_verde']),
@@ -736,7 +738,7 @@ class ProduccionPdfService {
                     '${t['estado'] ?? ''}',
                   ],
               ],
-              {3, 4, 5},
+              {4, 5, 6},
             )
         else if (porMes.isEmpty)
           nada('POR MES', 'No hubo lotes de tostado terminados en el periodo.')
@@ -847,11 +849,12 @@ class ProduccionPdfService {
           ...tabla(
             'CAFÉ TOSTADO DISPONIBLE HOY ($hoy)',
             // Por producto, como en la pantalla del producto (General Manager, 4 nov 2026).
-            ['Producto', 'Lote', 'Tostado el', 'Disponible'],
+            ['Producto', 'Lote', 'Lote verde', 'Tostado el', 'Disponible'],
             [
-              for (final t in tostado) ['${t['producto'] ?? '—'}', '${t['lote'] ?? '—'}', ProveedorPdfService.fecha(t['fecha']), _kg(t['kg'])],
+              for (final t in tostado)
+                ['${t['producto'] ?? '—'}', '${t['lote'] ?? '—'}', '${t['verde'] ?? '—'}', ProveedorPdfService.fecha(t['fecha']), _kg(t['kg'])],
             ],
-            {3},
+            {4},
           ),
 
         // Sin "Café comprado por procesar" (General Manager, 4 nov 2026: "we don't have that option").

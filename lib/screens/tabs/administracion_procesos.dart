@@ -3777,6 +3777,8 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
                 inicio: _Insignia('${l['lote'] ?? '—'}', tono: Colors.orange),
                 // Sólo la fecha, sin "Tostado el": en esta pestaña todo es tostado; como "Lunes 2 de noviembre" (General Manager, 4 nov 2026).
                 titulo: _fechaLarga(l['fecha']),
+                // Cada lote tostado tiene su propio código (T-261107-1); el lote verde del que salió, debajo (General Manager, 7 nov 2026).
+                detalle: l['verde'] == null ? null : 'Café verde ${l['verde']}',
                 // Las bolsas de 12 kg en dibujo, como los sacos del café verde (General Manager, 6 nov 2026); los kilos
                 // siguen al lado, una sola vez.
                 debajo: _BolsasTostado(kg: (l['kg'] as num?)?.toDouble() ?? 0),
