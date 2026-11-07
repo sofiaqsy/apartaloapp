@@ -47,6 +47,8 @@ android {
 
 dependencies {
     implementation("androidx.concurrent:concurrent-futures:1.2.0")
+    // Leer comprobantes en el teléfono (el modelo lo trae Google Play Services; la app no crece).
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
 }
 
 flutter {

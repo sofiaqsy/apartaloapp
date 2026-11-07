@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'services/invite_link.dart';
+import 'services/comprobante_service.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
@@ -81,6 +82,8 @@ Future<void> _appMain() async {
 
     // Enlaces de invitación (fincas://unirse?codigo=...); no bloquea el inicio.
     InviteLink.escuchar();
+    // Comprobantes compartidos (WhatsApp → Compartir → Finca Rosal); no bloquea el inicio.
+    ComprobanteService.escuchar();
 
     runApp(const FincaRosalApp());
   } catch (e, stackTrace) {

@@ -51,6 +51,14 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="fincas" android:host="unirse"/>
             </intent-filter>
+            <!-- Los enlaces fincas:// los atiende la app (app_links); Flutter no debe abrir otra pantalla de inicio. -->
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false"/>
+            <!-- Comprobantes compartidos (WhatsApp → Compartir → Finca Rosal): sólo imágenes -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="image/*"/>
+            </intent-filter>
             <!-- Intent filter para recibir datos del escáner Sunmi -->
             <intent-filter>
                 <action

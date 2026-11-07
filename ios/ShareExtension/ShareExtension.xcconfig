@@ -1,0 +1,2 @@
+// Only the version and build number of the app (pubspec), never the Pods.
+#include "../Flutter/Generated.xcconfig"

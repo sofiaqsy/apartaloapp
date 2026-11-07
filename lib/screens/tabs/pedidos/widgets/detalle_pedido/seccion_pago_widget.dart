@@ -20,6 +20,8 @@ class SeccionPagoWidget extends StatelessWidget {
   /// Sólo para ver (Finanzas → Movimientos, al conciliar una línea del banco, 5 nov 2026): sin Agregar comprobante,
   /// Registrar pago ni Revertir. Para no borrar, no se pasan onEliminarPago ni onEliminarEvidencia.
   final bool soloLectura;
+  /// Registrar pago empezando por el comprobante (6 nov 2026); sin él, el diálogo de siempre.
+  final VoidCallback? onRegistrarPago;
 
   const SeccionPagoWidget({
     super.key,
@@ -35,6 +37,7 @@ class SeccionPagoWidget extends StatelessWidget {
     this.onEliminarPago,
     this.onEliminarEvidencia,
     this.soloLectura = false,
+    this.onRegistrarPago,
   });
 
   // ── Dialogo registrar pago ────────────────────────────────────────────────
@@ -60,50 +63,9 @@ class SeccionPagoWidget extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.grey.shade200),
-              ),
-              child: Column(children: [
-                _fila('Total del pedido', total, Colors.grey.shade700),
-                if (!esPrimerPago) ...[
-                  const SizedBox(height: 4),
-                  _fila('Ya pagado', montoPagado, Colors.green.shade600),
-                  const Divider(height: 12),
-                  _fila('Saldo pendiente', saldoRestante, Colors.red.shade600, bold: true),
-                ],
-              ]),
-            ),
+            ResumenPagoPedido(total: total, montoPagado: montoPagado),
             const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: esPrimerPago ? 'Monto recibido' : 'Monto del abono',
-                prefixText: 'S/ ',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                filled: true,
-                fillColor: Colors.grey.shade50,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Wrap(spacing: 8, children: [
-              if (saldoRestante > 0)
-                ActionChip(
-                  label: Text('S/ ${saldoRestante.toStringAsFixed(0)} (completo)'),
-                  backgroundColor: Colors.green.shade50,
-                  onPressed: () => controller.text = saldoRestante.toStringAsFixed(2),
-                ),
-              if (saldoRestante > 100)
-                ActionChip(
-                  label: Text('S/ ${(saldoRestante / 2).toStringAsFixed(0)} (mitad)'),
-                  onPressed: () => controller.text = (saldoRestante / 2).toStringAsFixed(2),
-                ),
-            ]),
+            CampoMontoPago(controller: controller, esPrimerPago: esPrimerPago, saldoRestante: saldoRestante, autofocus: true),
           ],
         ),
         actions: [
@@ -759,7 +721,7 @@ class SeccionPagoWidget extends StatelessWidget {
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
-            onPressed: actualizando ? null : () => _mostrarDialogoRegistrarPago(context),
+            onPressed: actualizando ? null : (onRegistrarPago ?? () => _mostrarDialogoRegistrarPago(context)),
             icon: actualizando
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : const Icon(Icons.payments),
@@ -801,3 +763,101 @@ class SeccionPagoWidget extends StatelessWidget {
     ]);
   }
 }
+
+/// El resumen de Registrar pago: total y, desde el segundo pago, ya pagado y saldo pendiente. Lo usan el diálogo y
+/// Registrar pago con comprobante, para que se vean igual (General Manager, 7 nov 2026).
+class ResumenPagoPedido extends StatelessWidget {
+  const ResumenPagoPedido({super.key, required this.total, required this.montoPagado});
+  final double total;
+  final double montoPagado;
+
+  @override
+  Widget build(BuildContext context) {
+    final saldoRestante = total - montoPagado;
+    final esPrimerPago = montoPagado == 0;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(children: [
+        _filaPago('Total del pedido', total, Colors.grey.shade700),
+        if (!esPrimerPago) ...[
+          const SizedBox(height: 4),
+          _filaPago('Ya pagado', montoPagado, Colors.green.shade600),
+          const Divider(height: 12),
+          _filaPago('Saldo pendiente', saldoRestante, Colors.red.shade600, bold: true),
+        ],
+      ]),
+    );
+  }
+}
+
+/// El monto de Registrar pago, con los atajos completo y mitad. Compartido por el diálogo y la pantalla con comprobante.
+class CampoMontoPago extends StatelessWidget {
+  const CampoMontoPago({
+    super.key,
+    required this.controller,
+    required this.esPrimerPago,
+    required this.saldoRestante,
+    this.autofocus = false,
+    this.ayuda,
+    this.onChanged,
+  });
+  final TextEditingController controller;
+  final bool esPrimerPago;
+  final double saldoRestante;
+  final bool autofocus;
+  /// Una línea bajo el campo (por ejemplo, "Leído del comprobante: revísalo").
+  final String? ayuda;
+  final VoidCallback? onChanged;
+
+  void _poner(double v) {
+    controller.text = v.toStringAsFixed(2);
+    onChanged?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      TextField(
+        controller: controller,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        autofocus: autofocus,
+        onChanged: (_) => onChanged?.call(),
+        decoration: InputDecoration(
+          labelText: esPrimerPago ? 'Monto recibido' : 'Monto del abono',
+          prefixText: 'S/ ',
+          helperText: ayuda,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          filled: true,
+          fillColor: Colors.grey.shade50,
+        ),
+      ),
+      const SizedBox(height: 8),
+      Wrap(spacing: 8, children: [
+        if (saldoRestante > 0)
+          ActionChip(
+            label: Text('S/ ${saldoRestante.toStringAsFixed(0)} (completo)'),
+            backgroundColor: Colors.green.shade50,
+            onPressed: () => _poner(saldoRestante),
+          ),
+        if (saldoRestante > 100)
+          ActionChip(
+            label: Text('S/ ${(saldoRestante / 2).toStringAsFixed(0)} (mitad)'),
+            onPressed: () => _poner(saldoRestante / 2),
+          ),
+      ]),
+    ]);
+  }
+}
+
+Widget _filaPago(String label, double valor, Color color, {bool bold = false}) => Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: TextStyle(color: color, fontSize: 13)),
+        Text('S/ ${valor.toStringAsFixed(2)}', style: TextStyle(color: color, fontSize: 13, fontWeight: bold ? FontWeight.bold : FontWeight.w500)),
+      ],
+    );

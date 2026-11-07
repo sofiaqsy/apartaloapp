@@ -15,6 +15,8 @@ import '../../../../../providers/printer_provider.dart';
 import '../../helpers/estado_pago_helper.dart';
 import '../../helpers/producto_parser.dart';
 import 'seccion_pago_widget.dart';
+import '../../../../registrar_pago_comprobante_screen.dart';
+import 'package:flutter/cupertino.dart' show CupertinoPageRoute;
 import 'seccion_atencion_widget.dart';
 import 'header_pedido_widget.dart';
 import 'info_basica_widget.dart';
@@ -322,6 +324,45 @@ class _DetallePedidoSheetState extends State<DetallePedidoSheet> {
           backgroundColor: Colors.red,
         ),
       );
+    }
+  }
+
+  /// Registrar pago empezando por el comprobante: la foto se lee y el pago y su comprobante se guardan juntos.
+  Future<void> _registrarPagoConComprobante() async {
+    String? aviso;
+    final guardado = await Navigator.of(context).push<bool>(CupertinoPageRoute(
+      builder: (_) => RegistrarPagoComprobanteScreen(
+        pedido: widget.pedido,
+        montoPagado: _montoPagado,
+        guardar: (monto, imagen, operacion) async {
+          final (error, datos) = await registrarPagoPedido(
+              pedido: widget.pedido, montoPagado: _montoPagado, pagosAntes: _pagos, monto: monto, imagen: imagen, operacion: operacion);
+          if (error != null || datos == null) return error;
+          if (!mounted) return null;
+          setState(() {
+            _estadoPago = (datos['estadoPago'] as String?) ?? _estadoPago;
+            _montoPagado = (datos['montoPagado'] as num?)?.toDouble() ?? _montoPagado + monto;
+            if (datos['pagos'] is List) {
+              _pagos = (datos['pagos'] as List).map((p) => Map<String, dynamic>.from(p as Map)).toList();
+            }
+            if (datos['evidencias'] is List) {
+              _evidencias = (datos['evidencias'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+            }
+            final nueva = datos['evidenciaNueva'];
+            if (nueva is Map && !_evidencias.any((e) => e['url'] == nueva['url'])) _evidencias.add(Map<String, dynamic>.from(nueva));
+          });
+          widget.onActualizado();
+          aviso = datos['sinComprobante'] == true
+              ? 'Pago guardado. El comprobante no se unió: agrégalo con el + del pago.'
+              : _estadoPago == EstadoPagoHelper.PAGADO
+                  ? '✅ Pago completado'
+                  : '✅ Abono registrado: S/ ${monto.toStringAsFixed(2)}';
+          return null;
+        },
+      ),
+    ));
+    if (guardado == true && aviso != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(aviso!), backgroundColor: Colors.green));
     }
   }
 
@@ -1313,6 +1354,7 @@ class _DetallePedidoSheetState extends State<DetallePedidoSheet> {
               onAgregarComprobante: _agregarEvidencia,
               onEliminarPago: _eliminarPago,
               onEliminarEvidencia: _eliminarEvidencia,
+              onRegistrarPago: _registrarPagoConComprobante,
             ),
             if ((widget.pedido['whatsapp'] ?? '').toString().isNotEmpty) ...[
               const SizedBox(height: 16),

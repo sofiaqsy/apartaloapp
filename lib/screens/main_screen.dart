@@ -20,6 +20,9 @@ import '../widgets/fincas_widgets.dart';
 import 'business_requests_screen.dart';
 import 'team_screen.dart';
 import '../theme/legacy_theme.dart';
+import '../services/comprobante_service.dart';
+import 'elegir_pedido_comprobante_screen.dart';
+import 'package:flutter/cupertino.dart' show CupertinoPageRoute;
 
 class MainScreen extends StatefulWidget {
   final String businessId;
@@ -45,6 +48,23 @@ class _MainScreenState extends State<MainScreen> {
     AdministracionService.olvidarMemoria(); // otra cuenta u otro negocio: nada de lo visto antes
     _loadRole();
     _initializeServices();
+    // Un comprobante compartido desde WhatsApp abre Pedidos y "¿De qué pedido es?" (6 nov 2026).
+    ComprobanteService.compartido.addListener(_comprobanteCompartido);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _comprobanteCompartido());
+  }
+
+  @override
+  void dispose() {
+    ComprobanteService.compartido.removeListener(_comprobanteCompartido);
+    super.dispose();
+  }
+
+  void _comprobanteCompartido() {
+    final ruta = ComprobanteService.compartido.value;
+    if (ruta == null || !mounted) return;
+    ComprobanteService.compartido.value = null;
+    setState(() => _currentIndex = 0);
+    Navigator.of(context).push(CupertinoPageRoute(builder: (_) => ElegirPedidoComprobanteScreen(imagen: ruta)));
   }
 
   Future<void> _initializeServices() async {
