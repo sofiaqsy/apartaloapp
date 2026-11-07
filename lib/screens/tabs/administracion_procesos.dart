@@ -775,17 +775,42 @@ class _Pildora extends StatelessWidget {
 
 /// Ficha blanca de una fila. Sin flecha: las filas de estas listas no abren otra pantalla.
 class _Ficha extends StatelessWidget {
-  const _Ficha({required this.inicio, required this.titulo, this.detalle, this.debajo, this.fin, this.onTap});
+  const _Ficha({required this.inicio, required this.titulo, this.detalle, this.debajo, this.fin, this.onTap, this.codigoArriba = false});
   final Widget inicio;
+  // El código arriba a la izquierda y la fecha arriba a la derecha, el resto debajo a lo ancho: el diseño de la
+  // General Manager para los lotes tostados (7 nov 2026: "the code looks better there").
+  final bool codigoArriba;
   final String titulo;
   final String? detalle;
   final Widget? debajo; // un dibujo bajo el texto, por ejemplo las bolsas de un lote tostado
   final Widget? fin;
   final VoidCallback? onTap; // con acción: ficha blanca y flecha; sin acción: fila simple con una línea debajo
 
+  Widget _codigoArriba() => Row(children: [
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              inicio,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(titulo,
+                    textAlign: TextAlign.right, style: TextStyle(fontSize: 14, color: Colors.grey.shade800), maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+            ]),
+            if (detalle != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(detalle!, style: TextStyle(fontSize: 13, color: Colors.grey.shade700), maxLines: 2, overflow: TextOverflow.ellipsis),
+              ),
+            if (debajo != null) Padding(padding: const EdgeInsets.only(top: 8), child: debajo),
+          ]),
+        ),
+        if (onTap != null) ...[const SizedBox(width: 4), Icon(Icons.chevron_right, color: Colors.grey.shade600)],
+      ]);
+
   @override
   Widget build(BuildContext context) {
-    final fila = Row(children: [
+    final fila = codigoArriba ? _codigoArriba() : Row(children: [
       inicio,
       const SizedBox(width: 12),
       Expanded(
@@ -3779,6 +3804,7 @@ class _ProduccionScreenState extends _ProcesoState<_ProduccionScreen> with _Prov
                 titulo: _fechaLarga(l['fecha']),
                 // Cada lote tostado tiene su propio código (T-261107-1); el lote verde del que salió, debajo (General Manager, 7 nov 2026).
                 detalle: l['verde'] == null ? null : 'Café verde ${l['verde']}',
+                codigoArriba: true,
                 // Las bolsas de 12 kg en dibujo, como los sacos del café verde (General Manager, 6 nov 2026); los kilos
                 // siguen al lado, una sola vez.
                 debajo: _BolsasTostado(kg: (l['kg'] as num?)?.toDouble() ?? 0),

@@ -1162,6 +1162,11 @@ void main() {
     }
     // Each roasted lot has its own code, and its green lot under the date (7 Nov 2026).
     expect(find.text('L-8'), findsNothing);
+    // Her design (7 Nov 2026): the code at the top left, the date at the top right, the green lot under them.
+    final codigo = tester.getRect(find.text('T-261020-1'));
+    final fecha = tester.getRect(find.text('Martes 20 de octubre'));
+    expect(fecha.left > codigo.right && (fecha.top - codigo.top).abs() < 16, isTrue);
+    expect(tester.getTopLeft(find.text('Café verde L-8')).dy > codigo.bottom, isTrue);
     // Only the date on each lot: everything here is roasted, so "Tostado" is not repeated (4 Nov 2026).
     expect(find.textContaining('Tostado el'), findsNothing);
     // No title or total on top, and the kilos only once: on the lot (4 Nov 2026).
