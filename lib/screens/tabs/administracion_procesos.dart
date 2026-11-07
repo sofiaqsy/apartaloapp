@@ -1080,11 +1080,19 @@ class _LogisticaScreenState extends _ProcesoState<_LogisticaScreen> with _Provee
 
 // ─── Finanzas ────────────────────────────────────────────────────────────────
 
+/// Abre Finanzas con un comprobante compartido, para elegir qué se pagó (ver [_FinanzasScreen.comprobante]).
+Future<void> pagarConComprobante(BuildContext context, String imagen) => _abrirPantalla<void>(context, _FinanzasScreen(comprobante: imagen));
+
 /// Finanzas paga lo que piden las otras áreas (General Manager, 3 nov 2026): compras con precio, gastos, y
 /// aprueba los adelantos. Cada fila abre su pago (transferencia por defecto; el número de operación llega solo
 /// con el archivo del BCP). Sólo dueños.
 class _FinanzasScreen extends StatefulWidget {
-  const _FinanzasScreen();
+  const _FinanzasScreen({this.comprobante});
+
+  /// Un comprobante compartido desde WhatsApp (General Manager, 7 nov 2026: con el área Finanzas se abre lo que está
+  /// por pagar): arriba se ve el comprobante, se marca lo que coincide con su monto y, al pagar con el formulario de
+  /// siempre, la imagen queda como la evidencia de ese pago. Al salir, la copia temporal se borra.
+  final String? comprobante;
 
   @override
   State<_FinanzasScreen> createState() => _FinanzasScreenState();
@@ -1095,6 +1103,54 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
   // y aprobaciones de siempre y el reporte en PDF. Sin pestaña "Gastos del área": Finanzas paga los gastos de todas las
   // áreas en Gastos. Movimientos en lugar de Proveedores (General Manager, 5 nov 2026).
   int _pestana = 0; // 0 Compras, 1 Gastos, 2 Adelantos, 3 Movimientos
+
+  ComprobanteLeido? _leido;
+  bool _pagadoConComprobante = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final c = widget.comprobante;
+    if (c != null) {
+      ComprobanteService.leer(c).then((l) {
+        if (mounted) setState(() => _leido = l);
+      });
+    }
+  }
+
+  /// El monto de la fila coincide con el del comprobante (sólo lo que espera pago).
+  bool _coincide(Map<String, dynamic> f, Object? monto) {
+    final m = _leido?.monto;
+    final v = monto is num ? monto.toDouble() : double.tryParse('$monto');
+    return widget.comprobante != null && m != null && v != null && _esperaFila(f) && (v - m).abs() < 0.005;
+  }
+
+  /// Arriba de Finanzas, en lugar de las acciones: el comprobante y lo que se leyó.
+  Widget _comprobanteArriba() {
+    final l = _leido;
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.file(File(widget.comprobante!), width: 72, height: 96, fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const SizedBox(width: 72, height: 96, child: Icon(Icons.broken_image_outlined))),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+            l == null
+                ? 'Leyendo el comprobante…'
+                : l.monto == null
+                    ? 'No se leyó el monto.'
+                    : 'Comprobante de ${_soles(l.monto)}${l.operacion != null ? '\nNº de operación ${l.operacion}' : ''}',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          Text('Elige lo que se pagó y págalo: el comprobante queda como su evidencia.', style: TextStyle(color: Colors.grey.shade700)),
+        ]),
+      ),
+    ]);
+  }
 
   @override
   String get nombreReporte => 'Finanzas';
@@ -1158,6 +1214,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
   void dispose() {
     _esperaBuscar?.cancel();
     _buscar.dispose();
+    ComprobanteService.borrarTemporal(widget.comprobante); // pagado o no, la copia temporal no queda
     super.dispose();
   }
 
@@ -1460,6 +1517,11 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
           entrega: tipo == 'purchase' ? f['entrega']?.toString() : null,
           onCambio: () => cambio = true,
         ));
+    // Pagado con el comprobante compartido: listo, se vuelve a donde estaba.
+    if (_pagadoConComprobante && mounted) {
+      Navigator.of(context).pop();
+      return;
+    }
     if (cambio && mounted) cargar();
   }
 
@@ -1470,6 +1532,18 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
     final destino = AdministracionService.destinoPago(const {'purchase': 'compra', 'expense': 'gasto', 'advance_request': 'adelanto'}[tipo] ?? tipo, id);
     if (!await _abrirFormulario(ctx, form, fijos: fijos, subtitulo: subtitulo, iniciales: iniciales, destino: destino) || !ctx.mounted) {
       return false;
+    }
+    final compartido = widget.comprobante;
+    if (compartido != null) {
+      // La evidencia es el comprobante compartido: se sube sin preguntar.
+      final mensajes = ScaffoldMessenger.of(ctx);
+      mensajes.showSnackBar(const SnackBar(content: Text('Subiendo el comprobante…'), duration: Duration(seconds: 30)));
+      final r = await AdministracionService.subirEvidencia(tipo: tipo, id: id, bytes: File(compartido).readAsBytesSync());
+      mensajes.hideCurrentSnackBar();
+      mensajes.showSnackBar(SnackBar(
+          content: Text(r.isSuccess ? 'Pago y comprobante guardados ✓' : 'Pago guardado. El comprobante no se subió: súbelo desde el detalle.')));
+      _pagadoConComprobante = true;
+      return true;
     }
     final subir = await showDialog<bool>(
       context: ctx,
@@ -1536,7 +1610,9 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
 
   @override
   Widget build(BuildContext context) {
-    return pantalla('Finanzas', botonFlotante: datos?['solo_duenos'] == true ? null : botonReporte(), alFinal: () {
+    final conComprobante = widget.comprobante != null;
+    return pantalla(conComprobante ? '¿Qué se pagó?' : 'Finanzas',
+        botonFlotante: datos?['solo_duenos'] == true || conComprobante ? null : botonReporte(), alFinal: () {
       if (_pestana < 3) _mas(_pestana);
       if (_pestana == 3) _masMovimientos();
     }, (d) {
@@ -1544,7 +1620,10 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
       final filas = _pestana < 3 ? _filas[_pestana] : const <Map<String, dynamic>>[];
       return [
         // Sin datos arriba (General Manager, 4 nov 2026): la tarjeta de Procesos ya los muestra.
-        _Acciones(acciones: [
+        if (conComprobante)
+          _comprobanteArriba()
+        else
+          _Acciones(acciones: [
           (Icons.account_balance_wallet, _titulos['retiro']!, () => formulario('retiro')),
           (Icons.receipt_long, _titulos['gasto']!, () => formulario('gasto', fijos: const {'area': 'finance'}, subtitulo: 'Área: Finanzas')),
         ]),
@@ -1587,6 +1666,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
       inicio: _Insignia(_fechaCorta(c['fecha']), tono: Colors.green),
       titulo: '${c['agricultor'] ?? 'Sin nombre'}',
       detalle: [
+        if (_coincide(c, monto)) 'Coincide el monto',
         '${_soles(monto)} · ${c['id']} · ${_kg(c['kg'])}',
         if (espera) c['metodo'] == 'advance' ? 'con el adelanto ${c['adelanto']}' : 'por transferencia',
         if (_diasEsperando(c) != null) _diasEsperando(c)!,
@@ -1606,6 +1686,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
       inicio: _Insignia(_fechaCorta(g['fecha']), tono: Colors.orange),
       titulo: '${g['categoria'] ?? 'Gasto'}',
       detalle: [
+        if (_coincide(g, g['monto'])) 'Coincide el monto',
         _soles(g['monto']),
         if ((g['descripcion'] ?? '').toString().isNotEmpty) '${g['descripcion']}',
         if (g['area'] != null) '${_areas[g['area']] ?? g['area']}${g['revisar'] == true ? ' por revisar' : ''}',
@@ -1623,6 +1704,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
       inicio: _Insignia(_fechaCorta(a['fecha']), tono: Colors.purple),
       titulo: '${a['para'] ?? 'Sin nombre'}',
       detalle: [
+        if (_coincide(a, a['monto'])) 'Coincide el monto',
         _soles(a['monto']),
         if ((a['motivo'] ?? '').toString().isNotEmpty) '${a['motivo']}',
         if (a['por'] != null) 'pidió ${a['por']}',

@@ -10,6 +10,8 @@ import 'package:apartalo_app/screens/tabs/pedidos/widgets/detalle_pedido/detalle
 import 'package:apartalo_app/screens/perfil_screen.dart';
 import 'package:apartalo_app/services/administracion_service.dart';
 import 'package:apartalo_app/services/proveedor_pdf_service.dart';
+import 'package:apartalo_app/services/comprobante_service.dart';
+import 'dart:io';
 
 void main() {
   final pedidos = <http.Request>[];
@@ -584,6 +586,46 @@ void main() {
     final r = pedidos.lastWhere((r) => r.url.path.contains('/registrar/'));
     expect(r.url.path, endsWith('/registrar/aprobarAdelanto'));
     expect(jsonDecode(r.body)['solicitudId'], 'SOL-0001');
+  });
+
+  testWidgets('a comprobante shared with the Finanzas area opens what is por pagar, marks the matching amount, and becomes the evidence of the payment', (tester) async {
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    esDuenoMock = true;
+    SharedPreferences.setMockInitialValues({'business_role': 'owner', 'mi_area_elegidas': marcadas});
+    ComprobanteService.leerTextoParaPruebas = (_) async => 'Transferencia exitosa\nMonto S/ 300.00\nNúmero de operación: 556677';
+    addTearDown(() => ComprobanteService.leerTextoParaPruebas = null);
+    final carpeta = Directory.systemTemp.createTempSync('comprobante');
+    addTearDown(() => carpeta.existsSync() ? carpeta.deleteSync(recursive: true) : null);
+    final f = File('${carpeta.path}/compartido_1.jpg')..writeAsBytesSync([0xFF, 0xD8, 0xFF, 0xD9]);
+    await http.runWithClient(() async {
+      await tester.pumpWidget(MaterialApp(home: Builder(
+        builder: (context) => Scaffold(body: Center(child: TextButton(onPressed: () => pagarConComprobante(context, f.path), child: const Text('abrir')))),
+      )));
+      await tester.tap(find.text('abrir'));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pumpAndSettle();
+      expect(find.text('¿Qué se pagó?'), findsOneWidget);
+      expect(find.textContaining('Comprobante de S/ 300'), findsOneWidget);
+      expect(find.textContaining('Nº de operación 556677'), findsOneWidget);
+      expect(find.byIcon(Icons.picture_as_pdf_outlined), findsNothing); // no report while choosing
+      expect(find.textContaining('Coincide el monto · S/ 300 · PU-0001'), findsOneWidget);
+      await tester.tap(find.text('Pedro Ramírez Ñique'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pagar compra'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('¿Subir la evidencia?'), findsNothing); // the shared comprobante is the evidence
+    final ev = pedidos.lastWhere((r) => r.url.path.endsWith('/evidencias') && r.method == 'POST');
+    expect(jsonDecode(ev.body)['tipo'], 'purchase');
+    expect(jsonDecode(ev.body)['id'], 'PU-0001');
+    expect(find.text('¿Qué se pagó?'), findsNothing); // paid: back where it was
+    expect(f.existsSync(), isFalse); // and the temporary copy is gone
   });
 
   testWidgets('Finanzas pays a compra by transfer without asking for the operation number (the bank fills it in)', (tester) async {

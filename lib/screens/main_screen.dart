@@ -8,7 +8,7 @@ import '../services/api_service.dart';
 import '../services/notification_service.dart';
 import '../providers/printer_provider.dart';
 import 'login_screen.dart';
-import 'tabs/administracion_tab.dart';
+import 'tabs/administracion_tab.dart' show AdministracionTab, pagarConComprobante, claveAreasElegidas;
 import 'tabs/productos_tab.dart';
 import 'tabs/clientes_tab.dart';
 import 'tabs/pedidos_tab.dart';
@@ -59,12 +59,65 @@ class _MainScreenState extends State<MainScreen> {
     super.dispose();
   }
 
-  void _comprobanteCompartido() {
+  /// Un comprobante compartido se abre según las áreas de la persona (General Manager, 7 nov 2026): con
+  /// Comercialización, los pedidos por cobrar; con Finanzas (dueños), lo que está por pagar; con las dos, se pregunta.
+  Future<void> _comprobanteCompartido() async {
     final ruta = ComprobanteService.compartido.value;
     if (ruta == null || !mounted) return;
     ComprobanteService.compartido.value = null;
-    setState(() => _currentIndex = 0);
-    Navigator.of(context).push(CupertinoPageRoute(builder: (_) => ElegirPedidoComprobanteScreen(imagen: ruta)));
+    final destino = await _destinoComprobante();
+    if (!mounted) return;
+    if (destino == null) {
+      ComprobanteService.borrarTemporal(ruta);
+      return;
+    }
+    setState(() => _currentIndex = destino == 'finanzas' ? 3 : 0);
+    if (destino == 'finanzas') {
+      await pagarConComprobante(context, ruta);
+    } else {
+      await Navigator.of(context).push(CupertinoPageRoute(builder: (_) => ElegirPedidoComprobanteScreen(imagen: ruta)));
+    }
+  }
+
+  /// 'pedidos', 'finanzas', o null si la persona cerró la pregunta.
+  Future<String?> _destinoComprobante() async {
+    final prefs = await SharedPreferences.getInstance();
+    final dueno = prefs.getString('business_role') == 'owner';
+    var areas = (prefs.getStringList(claveAreasElegidas) ?? const <String>[]).toSet();
+    if (areas.isEmpty) {
+      // Sin "Mis áreas" elegidas en Perfil: las áreas de la persona, como las muestra Perfil.
+      final r = await AdministracionService.miArea();
+      final todas = r.isSuccess ? ((r.data!['areas'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList() : <Map<String, dynamic>>[];
+      final mias = todas.where((a) => a['role'] == 'lead' || a['role'] == 'member').toList();
+      areas = (mias.isNotEmpty ? mias : todas).map((a) => '${a['area']}').toSet();
+    }
+    final finanzas = dueno && areas.contains('finance');
+    final comercial = areas.contains('commercial');
+    if (!finanzas) return 'pedidos';
+    if (!comercial) return 'finanzas';
+    if (!mounted) return null;
+    return showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const ListTile(title: Text('¿Qué comprobante es?', style: TextStyle(fontWeight: FontWeight.w600))),
+          ListTile(
+            leading: const Icon(Icons.shopping_bag_outlined),
+            title: const Text('Un cobro de un pedido'),
+            subtitle: const Text('Comercialización · pedidos por cobrar'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.pop(ctx, 'pedidos'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.payments_outlined),
+            title: const Text('Un pago que hicimos'),
+            subtitle: const Text('Finanzas · lo que está por pagar'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.pop(ctx, 'finanzas'),
+          ),
+        ]),
+      ),
+    );
   }
 
   Future<void> _initializeServices() async {
