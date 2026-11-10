@@ -206,10 +206,12 @@ class AdministracionService {
 
   /// Reportes de Finca y de Finanzas (4 nov 2026): el mismo formulario que los demás procesos.
   static Future<ApiResponse<Map<String, dynamic>>> reporteFinca(DateTime desde, DateTime hasta) => _reporte('finca', desde, hasta);
-  static Future<ApiResponse<Map<String, dynamic>>> reporteFinanzas(DateTime desde, DateTime hasta) => _reporte('finanzas', desde, hasta);
-  static Future<ApiResponse<Map<String, dynamic>>> _reporte(String ruta, DateTime desde, DateTime hasta) {
+  /// [solo] 'entradas' o 'salidas': sólo lo que falta conciliar, lo que entra o lo que sale (General Manager, 9 nov 2026).
+  static Future<ApiResponse<Map<String, dynamic>>> reporteFinanzas(DateTime desde, DateTime hasta, {String? solo}) =>
+      _reporte('finanzas', desde, hasta, solo: solo);
+  static Future<ApiResponse<Map<String, dynamic>>> _reporte(String ruta, DateTime desde, DateTime hasta, {String? solo}) {
     String mes(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}';
-    return _get('$ruta/reporte?desde=${mes(desde)}&hasta=${mes(hasta)}');
+    return _get('$ruta/reporte?desde=${mes(desde)}&hasta=${mes(hasta)}${solo == null ? '' : '&solo=$solo'}');
   }
 
   /// Comercialización (4 nov 2026): su reporte, sus clientes (de sus pedidos) y sus productos más vendidos, de 20 en 20.

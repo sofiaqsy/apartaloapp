@@ -1289,6 +1289,46 @@ class FinanzasPdfService {
       bold: bold,
     );
   }
+
+  /// Sólo lo que falta conciliar (General Manager, 9 nov 2026), lo que entró o lo que salió: las líneas del banco que no
+  /// están en la app (Falta en la app) y los pagos de la app que no llegan en el archivo del banco (No está en el banco).
+  static Future<Uint8List> porConciliarBytes(Map<String, dynamic> reporte, {String? businessName, pw.Font? base, pw.Font? bold}) {
+    const tabla = ProveedorPdfService._tabla;
+    final franja = ProveedorPdfService._mapa(reporte['franja']);
+    final filas = ProveedorPdfService._lista(reporte['filas']);
+    final entradas = reporte['lado'] == 'entradas';
+    final titulo = entradas ? 'ENTRADAS POR CONCILIAR' : 'SALIDAS POR CONCILIAR';
+    String soles(dynamic v) => ProveedorPdfService.soles(v ?? 0);
+    return _ReporteBase.documento(
+      () => [
+        _ReporteBase.cabecera(businessName ?? ApiService.businessName, 'FINANZAS', reporte),
+        _ReporteBase.franja([
+          ('Por conciliar', ComprasPdfService._n(franja['lineas'] ?? 0)),
+          ('Total', soles(franja['total'])),
+          ('Falta en la app', soles(franja['falta_en_la_app'])),
+          ('No está en el banco', soles(franja['no_esta_en_el_banco'])),
+        ]),
+        pw.SizedBox(height: 12),
+        if (filas.isEmpty)
+          _ReporteBase.nada(titulo, entradas ? 'Todo lo que entró está conciliado.' : 'Todo lo que salió está conciliado.')
+        else
+          ...tabla(
+            titulo,
+            ['Fecha', 'Estado', 'Detalle', 'Operación', 'Monto'],
+            [
+              for (final f in filas)
+                [ProveedorPdfService.fecha(f['fecha']), '${f['estado'] ?? ''}', '${f['detalle'] ?? ''}', '${f['operacion'] ?? '—'}', soles(f['monto'])],
+            ],
+            {4},
+          ),
+        _ReporteBase.nota('Falta en la app: está en el banco y no en la app. No está en el banco: está en la app y no llegó en el '
+            'archivo del banco. El ITF y las comisiones del banco no se concilian y no aparecen.'),
+      ],
+      conMontos: true,
+      base: base,
+      bold: bold,
+    );
+  }
 }
 
 /// Reporte de Comercialización (General Manager, 4 nov 2026; lo decidió el área Comercial y ella lo ajustó): ventas del

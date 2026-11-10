@@ -1158,6 +1158,20 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
   Future<ApiResponse<Map<String, dynamic>>> pedirReporte(DateTime desde, DateTime hasta) => AdministracionService.reporteFinanzas(desde, hasta);
   @override
   Future<Uint8List> armarPdf(Map<String, dynamic> reporte) => FinanzasPdfService.generarBytes(reporte);
+  // Sólo lo que falta conciliar, lo que entra o lo que sale (General Manager, 9 nov 2026).
+  @override
+  List<ReporteOpcion> get opcionesReporte => [
+        for (final (solo, texto, ayuda) in const [
+          ('entradas', 'Entradas por conciliar', 'Sólo el dinero que entró y falta conciliar: en el banco y no en la app, o al revés.'),
+          ('salidas', 'Salidas por conciliar', 'Sólo el dinero que salió y falta conciliar: en el banco y no en la app, o al revés.'),
+        ])
+          ReporteOpcion(
+            texto: texto,
+            ayuda: ayuda,
+            pedir: (desde, hasta) => AdministracionService.reporteFinanzas(desde, hasta, solo: solo),
+            armar: FinanzasPdfService.porConciliarBytes,
+          ),
+      ];
 
   @override
   String get clave => 'finanzas';
@@ -1914,24 +1928,26 @@ Future<void> generarReportePdf(
   required Future<ApiResponse<Map<String, dynamic>>> Function(DateTime desde, DateTime hasta) pedir,
   required Future<Uint8List> Function(Map<String, dynamic> reporte) armar,
   ValueChanged<bool>? alGenerar,
+  List<ReporteOpcion> opciones = const [],
 }) async {
-  final rango = await _abrirPantalla<(DateTime, DateTime)>(context, const _ReporteComprasForm());
+  final rango = await _abrirPantalla<(DateTime, DateTime, ReporteOpcion?)>(context, _ReporteComprasForm(opciones: opciones));
   if (rango == null || !context.mounted) return;
-  final (desde, hasta) = rango;
+  final (desde, hasta, opcion) = rango;
   alGenerar?.call(true);
   try {
-    final r = await pedir(desde, hasta);
+    final r = await (opcion?.pedir ?? pedir)(desde, hasta);
     if (!context.mounted) return;
     if (!r.isSuccess) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.error ?? 'No se pudo generar el reporte')));
       return;
     }
-    final bytes = await armar(_mapa(r.data!['reporte']));
+    final bytes = await (opcion?.armar ?? armar)(_mapa(r.data!['reporte']));
     if (!context.mounted) return;
     String m(DateTime d) => '${d.year}_${d.month.toString().padLeft(2, '0')}';
-    final base = nombre.toLowerCase().replaceAll('ó', 'o').replaceAll(RegExp(r'[^a-z0-9]+'), '_');
+    final base = '$nombre${opcion == null ? '' : ' ${opcion.texto}'}'.toLowerCase().replaceAll('ó', 'o').replaceAll(RegExp(r'[^a-z0-9]+'), '_');
     final archivo = desde == hasta ? '${base}_${m(desde)}.pdf' : '${base}_${m(desde)}_a_${m(hasta)}.pdf';
-    await _abrirPantalla<void>(context, _ReportePdfScreen(bytes: bytes, archivo: archivo, titulo: '$nombre · ${ComprasPdfService.periodo(desde, hasta)}'));
+    await _abrirPantalla<void>(context,
+        _ReportePdfScreen(bytes: bytes, archivo: archivo, titulo: '${opcion?.texto ?? nombre} · ${ComprasPdfService.periodo(desde, hasta)}'));
   } catch (_) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo generar el PDF: revisa la señal.')));
@@ -1945,6 +1961,8 @@ mixin _ReporteDelProceso<T extends StatefulWidget> on State<T> {
   String get nombreReporte;
   Future<ApiResponse<Map<String, dynamic>>> pedirReporte(DateTime desde, DateTime hasta);
   Future<Uint8List> armarPdf(Map<String, dynamic> reporte);
+  /// Otros reportes que se eligen en el mismo formulario, además del completo (Finanzas: lo que falta conciliar).
+  List<ReporteOpcion> get opcionesReporte => const [];
   bool _generando = false;
 
   Widget botonReporte() => FloatingActionButton(
@@ -1959,6 +1977,7 @@ mixin _ReporteDelProceso<T extends StatefulWidget> on State<T> {
       nombre: nombreReporte,
       pedir: pedirReporte,
       armar: armarPdf,
+      opciones: opcionesReporte,
       alGenerar: (g) {
         if (mounted) setState(() => _generando = g);
       });
@@ -2576,8 +2595,21 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
 /// septiembre) o Anual (el año). Lo que se toca parece botón: Mensual | Anual, los dos campos de fecha (con flecha; se
 /// abren aquí mismo con el año y los 12 meses) y Generar PDF. El período elegido es información: texto con una línea
 /// fina, sin caja de color. Los meses futuros no se eligen; el aviso va justo encima del botón.
+/// Un reporte más que se elige en Generar reporte, en lugar del completo: su nombre, una línea que dice qué trae, cómo
+/// pedirlo y cómo armar su PDF.
+class ReporteOpcion {
+  const ReporteOpcion({required this.texto, required this.ayuda, required this.pedir, required this.armar});
+  final String texto;
+  final String ayuda;
+  final Future<ApiResponse<Map<String, dynamic>>> Function(DateTime desde, DateTime hasta) pedir;
+  final Future<Uint8List> Function(Map<String, dynamic> reporte) armar;
+}
+
 class _ReporteComprasForm extends StatefulWidget {
-  const _ReporteComprasForm();
+  const _ReporteComprasForm({this.opciones = const []});
+
+  /// Con opciones (Finanzas), "Qué incluir": Todo o una de ellas, con chips.
+  final List<ReporteOpcion> opciones;
 
   @override
   State<_ReporteComprasForm> createState() => _ReporteComprasFormState();
@@ -2590,6 +2622,7 @@ class _ReporteComprasFormState extends State<_ReporteComprasForm> {
   late DateTime _hasta = _hoy;
   late int _anio = _hoy.year;
   int? _abierto; // 0 fecha de inicio, 1 fecha de fin: se abre uno a la vez
+  ReporteOpcion? _opcion; // null: el reporte completo
 
   int get _meses => (_hasta.year * 12 + _hasta.month) - (_desde.year * 12 + _desde.month) + 1;
 
@@ -2676,6 +2709,22 @@ class _ReporteComprasFormState extends State<_ReporteComprasForm> {
               ),
             ),
           ],
+          if (widget.opciones.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            const Text('Qué incluir', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            // Chips: tocar uno lo elige (nunca abre otra pantalla).
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final o in <ReporteOpcion?>[null, ...widget.opciones])
+                ChoiceChip(
+                  label: Text(o?.texto ?? 'Todo'),
+                  selected: _opcion == o,
+                  onSelected: (_) => setState(() => _opcion = o),
+                ),
+            ]),
+            const SizedBox(height: 8),
+            Text(_opcion?.ayuda ?? 'El reporte completo de Finanzas.', style: const TextStyle(color: FincasColors.textSecondary)),
+          ],
           // El período: información, sin caja ni sombra (no se toca).
           const SizedBox(height: 24),
           const Divider(height: 1, color: FincasColors.divider),
@@ -2710,7 +2759,8 @@ class _ReporteComprasFormState extends State<_ReporteComprasForm> {
             FilledButton.icon(
               onPressed: aviso != null
                   ? null
-                  : () => Navigator.of(context).pop(_anual ? (DateTime(_anio, 1), DateTime(_anio, 12)) : (_desde, _hasta)),
+                  : () => Navigator.of(context)
+                      .pop(_anual ? (DateTime(_anio, 1), DateTime(_anio, 12), _opcion) : (_desde, _hasta, _opcion)),
               style: FilledButton.styleFrom(
                 backgroundColor: FincasColors.actionPrimary,
                 foregroundColor: FincasColors.actionPrimaryText,

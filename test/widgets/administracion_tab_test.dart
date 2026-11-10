@@ -2246,6 +2246,42 @@ void main() {
     expect(find.byType(SnackBar), findsOneWidget); // the error is said, nothing is left half done
   });
 
+  testWidgets('Finanzas Generar reporte can be only what is por conciliar, money in or money out', (tester) async {
+    // General Manager, 9 Nov 2026: "in Mensual report add the option to choose just pending match incoming or out".
+    await abrir(tester, rol: 'owner');
+    final hoy = DateTime.now();
+    final mes = '${hoy.year}-${hoy.month.toString().padLeft(2, '0')}';
+    await entrarFinanzas(tester);
+    await http.runWithClient(() async {
+      await tester.tap(find.byIcon(Icons.picture_as_pdf_outlined));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Qué incluir'), findsOneWidget);
+    expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Todo')).selected, isTrue); // the full report by default
+    await tester.scrollUntilVisible(find.text('Salidas por conciliar'), 100, scrollable: find.byType(Scrollable).last);
+    await tester.tap(find.text('Salidas por conciliar'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Sólo el dinero que salió'), findsOneWidget);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Generar PDF'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final r = pedidos.lastWhere((r) => r.url.path.endsWith('/finanzas/reporte'));
+    expect(r.url.queryParameters, {'desde': mes, 'hasta': mes, 'solo': 'salidas'});
+  });
+
+  testWidgets('Other processes have no Qué incluir in Generar reporte', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.picture_as_pdf_outlined));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Generar reporte'), findsWidgets);
+    expect(find.text('Qué incluir'), findsNothing);
+  });
+
   testWidgets('Generar reporte: Hasta follows Desde, and more than 12 months is refused next to the button', (tester) async {
     await abrir(tester, rol: 'owner');
     final hoy = DateTime.now();

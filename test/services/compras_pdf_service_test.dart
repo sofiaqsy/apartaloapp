@@ -205,6 +205,22 @@ void main() {
     }, businessName: 'Negocio Ejemplo', base: pw.Font.helvetica(), bold: pw.Font.helveticaBold());
     expect(String.fromCharCodes(finanzas.take(5)), '%PDF-');
     if (salida != null) File('$salida/finanzas_dueno.pdf').writeAsBytesSync(finanzas);
+    // Sólo lo que falta conciliar (9 Nov 2026), with lines and empty.
+    for (final filas in [
+      [
+        {'fecha': '2026-10-30', 'estado': 'Falta en la app', 'cuenta': 'BCP', 'detalle': 'RETIRO AG 997600', 'monto': 1000},
+        {'fecha': '2026-11-05', 'estado': 'No está en el banco', 'cuenta': 'BCP', 'detalle': 'Gasto · Transporte · PY-0014', 'operacion': '6120333', 'monto': 80},
+      ],
+      <Map<String, dynamic>>[],
+    ]) {
+      final pendiente = await FinanzasPdfService.porConciliarBytes({
+        'desde': '2026-10-01', 'hasta': '2026-11-30', 'meses': 2, 'generado': '2026-11-09T15:00:00Z', 'dueno': true, 'lado': 'salidas',
+        'franja': {'lineas': filas.length, 'total': filas.isEmpty ? 0 : 1080, 'falta_en_la_app': filas.isEmpty ? 0 : 1000, 'no_esta_en_el_banco': filas.isEmpty ? 0 : 80},
+        'filas': filas,
+      }, businessName: 'Negocio Ejemplo', base: pw.Font.helvetica(), bold: pw.Font.helveticaBold());
+      expect(String.fromCharCodes(pendiente.take(5)), '%PDF-');
+      if (salida != null && filas.isNotEmpty) File('$salida/finanzas_por_conciliar.pdf').writeAsBytesSync(pendiente);
+    }
   });
 
   test('builds the Comercialización report, for owners and for staff (4 Nov 2026)', () async {
