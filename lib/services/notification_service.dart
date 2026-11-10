@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'administracion_service.dart';
 import 'api_service.dart';
 
 /// Servicio para manejar Push Notifications con Firebase
@@ -21,6 +22,8 @@ class NotificationService {
   Function(RemoteMessage)? onMessageReceived;
   Function(RemoteMessage)? onMessageOpenedApp;
   VoidCallback? onNuevoPedido;
+  /// Se tocó un aviso de Pago pendiente (gasto, adelanto o pago de compra): se abre Finanzas.
+  VoidCallback? onPagoPendiente;
 
   /// Inicializar el servicio de notificaciones
   Future<void> initialize() async {
@@ -29,6 +32,8 @@ class NotificationService {
 
       // Solicitar permisos
       await _requestPermissions();
+      // Con la app abierta el aviso también se ve arriba, con sonido (iPhone).
+      await _messaging.setForegroundNotificationPresentationOptions(alert: true, badge: true, sound: true);
 
       // Obtener token FCM (con retry para iOS)
       await _getTokenWithRetry();
@@ -184,6 +189,10 @@ class NotificationService {
         ApiService.businessId = businessId;
         
         final result = await ApiService.registrarTokenPush(token: _fcmToken!);
+        // Avisos por área (10 nov 2026): el teléfono queda con la persona que inició sesión.
+        final porArea = await AdministracionService.telefonoParaAvisos(_fcmToken!,
+            plataforma: Platform.isIOS ? 'ios' : (Platform.isAndroid ? 'android' : null));
+        debugPrint(porArea ? '✅ Teléfono registrado para avisos por área' : '⚠️ Avisos por área: no se registró el teléfono');
         
         if (result.isSuccess) {
           debugPrint('✅ Token FCM registrado en el backend correctamente');
@@ -289,9 +298,32 @@ class NotificationService {
     if (data['type'] == 'nuevo_pedido') {
       debugPrint('➡️ Navegar a pedidos');
       onNuevoPedido?.call();
+    } else if (data['type'] == 'pago_pendiente') {
+      final abrir = onPagoPendiente;
+      if (abrir != null) {
+        abrir();
+      } else {
+        _pagoPendienteAlIniciar = true; // la app recién abre: se abre Finanzas cuando la pantalla principal esté lista
+      }
     } else if (data['type'] == 'mensaje_soporte') {
       debugPrint('➡️ Navegar a chat de soporte');
     }
+  }
+
+  bool _pagoPendienteAlIniciar = false;
+
+  /// La pantalla principal ya puede abrir Finanzas: si la app se abrió tocando un Pago pendiente, se abre ahora.
+  void listoParaAbrir() {
+    if (_pagoPendienteAlIniciar) {
+      _pagoPendienteAlIniciar = false;
+      onPagoPendiente?.call();
+    }
+  }
+
+  /// Al cerrar sesión, antes de salir: este teléfono deja de recibir los avisos de esa persona.
+  Future<void> quitarTelefonoDeAvisos() async {
+    final token = await getToken();
+    if (token != null) await AdministracionService.telefonoParaAvisos(token, quitar: true);
   }
 
   /// Suscribirse a un tema (topic)

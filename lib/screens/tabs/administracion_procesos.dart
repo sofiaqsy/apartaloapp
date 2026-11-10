@@ -1080,6 +1080,9 @@ class _LogisticaScreenState extends _ProcesoState<_LogisticaScreen> with _Provee
 
 // ─── Finanzas ────────────────────────────────────────────────────────────────
 
+/// Abre Finanzas (al tocar un aviso de Pago pendiente, 10 nov 2026).
+Future<void> abrirFinanzas(BuildContext context) => _abrirPantalla<void>(context, const _FinanzasScreen());
+
 /// Abre Finanzas con un comprobante compartido, para elegir qué se pagó (ver [_FinanzasScreen.comprobante]).
 Future<void> pagarConComprobante(BuildContext context, String imagen) => _abrirPantalla<void>(context, _FinanzasScreen(comprobante: imagen));
 

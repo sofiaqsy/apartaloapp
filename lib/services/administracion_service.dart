@@ -78,6 +78,20 @@ class AdministracionService {
 
   static Future<ApiResponse<Map<String, dynamic>>> pendientes() => _get('pendientes');
 
+  /// Este teléfono recibe las notificaciones de las áreas de la persona (General Manager, 10 nov 2026): Nuevo pedido a
+  /// Comercialización, Pago pendiente a Finanzas. [quitar] al cerrar sesión, antes de salir.
+  static Future<bool> telefonoParaAvisos(String token, {String? plataforma, bool quitar = false}) async {
+    try {
+      final url = Uri.parse('$_base/push-token');
+      final body = jsonEncode({'token': token, if (plataforma != null) 'platform': plataforma});
+      final res = await (quitar ? http.delete(url, headers: _json, body: body) : http.post(url, headers: _json, body: body))
+          .timeout(const Duration(seconds: 15));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<ApiResponse<Map<String, dynamic>>> resumen() => _get('resumen');
 
   /// Tarjetas Compras y Producción: {compras: {...}, produccion: {...}} (el dinero sólo para dueños).

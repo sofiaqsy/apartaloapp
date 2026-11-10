@@ -8,7 +8,7 @@ import '../services/api_service.dart';
 import '../services/notification_service.dart';
 import '../providers/printer_provider.dart';
 import 'login_screen.dart';
-import 'tabs/administracion_tab.dart' show AdministracionTab, pagarConComprobante, claveAreasElegidas;
+import 'tabs/administracion_tab.dart' show AdministracionTab, abrirFinanzas, pagarConComprobante, claveAreasElegidas;
 import 'tabs/productos_tab.dart';
 import 'tabs/clientes_tab.dart';
 import 'tabs/pedidos_tab.dart';
@@ -130,6 +130,13 @@ class _MainScreenState extends State<MainScreen> {
       notifService.onNuevoPedido = () {
         if (mounted) setState(() => _currentIndex = 0);
       };
+      // Pago pendiente (10 nov 2026): Administración y Finanzas, donde se paga.
+      notifService.onPagoPendiente = () async {
+        if (!mounted) return;
+        setState(() => _currentIndex = 3);
+        await abrirFinanzas(context);
+      };
+      notifService.listoParaAbrir();
     } catch (e) {
       debugPrint('⚠️ Error re-enviando token: $e');
     }
@@ -207,6 +214,7 @@ class _MainScreenState extends State<MainScreen> {
     );
 
     if (confirm == true) {
+      await NotificationService().quitarTelefonoDeAvisos(); // con la sesión todavía abierta
       await AuthService.signOut();
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
