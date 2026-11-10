@@ -1146,7 +1146,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 4),
-          Text('Elige lo que se pagó y págalo: el comprobante queda como su evidencia.', style: TextStyle(color: Colors.grey.shade700)),
+          Text('Elige lo que se pagó: págalo o, si ya está pagado, sube el comprobante. Queda como su evidencia.', style: TextStyle(color: Colors.grey.shade700)),
         ]),
       ),
     ]);
@@ -1516,6 +1516,8 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
           evidencias: _nEvidencias(f),
           entrega: tipo == 'purchase' ? f['entrega']?.toString() : null,
           onCambio: () => cambio = true,
+          comprobante: widget.comprobante,
+          onComprobanteSubido: () => _pagadoConComprobante = true,
         ));
     // Pagado con el comprobante compartido: listo, se vuelve a donde estaba.
     if (_pagadoConComprobante && mounted) {
@@ -1536,12 +1538,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
     final compartido = widget.comprobante;
     if (compartido != null) {
       // La evidencia es el comprobante compartido: se sube sin preguntar.
-      final mensajes = ScaffoldMessenger.of(ctx);
-      mensajes.showSnackBar(const SnackBar(content: Text('Subiendo el comprobante…'), duration: Duration(seconds: 30)));
-      final r = await AdministracionService.subirEvidencia(tipo: tipo, id: id, bytes: File(compartido).readAsBytesSync());
-      mensajes.hideCurrentSnackBar();
-      mensajes.showSnackBar(SnackBar(
-          content: Text(r.isSuccess ? 'Pago y comprobante guardados ✓' : 'Pago guardado. El comprobante no se subió: súbelo desde el detalle.')));
+      await _subirComprobanteCompartido(ctx, tipo, id, compartido, pagado: true);
       _pagadoConComprobante = true;
       return true;
     }
@@ -1730,6 +1727,8 @@ class _FinanzaDetalleScreen extends StatefulWidget {
     required this.evidencias,
     required this.onCambio,
     this.entrega,
+    this.comprobante,
+    this.onComprobanteSubido,
   });
   final String titulo;
   final List<(String, String?)> datos;
@@ -1739,6 +1738,11 @@ class _FinanzaDetalleScreen extends StatefulWidget {
   final int evidencias;
   final String? entrega; // la compra completa (sólo compras)
   final VoidCallback onCambio;
+
+  /// El comprobante compartido desde WhatsApp: en algo ya pagado, Subir evidencia sube esa imagen, sin la galería
+  /// (General Manager, 9 nov 2026: en "¿Qué se pagó?" no se podía subir la imagen elegida a un pago ya hecho).
+  final String? comprobante;
+  final VoidCallback? onComprobanteSubido;
 
   @override
   State<_FinanzaDetalleScreen> createState() => _FinanzaDetalleScreenState();
@@ -1755,6 +1759,15 @@ class _FinanzaDetalleScreenState extends State<_FinanzaDetalleScreen> {
   }
 
   Future<void> _subir() async {
+    final compartido = widget.comprobante;
+    if (compartido != null) {
+      if (await _subirComprobanteCompartido(context, widget.tipo, widget.id, compartido) && mounted) {
+        widget.onCambio();
+        widget.onComprobanteSubido?.call();
+        Navigator.of(context).pop(); // listo: Finanzas también se cierra y se vuelve a donde estaba
+      }
+      return;
+    }
     if (await _subirEvidencia(context, widget.tipo, widget.id) && mounted) {
       widget.onCambio();
       setState(() => _n++);
@@ -1807,7 +1820,9 @@ class _FinanzaDetalleScreenState extends State<_FinanzaDetalleScreen> {
         // Lo que se puede hacer (botones de verdad, debajo del detalle).
         _Acciones(acciones: [
           for (final a in widget.acciones) (a.$1, a.$2, () => _accion(a.$3)),
-          (Icons.add_a_photo_outlined, 'Subir evidencia', _subir),
+          widget.comprobante != null
+              ? (Icons.receipt_long_outlined, 'Subir este comprobante', _subir)
+              : (Icons.add_a_photo_outlined, 'Subir evidencia', _subir),
           if (_n > 0) (Icons.photo_library_outlined, 'Ver evidencia ($_n)', _ver),
         ]),
       ]),
@@ -3109,6 +3124,25 @@ Future<bool> _subirEvidencia(BuildContext context, String tipo, String id) async
   final r = await AdministracionService.subirEvidencia(tipo: tipo, id: id, bytes: bytes);
   mensajes.hideCurrentSnackBar();
   mensajes.showSnackBar(SnackBar(content: Text(r.isSuccess ? 'Evidencia subida ✓' : (r.error ?? 'No se subió'))));
+  return r.isSuccess;
+}
+
+/// Sube como evidencia el comprobante compartido desde WhatsApp, sin preguntar de dónde (ya se eligió al compartir).
+/// [pagado]: se acaba de pagar con él. true si se subió.
+Future<bool> _subirComprobanteCompartido(BuildContext context, String tipo, String id, String ruta, {bool pagado = false}) async {
+  final mensajes = ScaffoldMessenger.of(context);
+  final archivo = File(ruta);
+  if (!archivo.existsSync()) {
+    mensajes.showSnackBar(const SnackBar(content: Text('No se encontró el comprobante: compártelo otra vez desde WhatsApp.')));
+    return false;
+  }
+  mensajes.showSnackBar(const SnackBar(content: Text('Subiendo el comprobante…'), duration: Duration(seconds: 30)));
+  final r = await AdministracionService.subirEvidencia(tipo: tipo, id: id, bytes: archivo.readAsBytesSync());
+  mensajes.hideCurrentSnackBar();
+  mensajes.showSnackBar(SnackBar(
+      content: Text(r.isSuccess
+          ? (pagado ? 'Pago y comprobante guardados ✓' : 'Comprobante subido ✓')
+          : (pagado ? 'Pago guardado. El comprobante no se subió: súbelo desde el detalle.' : (r.error ?? 'No se subió')))));
   return r.isSuccess;
 }
 

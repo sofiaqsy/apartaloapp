@@ -628,6 +628,43 @@ void main() {
     expect(f.existsSync(), isFalse); // and the temporary copy is gone
   });
 
+  testWidgets('a comprobante shared for something already paid is uploaded as its evidence, without the gallery', (tester) async {
+    // General Manager, 9 Nov 2026: in "¿Qué se pagó?" the selected image could not be uploaded to a payment already made.
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    esDuenoMock = true;
+    SharedPreferences.setMockInitialValues({'business_role': 'owner', 'mi_area_elegidas': marcadas});
+    ComprobanteService.leerTextoParaPruebas = (_) async => 'Monto S/ 400.00';
+    addTearDown(() => ComprobanteService.leerTextoParaPruebas = null);
+    final carpeta = Directory.systemTemp.createTempSync('comprobante');
+    addTearDown(() => carpeta.existsSync() ? carpeta.deleteSync(recursive: true) : null);
+    final f = File('${carpeta.path}/compartido_2.jpg')..writeAsBytesSync([0xFF, 0xD8, 0xFF, 0xD9]);
+    await http.runWithClient(() async {
+      await tester.pumpWidget(MaterialApp(home: Builder(
+        builder: (context) => Scaffold(body: Center(child: TextButton(onPressed: () => pagarConComprobante(context, f.path), child: const Text('abrir')))),
+      )));
+      await tester.tap(find.text('abrir'));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Agricultor Pagado'), 200, scrollable: find.byType(Scrollable).last);
+      await tester.tap(find.text('Agricultor Pagado'));
+      await tester.pumpAndSettle();
+      expect(find.text('Subir evidencia'), findsNothing);
+      await tester.tap(find.text('Subir este comprobante'));
+      await tester.pumpAndSettle();
+      expect(find.text('Tomar foto'), findsNothing); // no camera or gallery: the shared image is the one
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final ev = pedidos.lastWhere((r) => r.url.path.endsWith('/evidencias') && r.method == 'POST');
+    expect(jsonDecode(ev.body)['tipo'], 'purchase');
+    expect(jsonDecode(ev.body)['id'], 'PU-0003');
+    expect(base64Decode(jsonDecode(ev.body)['archivoBase64'] as String), [0xFF, 0xD8, 0xFF, 0xD9]);
+    expect(find.text('¿Qué se pagó?'), findsNothing); // done: back where it was
+    expect(f.existsSync(), isFalse);
+  });
+
   testWidgets('Finanzas pays a compra by transfer without asking for the operation number (the bank fills it in)', (tester) async {
     await abrir(tester, rol: 'owner');
     await entrarFinanzas(tester);
