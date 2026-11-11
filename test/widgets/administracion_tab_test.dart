@@ -104,7 +104,7 @@ void main() {
       final todos = [
         {'id': 'EX-0001', 'area': 'fulfillment', 'category': 'Flete', 'amount': 120, 'description': 'Envío a Lima', 'expense_date': '2026-11-01', 'created_by': 'staff@x', 'status': 'Pendiente de pago'},
         {'id': 'EX-0002', 'area': 'sourcing', 'category': 'Transporte', 'amount': 30, 'description': 'Lobato', 'expense_date': '2026-11-01', 'created_by': 'staff@x', 'status': 'Pendiente de pago'},
-        {'id': 'EX-0003', 'area': 'farm', 'category': 'Mano de obra', 'amount': 120, 'description': 'Jornal deshierbo', 'expense_date': '2026-11-02', 'created_by': 'staff@x', 'status': 'Pagado'},
+        {'id': 'EX-0003', 'area': 'farm', 'category': 'Mano de obra', 'amount': 120, 'description': 'Jornal deshierbo', 'expense_date': '2026-11-02', 'created_by': 'staff@x', 'status': 'Pagado', 'operacion': '6053814'},
       ].where((g) => g['area'] == area).toList();
       return http.Response(jsonEncode({'gastos': todos, 'hayMas': false}), 200);
     }
@@ -359,12 +359,22 @@ void main() {
       ]}), 200);
     }
     if (p.endsWith('/evidencias') && req.method == 'POST') return http.Response(jsonEncode({'ok': true, 'evidencia': {'evidence_id': 4}}), 200);
+    if (p.endsWith('/adelantos/ADV-007')) {
+      return http.Response(jsonEncode({
+        'adelanto': {
+          'id': 'ADV-007', 'fecha': '2026-11-01', 'nombre': 'Pedro Ramírez Ñique', 'monto': 500, 'usado': 300, 'devuelto': 0, 'saldo': 200,
+          'estado': 'partly_used', 'devuelve': 'coffee', 'cafe': 'parchment', 'nota': 'Adelanto campaña', 'operacion': '6011697',
+          'partes': [{'fecha': '2026-11-01', 'monto': 200, 'operacion': '5896'}, {'fecha': '2026-11-01', 'monto': 300}],
+          'compras': [{'compra': 'PU-0008', 'fecha': '2026-11-04', 'kg': 72, 'monto': 300}],
+        },
+      }), 200);
+    }
     if (p.endsWith('/adelantos')) {
       return http.Response(jsonEncode({
         'porAprobar': [{'id': 'SOL-0001', 'request_date': '2026-11-02', 'party': 'Misael Cusi', 'amount': 1500, 'reason': 'Compras', 'created_by': 'misael@x'}],
         'adelantos': [
           {'id': 'ADV-007', 'party_id': 'P-0001', 'nombre': 'Pedro Ramírez Ñique', 'advance_date': '2026-11-01', 'amount': 500, 'used_in_coffee': 300, 'returned_in_money': 0, 'open_balance': 200, 'status': 'partly_used'},
-          {'id': 'ADV-003', 'party_id': 'P-0002', 'nombre': 'Agricultor Dos', 'advance_date': '2026-10-01', 'amount': 400, 'used_in_coffee': 400, 'returned_in_money': 0, 'open_balance': 0, 'status': 'settled'},
+          {'id': 'ADV-003', 'party_id': 'P-0002', 'nombre': 'Agricultor Dos', 'advance_date': '2026-10-01', 'amount': 400, 'used_in_coffee': 400, 'returned_in_money': 0, 'open_balance': 0, 'status': 'settled', 'operacion': '6011697'},
         ],
         'hayMas': false,
       }), 200);
@@ -1511,7 +1521,7 @@ void main() {
     // A gasto opens its detail; staff do not see the evidence.
     await tester.tap(find.text('Mano de obra'));
     await tester.pumpAndSettle();
-    for (final t in ['Gasto', 'Jornal deshierbo', 'EX-0003']) {
+    for (final t in ['Gasto', 'Jornal deshierbo', 'EX-0003', 'Nº de operación', '6053814']) {
       expect(find.text(t), findsWidgets, reason: t);
     }
     expect(find.text('Ver evidencia'), findsNothing);
@@ -2183,7 +2193,34 @@ void main() {
       expect(find.text(t), findsWidgets, reason: t);
     }
     expect(find.textContaining('ADV-007 · S/ 500 · usado en café S/ 300'), findsOneWidget);
+    // A matched adelanto shows its operation number (10 Nov 2026); one not matched shows none.
+    expect(find.textContaining('Nº de operación 6011697'), findsOneWidget);
+    expect(find.textContaining('Nº de operación'), findsOneWidget);
   });
+
+  for (final dueno in [true, false]) {
+    testWidgets('an adelanto opens its detail (10 Nov 2026): money, parts with operation, compras; evidence only for owners (dueño: $dueno)',
+        (tester) async {
+      await abrir(tester, rol: dueno ? 'owner' : 'staff');
+      await http.runWithClient(() async {
+        await tester.tap(find.text('Compras'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Adelantos'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Pedro Ramírez Ñique'));
+        await tester.pumpAndSettle();
+      }, () => MockClient((req) async => responder(req)));
+      for (final t in ['Adelanto', 'Usado en parte', 'Queda', 'S/ 200', 'Nº de operación', '6011697', 'Devuelve en', 'Café', 'Entregado', 'Usado en compras']) {
+        expect(find.text(t), findsWidgets, reason: t);
+      }
+      expect(find.textContaining('Nº de operación 5896'), findsOneWidget);
+      expect(find.textContaining('PU-0008'), findsOneWidget);
+      await tester.drag(find.byType(ListView).last, const Offset(0, -2000));
+      await tester.pumpAndSettle();
+      expect(find.text('Evidencia'), dueno ? findsOneWidget : findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('Compras has a Gastos tab after Proveedores: the Compras gastos with their status', (tester) async {
     await abrir(tester, rol: 'staff');

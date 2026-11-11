@@ -237,6 +237,11 @@ class AdministracionService {
 
   static Future<ApiResponse<Map<String, dynamic>>> reporteProveedor(String id) => _get('proveedores/${Uri.encodeComponent(id)}/reporte');
 
+  /// Reporte con evidencias (dueños, 10 nov 2026): la evidencia de las compras, adelantos y gastos del proveedor, cada
+  /// una con a qué pertenece y un enlace de 10 minutos ({evidencias}).
+  static Future<ApiResponse<Map<String, dynamic>>> evidenciasProveedor(String id) =>
+      _get('proveedores/${Uri.encodeComponent(id)}/evidencias');
+
   /// Subir evidencia (dueños): una foto o PDF del voucher o recibo de una compra (purchase), un gasto (expense),
   /// un pedido de adelanto (advance_request) o un adelanto (advance). El servidor revisa que sea foto o PDF.
   static Future<ApiResponse<Map<String, dynamic>>> subirEvidencia(
@@ -261,6 +266,9 @@ class AdministracionService {
 
   /// Detalle de una compra ({compra}); el precio y los pagos sólo para dueños.
   static Future<ApiResponse<Map<String, dynamic>>> compra(String id) => _get('compras/${Uri.encodeComponent(id)}');
+
+  /// Compras → Adelantos: un adelanto con sus partes, las compras que lo usaron y su número de operación ({adelanto}).
+  static Future<ApiResponse<Map<String, dynamic>>> adelanto(String id) => _get('adelantos/${Uri.encodeComponent(id)}');
 
   /// Mis solicitudes: lo que la persona pidió y en qué quedó (Administración ve todas).
   static Future<ApiResponse<Map<String, dynamic>>> solicitudes() => _get('solicitudes');

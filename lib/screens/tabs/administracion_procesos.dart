@@ -1456,6 +1456,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
         if (((f['de_adelantos'] as num?) ?? 0) > 0) ('De adelantos', _soles(f['de_adelantos'])),
         ('Falta pagar', _soles(f['debe'])),
         (espera ? 'Pedido el' : 'Último pago', _fechaCorta(f['fecha'])),
+        ('Nº de operación', f['operacion']?.toString()),
       ] else if (tipo == 'expense') ...[
         ('Monto', _soles(f['monto'])),
         ('Categoría', f['categoria']?.toString()),
@@ -1465,6 +1466,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
         ('Registrado por', f['por']?.toString()),
         ('Pagado el', f['pagado_el'] == null ? null : _fechaCorta(f['pagado_el'])),
         ('Cómo se pagó', f['metodo'] == null ? null : (_metodosPago[f['metodo']] ?? '${f['metodo']}')),
+        ('Nº de operación', f['operacion']?.toString()),
         ('Pagado por', f['pagado_por']?.toString()),
         ('Código', '${f['id']}'),
       ] else ...[
@@ -1475,6 +1477,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
         ('Fecha', _fechaCorta(f['fecha'])),
         ('Pidió', f['por']?.toString()),
         ('Adelanto entregado', f['adelanto']?.toString()),
+        ('Nº de operación', f['operacion']?.toString()),
         ('Decidido el', f['decidido_el'] == null ? null : _fechaCorta(f['decidido_el'])),
         ('Decidido por', f['decidido_por']?.toString()),
         ('Motivo del rechazo', f['motivo_rechazo']?.toString()),
@@ -2090,6 +2093,8 @@ class _GastoDetalleScreen extends StatelessWidget {
             dato('Descripción', g['description']?.toString()),
             dato('Gasto', g['id']?.toString()),
             dato('Registrado por', g['created_by']?.toString()),
+            // Con el pago conciliado con el banco, su número de operación (General Manager, 10 nov 2026).
+            dato('Nº de operación', g['operacion']?.toString()),
           ].where((w) => w is! SizedBox).toList()),
         ),
         if (!pagado)
@@ -2225,6 +2230,8 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
         _encabezado('Adelantos', ''),
         for (final a in _adelantos)
           _Ficha(
+            // Cada adelanto abre su detalle y su evidencia (General Manager, 10 nov 2026).
+            onTap: () => _abrirPantalla<void>(context, _AdelantoDetalleScreen(id: '${a['id']}', esDueno: widget.esDueno)),
             inicio: _Insignia(_fechaCorta(a['advance_date']), tono: ((a['open_balance'] as num?) ?? 0) > 0 ? Colors.blue : Colors.green),
             titulo: '${a['nombre'] ?? a['party_id'] ?? 'Sin nombre'}',
             detalle: [
@@ -2232,6 +2239,7 @@ class _ComprasScreenState extends _ProcesoState<_ComprasScreen> with _Proveedore
               if (((a['used_in_coffee'] as num?) ?? 0) > 0) 'usado en café ${_soles(a['used_in_coffee'])}',
               if (((a['returned_in_money'] as num?) ?? 0) > 0) 'devuelto ${_soles(a['returned_in_money'])}',
               _estadosAdelanto[a['status']] ?? '${a['status'] ?? ''}',
+              if (a['operacion'] != null) 'Nº de operación ${a['operacion']}',
             ].join(' · '),
             fin: ((a['open_balance'] as num?) ?? 0) > 0
                 ? _Pildora('queda ${_soles(a['open_balance'])}', Colors.blue)
@@ -2437,9 +2445,17 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
       return;
     }
     try {
-      final bytes = await ProveedorPdfService.generarBytes(_mapa(r.data!['reporte']));
+      final reporte = _mapa(r.data!['reporte']);
+      final bytes = await ProveedorPdfService.generarBytes(reporte);
       if (!mounted) return;
-      await _abrirPantalla<void>(context, _ReportePdfScreen(bytes: bytes, archivo: 'proveedor_${widget.id}.pdf'));
+      await _abrirPantalla<void>(
+          context,
+          _ReportePdfScreen(
+            bytes: bytes,
+            archivo: 'proveedor_${widget.id}.pdf',
+            // Después de generarlo, Generar con evidencias (General Manager, 10 nov 2026): sólo dueños, que ven la evidencia.
+            conEvidencias: reporte['puede_editar'] == true ? () => _reporteConEvidencias(reporte) : null,
+          ));
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo generar el PDF: revisa la señal.')));
@@ -2447,6 +2463,36 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
     } finally {
       if (mounted) setState(() => _generando = false);
     }
+  }
+
+  /// El mismo reporte y, después, una página por cada evidencia del proveedor (fotos; de un PDF, cada página como imagen,
+  /// hasta 10). null si el proveedor todavía no tiene evidencia; un error se muestra como texto.
+  Future<Uint8List?> _reporteConEvidencias(Map<String, dynamic> reporte) async {
+    final r = await AdministracionService.evidenciasProveedor(widget.id);
+    if (!r.isSuccess) throw r.error ?? 'No se pudo traer la evidencia.';
+    final lista = _lista(r.data!['evidencias']);
+    if (lista.isEmpty) return null;
+    final evidencias = <EvidenciaPdf>[];
+    for (final e in lista) {
+      final imagenes = <Uint8List>[];
+      try {
+        final res = e['url'] == null ? null : await http.get(Uri.parse('${e['url']}'));
+        if (res != null && res.statusCode == 200) {
+          if (e['tipo'] == 'application/pdf') {
+            await for (final pagina in Printing.raster(res.bodyBytes, dpi: 110)) {
+              imagenes.add(await pagina.toPng());
+              if (imagenes.length >= 10) break;
+            }
+          } else {
+            imagenes.add(res.bodyBytes);
+          }
+        }
+      } catch (_) {
+        // Sin esa imagen: su página dice que no se pudo descargar.
+      }
+      evidencias.add(EvidenciaPdf(que: '${e['que'] ?? 'Evidencia'}', fecha: e['fecha']?.toString(), nota: e['nota']?.toString(), imagenes: imagenes));
+    }
+    return ProveedorPdfService.generarBytes(reporte, evidencias: evidencias);
   }
 
   static const _vende = {'cherry': 'Cereza', 'parchment': 'Pergamino', 'both': 'Cereza y pergamino'};
@@ -2905,15 +2951,67 @@ class _SelectorMesState extends State<_SelectorMes> {
   }
 }
 
-class _ReportePdfScreen extends StatelessWidget {
-  const _ReportePdfScreen({required this.bytes, required this.archivo, this.titulo = 'Reporte del proveedor'});
+class _ReportePdfScreen extends StatefulWidget {
+  const _ReportePdfScreen({required this.bytes, required this.archivo, this.titulo = 'Reporte del proveedor', this.conEvidencias});
   final Uint8List bytes;
   final String archivo;
   final String titulo;
 
+  /// Si está, debajo del PDF: Generar con evidencias (el mismo reporte con la evidencia al final; null si no hay).
+  final Future<Uint8List?> Function()? conEvidencias;
+
+  @override
+  State<_ReportePdfScreen> createState() => _ReportePdfScreenState();
+}
+
+class _ReportePdfScreenState extends State<_ReportePdfScreen> {
+  bool _generando = false;
+
+  Future<void> _generarConEvidencias() async {
+    if (_generando) return;
+    setState(() => _generando = true);
+    final mensajes = ScaffoldMessenger.of(context);
+    try {
+      final bytes = await widget.conEvidencias!();
+      if (!mounted) return;
+      if (bytes == null) {
+        mensajes.showSnackBar(const SnackBar(content: Text('Este proveedor todavía no tiene evidencia.')));
+        return;
+      }
+      await _abrirPantalla<void>(
+          context,
+          _ReportePdfScreen(
+              bytes: bytes, archivo: widget.archivo.replaceFirst('.pdf', '_evidencias.pdf'), titulo: 'Reporte con evidencias'));
+    } catch (e) {
+      if (mounted) mensajes.showSnackBar(SnackBar(content: Text(e is String ? e : 'No se pudo generar con evidencias: revisa la señal.')));
+    } finally {
+      if (mounted) setState(() => _generando = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bytes = widget.bytes;
+    final archivo = widget.archivo;
+    final titulo = widget.titulo;
     return Scaffold(
+      bottomNavigationBar: widget.conEvidencias == null
+          ? null
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: SizedBox(
+                  height: 52,
+                  child: ElevatedButton.icon(
+                    onPressed: _generando ? null : _generarConEvidencias,
+                    icon: _generando
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.photo_library_outlined),
+                    label: Text(_generando ? 'Generando con evidencias…' : 'Generar con evidencias'),
+                  ),
+                ),
+              ),
+            ),
       backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
         title: Text(titulo),
@@ -3101,6 +3199,7 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
                     _dato('Pagado', compra['pagado'] == null ? null : _soles(compra['pagado'])),
                     _dato('Falta pagar', compra['debe'] == null ? null : _soles(compra['debe'])),
                     _dato('Adelanto usado', c['adelanto']?.toString()),
+                    _dato('Nº de operación', c['operacion']?.toString()),
                   ]),
                 if (pagos.isNotEmpty) _panel('Pagos', [for (final p in pagos) _dato(_fechaCorta(p['fecha']), '${_soles(p['monto'])} · ${p['de']}')]),
                 // Dueños: la evidencia del pago se carga recién al tocar (General Manager, 3 nov 2026).
@@ -3148,12 +3247,137 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
   }
 }
 
+/// Detalle de un adelanto (General Manager, 10 nov 2026): quién, cuánto, lo que queda, cómo lo devuelve, las partes
+/// entregadas con su número de operación y las compras que lo usaron. Sólo información; los dueños tienen además su
+/// evidencia (fotos y documentos PDF).
+class _AdelantoDetalleScreen extends StatefulWidget {
+  const _AdelantoDetalleScreen({required this.id, required this.esDueno});
+  final String id;
+  final bool esDueno;
+
+  @override
+  State<_AdelantoDetalleScreen> createState() => _AdelantoDetalleScreenState();
+}
+
+class _AdelantoDetalleScreenState extends State<_AdelantoDetalleScreen> {
+  static const _estados = {'open': 'Abierto', 'partly_used': 'Usado en parte', 'settled': 'Liquidado', 'cancelled': 'Cancelado'};
+  static const _colores = {'open': Colors.blue, 'partly_used': Colors.teal, 'settled': Colors.green, 'cancelled': Colors.red};
+  Map<String, dynamic>? _a;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    final r = await AdministracionService.adelanto(widget.id);
+    if (!mounted) return;
+    setState(() {
+      _error = r.isSuccess ? null : r.error;
+      if (r.isSuccess) _a = _mapa(r.data!['adelanto']);
+    });
+  }
+
+  Widget _dato(String nombre, String? valor) => valor == null || valor.isEmpty || valor == 'null'
+      ? const SizedBox.shrink()
+      : Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade300))),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(width: 140, child: Text(nombre, style: TextStyle(color: Colors.grey.shade700))),
+            Expanded(child: Text(valor, style: const TextStyle(fontWeight: FontWeight.w600))),
+          ]),
+        );
+
+  Widget _panel(String titulo, List<Widget> filas) {
+    final visibles = filas.where((w) => w is! SizedBox).toList();
+    if (visibles.isEmpty) return const SizedBox.shrink();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+          padding: const EdgeInsets.fromLTRB(4, 16, 4, 6), child: Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(16)),
+        child: Column(children: visibles),
+      ),
+    ]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final a = _a;
+    final partes = a == null ? const <Map<String, dynamic>>[] : _lista(a['partes']);
+    final compras = a == null ? const <Map<String, dynamic>>[] : _lista(a['compras']);
+    final estado = '${a?['estado'] ?? ''}';
+    return Scaffold(
+      appBar: AppBar(title: const Text('Adelanto')),
+      body: RefreshIndicator(
+        onRefresh: _cargar,
+        child: a == null
+            ? ListView(children: [
+                Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: _error != null ? Text(_error!, textAlign: TextAlign.center) : const Center(child: CircularProgressIndicator()),
+                ),
+              ])
+            : ListView(padding: const EdgeInsets.all(16), children: [
+                Row(children: [
+                  Expanded(child: Text('${a['nombre'] ?? 'Sin nombre'}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
+                  _Pildora(_estados[estado] ?? estado, _colores[estado] ?? Colors.grey),
+                ]),
+                Text('${a['id']} · ${_fechaLarga(a['fecha'])}', style: TextStyle(color: Colors.grey.shade700)),
+                _panel('Dinero', [
+                  _dato('Monto', _soles(a['monto'])),
+                  _dato('Usado en café', ((a['usado'] as num?) ?? 0) > 0 ? _soles(a['usado']) : null),
+                  _dato('Devuelto', ((a['devuelto'] as num?) ?? 0) > 0 ? _soles(a['devuelto']) : null),
+                  _dato('Queda', a['saldo'] == null ? null : _soles(a['saldo'])),
+                  _dato('Nº de operación', a['operacion']?.toString()),
+                ]),
+                _panel('Acuerdo', [
+                  _dato('Devuelve en', a['devuelve'] == null ? null : (_devuelveEn[a['devuelve']] ?? '${a['devuelve']}')),
+                  _dato('Café', a['cafe'] == null ? null : (_estadosCafe[a['cafe']] ?? '${a['cafe']}')),
+                  _dato('Precio fijo', a['precio'] == null ? null : '${_soles(a['precio'])}/kg'),
+                  _dato('Entregar hasta', a['entregar_hasta'] == null ? null : _fechaLarga(a['entregar_hasta'])),
+                  _dato('Por medio de', a['via']?.toString()),
+                  _dato('Nota', a['nota']?.toString()),
+                  _dato('Registrado por', a['por']?.toString()),
+                ]),
+                if (partes.length > 1 || partes.any((p) => p['operacion'] != null))
+                  _panel('Entregado', [
+                    for (final p in partes)
+                      _dato(_fechaCorta(p['fecha']), '${_soles(p['monto'])}${p['operacion'] != null ? ' · Nº de operación ${p['operacion']}' : ''}'),
+                  ]),
+                if (compras.isNotEmpty)
+                  _panel('Usado en compras', [
+                    for (final c in compras)
+                      _dato(_fechaCorta(c['fecha']), '${_soles(c['monto'])} · ${c['compra'] ?? ''}${c['kg'] != null ? ' · ${_kg(c['kg'])}' : ''}'),
+                  ]),
+                // Dueños: la evidencia (fotos y documentos) se carga recién al tocar.
+                if (widget.esDueno) ...[
+                  const SizedBox(height: 16),
+                  _Ficha(
+                    inicio: const _InsigniaIcono(Icons.photo_library_outlined, tono: Colors.indigo),
+                    titulo: 'Evidencia',
+                    detalle: 'Vouchers, recibos y documentos de este adelanto',
+                    onTap: () => _abrirPantalla<void>(
+                        context, _EvidenciasScreen(tipo: 'advance', id: '${a['id']}', titulo: '${a['nombre'] ?? ''} · ${a['id']}')),
+                  ),
+                ],
+              ]),
+      ),
+    );
+  }
+}
+
 // ─── Evidencia ───────────────────────────────────────────────────────────────
 
-/// Subir evidencia (General Manager, 3 nov 2026): una foto del voucher o del recibo, con la cámara o de la galería.
+/// Subir evidencia (General Manager, 3 nov 2026): una foto del voucher o del recibo, con la cámara o de la galería, o
+/// un documento PDF de Archivos (General Manager, 10 nov 2026: "I need to upload some documents").
 /// Sólo dueños (lo decide la base). true si se subió.
 Future<bool> _subirEvidencia(BuildContext context, String tipo, String id) async {
-  final fuente = await showModalBottomSheet<ImageSource>(
+  final fuente = await showModalBottomSheet<Object>(
     context: context,
     builder: (ctx) => SafeArea(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -3164,13 +3388,25 @@ Future<bool> _subirEvidencia(BuildContext context, String tipo, String id) async
             leading: const Icon(Icons.photo_library_outlined),
             title: const Text('Elegir de la galería'),
             onTap: () => Navigator.pop(ctx, ImageSource.gallery)),
+        ListTile(
+            leading: const Icon(Icons.description_outlined),
+            title: const Text('Elegir documento (PDF)'),
+            onTap: () => Navigator.pop(ctx, 'documento')),
       ]),
     ),
   );
   if (fuente == null || !context.mounted) return false;
-  final foto = await ImagePicker().pickImage(source: fuente, maxWidth: 2000, imageQuality: 80); // siempre JPG
-  if (foto == null || !context.mounted) return false;
-  final bytes = await foto.readAsBytes();
+  final Uint8List bytes;
+  if (fuente is ImageSource) {
+    final foto = await ImagePicker().pickImage(source: fuente, maxWidth: 2000, imageQuality: 80); // siempre JPG
+    if (foto == null || !context.mounted) return false;
+    bytes = await foto.readAsBytes();
+  } else {
+    // El servidor revisa el contenido: sólo PDF, JPG o PNG, hasta 8 MB.
+    final doc = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png']);
+    if (doc == null || !context.mounted) return false;
+    bytes = await doc.readAsBytes();
+  }
   if (!context.mounted) return false;
   final mensajes = ScaffoldMessenger.of(context);
   mensajes.showSnackBar(const SnackBar(content: Text('Subiendo evidencia…'), duration: Duration(seconds: 30)));

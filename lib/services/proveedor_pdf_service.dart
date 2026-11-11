@@ -4,6 +4,15 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'api_service.dart';
 
+/// Una evidencia para el reporte con evidencias: a qué pertenece y sus imágenes (una foto, o cada página de un PDF).
+class EvidenciaPdf {
+  const EvidenciaPdf({required this.que, this.fecha, this.nota, this.imagenes = const []});
+  final String que;
+  final String? fecha;
+  final String? nota;
+  final List<Uint8List> imagenes; // vacía: no se pudo descargar
+}
+
 /// Reporte de un proveedor en PDF, con el mismo diseño del detalle de pedido (PedidoPdfService): cabecera con el
 /// negocio y el N°, franja de datos, cajas con encabezado café y tablas. [reporte] es lo que da
 /// /proveedores/:id/reporte; el dinero, las cuentas y los adelantos sólo vienen para dueños.
@@ -118,7 +127,10 @@ class ProveedorPdfService {
       ];
 
   /// [base] y [bold] sólo para las pruebas (sin internet); en la app se usa Noto Sans, como el PDF del pedido.
-  static Future<Uint8List> generarBytes(Map<String, dynamic> reporte, {String? businessName, pw.Font? base, pw.Font? bold}) async {
+  ///
+  /// [evidencias] (reporte con evidencias, General Manager 10 nov 2026): después del reporte, una página por cada imagen.
+  static Future<Uint8List> generarBytes(Map<String, dynamic> reporte,
+      {String? businessName, pw.Font? base, pw.Font? bold, List<EvidenciaPdf> evidencias = const []}) async {
     final doc = pw.Document();
     final font = base ?? await PdfGoogleFonts.notoSansRegular();
     final fontBold = bold ?? await PdfGoogleFonts.notoSansBold();
@@ -299,7 +311,38 @@ class ProveedorPdfService {
         ],
       ],
     ));
+    _paginasEvidencia(doc, evidencias, '${reporte['nombre'] ?? id}', font, fontBold);
     return doc.save();
+  }
+
+  /// Una página por imagen de cada evidencia: arriba "EVIDENCIA n de N", a qué pertenece y su fecha; la imagen entera.
+  static void _paginasEvidencia(pw.Document doc, List<EvidenciaPdf> evidencias, String proveedor, pw.Font font, pw.Font fontBold) {
+    for (var i = 0; i < evidencias.length; i++) {
+      final e = evidencias[i];
+      final paginas = e.imagenes.isEmpty ? <Uint8List?>[null] : e.imagenes;
+      for (var j = 0; j < paginas.length; j++) {
+        final imagen = paginas[j];
+        doc.addPage(pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(28),
+          theme: pw.ThemeData.withFont(base: font, bold: fontBold),
+          build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
+            _sectionHeader('EVIDENCIA ${i + 1} DE ${evidencias.length}${paginas.length > 1 ? ' · PÁGINA ${j + 1} DE ${paginas.length}' : ''}'),
+            pw.SizedBox(height: 8),
+            pw.Text(e.que, style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: _textDark)),
+            pw.Text([if (e.fecha != null) fecha(e.fecha), proveedor, if ((e.nota ?? '').isNotEmpty) e.nota!].join(' · '),
+                style: const pw.TextStyle(fontSize: 9, color: _textGrey)),
+            pw.SizedBox(height: 10),
+            pw.Expanded(
+              child: imagen == null
+                  ? pw.Center(
+                      child: pw.Text('No se pudo descargar esta evidencia.', style: const pw.TextStyle(fontSize: 10, color: _textGrey)))
+                  : pw.Image(pw.MemoryImage(imagen), fit: pw.BoxFit.contain),
+            ),
+          ]),
+        ));
+      }
+    }
   }
 
   static pw.Widget _lineaResumen(String k, String v) => pw.Padding(
