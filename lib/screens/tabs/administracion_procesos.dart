@@ -2465,32 +2465,52 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
     }
   }
 
-  /// El mismo reporte y, después, una página por cada evidencia del proveedor (fotos; de un PDF, cada página como imagen,
-  /// hasta 10). null si el proveedor todavía no tiene evidencia; un error se muestra como texto.
+  /// El mismo reporte y, después, una página por cada adelanto, compra o gasto con evidencia, con todas sus fotos juntas
+  /// (de un PDF, cada página como imagen, hasta 10). null si el proveedor todavía no tiene evidencia; un error se
+  /// muestra como texto.
   Future<Uint8List?> _reporteConEvidencias(Map<String, dynamic> reporte) async {
     final r = await AdministracionService.evidenciasProveedor(widget.id);
     if (!r.isSuccess) throw r.error ?? 'No se pudo traer la evidencia.';
     final lista = _lista(r.data!['evidencias']);
     if (lista.isEmpty) return null;
-    final evidencias = <EvidenciaPdf>[];
+    // Agrupadas por registro (General Manager, 10 nov 2026): todas las evidencias de un adelanto, compra o gasto van
+    // juntas en la misma página. La lista ya viene ordenada por registro.
+    final grupos = <String, List<Map<String, dynamic>>>{};
     for (final e in lista) {
+      grupos.putIfAbsent('${e['registro']} ${e['registro_id'] ?? e['que']}', () => []).add(e);
+    }
+    final evidencias = <EvidenciaPdf>[];
+    for (final grupo in grupos.values) {
       final imagenes = <Uint8List>[];
-      try {
-        final res = e['url'] == null ? null : await http.get(Uri.parse('${e['url']}'));
-        if (res != null && res.statusCode == 200) {
-          if (e['tipo'] == 'application/pdf') {
-            await for (final pagina in Printing.raster(res.bodyBytes, dpi: 110)) {
-              imagenes.add(await pagina.toPng());
-              if (imagenes.length >= 10) break;
+      var faltan = 0;
+      for (final e in grupo) {
+        final antes = imagenes.length;
+        try {
+          final res = e['url'] == null ? null : await http.get(Uri.parse('${e['url']}'));
+          if (res != null && res.statusCode == 200) {
+            if (e['tipo'] == 'application/pdf') {
+              var paginas = 0;
+              await for (final pagina in Printing.raster(res.bodyBytes, dpi: 110)) {
+                imagenes.add(await pagina.toPng());
+                if (++paginas >= 10) break; // de un PDF, hasta 10 páginas
+              }
+            } else {
+              imagenes.add(res.bodyBytes);
             }
-          } else {
-            imagenes.add(res.bodyBytes);
           }
+        } catch (_) {
+          // Sin esa evidencia: la página dice cuántas no se pudieron descargar.
         }
-      } catch (_) {
-        // Sin esa imagen: su página dice que no se pudo descargar.
+        if (imagenes.length == antes) faltan++;
       }
-      evidencias.add(EvidenciaPdf(que: '${e['que'] ?? 'Evidencia'}', fecha: e['fecha']?.toString(), nota: e['nota']?.toString(), imagenes: imagenes));
+      final notas = grupo.map((e) => '${e['nota'] ?? ''}'.trim()).where((n) => n.isNotEmpty).toSet().join(' · ');
+      evidencias.add(EvidenciaPdf(
+          que: '${grupo.first['que'] ?? 'Evidencia'}',
+          fecha: grupo.first['fecha']?.toString(),
+          nota: notas.isEmpty ? null : notas,
+          imagenes: imagenes,
+          archivos: grupo.length,
+          faltan: faltan));
     }
     return ProveedorPdfService.generarBytes(reporte, evidencias: evidencias);
   }

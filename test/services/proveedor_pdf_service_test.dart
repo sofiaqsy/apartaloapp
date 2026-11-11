@@ -52,7 +52,7 @@ void main() {
     }
   });
 
-  test('with evidence (10 Nov 2026): one page per image after the report, and a page when one could not be downloaded', () async {
+  test('with evidence (10 Nov 2026): one page per record with all its images, more than 9 continue, and a page when none downloaded', () async {
     int paginas(List<int> bytes) => RegExp(r'/Type\s*/Page(?!s)').allMatches(latin1.decode(bytes)).length;
     // A 1 x 1 PNG, fake.
     final png = base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==');
@@ -60,12 +60,13 @@ void main() {
         businessName: 'Negocio Ejemplo', base: pw.Font.helvetica(), bold: pw.Font.helveticaBold(), evidencias: evidencias);
     final sin = paginas(await generar(const []));
     final con = paginas(await generar([
-      EvidenciaPdf(que: 'Adelanto ADV-001 · S/ 500.00', fecha: '2026-11-01', imagenes: [png]),
-      EvidenciaPdf(que: 'Compra PU-0001', fecha: '2026-11-03', nota: 'Voucher', imagenes: [png, png]), // a PDF of 2 pages
-      const EvidenciaPdf(que: 'Gasto EX-0001'), // could not be downloaded
+      EvidenciaPdf(que: 'Adelanto ADV-001 · S/ 500.00', fecha: '2026-11-01', imagenes: [png, png, png], archivos: 3), // 3 photos: 1 page
+      EvidenciaPdf(que: 'Compra PU-0001', fecha: '2026-11-03', nota: 'Voucher', imagenes: [png]),
+      EvidenciaPdf(que: 'Adelanto ADV-002', imagenes: List.filled(11, png), archivos: 11), // 11 photos: 2 pages
+      const EvidenciaPdf(que: 'Gasto EX-0001', faltan: 1), // could not be downloaded: 1 page that says so
     ]));
     expect(sin, greaterThan(0));
-    expect(con, sin + 4);
+    expect(con, sin + 5);
   });
 
   test('the longest history (500 compras) still builds', () async {

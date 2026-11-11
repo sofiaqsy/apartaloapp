@@ -4,13 +4,17 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'api_service.dart';
 
-/// Una evidencia para el reporte con evidencias: a qué pertenece y sus imágenes (una foto, o cada página de un PDF).
+/// La evidencia de un registro (un adelanto, una compra, un gasto) para el reporte con evidencias: a qué pertenece y
+/// todas sus imágenes juntas (cada foto, y cada página de un PDF), que van en la misma página (General Manager,
+/// 10 nov 2026: "group by adelanto if exist more than one evidence, put all in the same page").
 class EvidenciaPdf {
-  const EvidenciaPdf({required this.que, this.fecha, this.nota, this.imagenes = const []});
+  const EvidenciaPdf({required this.que, this.fecha, this.nota, this.imagenes = const [], this.archivos = 1, this.faltan = 0});
   final String que;
   final String? fecha;
   final String? nota;
-  final List<Uint8List> imagenes; // vacía: no se pudo descargar
+  final List<Uint8List> imagenes; // vacía: no se pudo descargar ninguna
+  final int archivos; // cuántas evidencias tiene el registro
+  final int faltan; // cuántas no se pudieron descargar
 }
 
 /// Reporte de un proveedor en PDF, con el mismo diseño del detalle de pedido (PedidoPdfService): cabecera con el
@@ -315,34 +319,73 @@ class ProveedorPdfService {
     return doc.save();
   }
 
-  /// Una página por imagen de cada evidencia: arriba "EVIDENCIA n de N", a qué pertenece y su fecha; la imagen entera.
+  /// Hasta 9 imágenes por página.
+  static const _porPagina = 9;
+
+  /// Una página por registro con todas sus imágenes en cuadrícula (si tiene más de 9, sigue en la página siguiente):
+  /// arriba "EVIDENCIA n de N", a qué pertenece, su fecha y cuántos archivos tiene.
   static void _paginasEvidencia(pw.Document doc, List<EvidenciaPdf> evidencias, String proveedor, pw.Font font, pw.Font fontBold) {
     for (var i = 0; i < evidencias.length; i++) {
       final e = evidencias[i];
-      final paginas = e.imagenes.isEmpty ? <Uint8List?>[null] : e.imagenes;
-      for (var j = 0; j < paginas.length; j++) {
-        final imagen = paginas[j];
+      final grupos = <List<Uint8List>>[
+        for (var k = 0; k < e.imagenes.length; k += _porPagina) e.imagenes.sublist(k, (k + _porPagina).clamp(0, e.imagenes.length)),
+      ];
+      if (grupos.isEmpty) grupos.add(const []);
+      for (var j = 0; j < grupos.length; j++) {
+        final imagenes = grupos[j];
         doc.addPage(pw.Page(
           pageFormat: PdfPageFormat.a4,
           margin: const pw.EdgeInsets.all(28),
           theme: pw.ThemeData.withFont(base: font, bold: fontBold),
           build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
-            _sectionHeader('EVIDENCIA ${i + 1} DE ${evidencias.length}${paginas.length > 1 ? ' · PÁGINA ${j + 1} DE ${paginas.length}' : ''}'),
+            _sectionHeader('EVIDENCIA ${i + 1} DE ${evidencias.length}${grupos.length > 1 ? ' · PÁGINA ${j + 1} DE ${grupos.length}' : ''}'),
             pw.SizedBox(height: 8),
             pw.Text(e.que, style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: _textDark)),
-            pw.Text([if (e.fecha != null) fecha(e.fecha), proveedor, if ((e.nota ?? '').isNotEmpty) e.nota!].join(' · '),
+            pw.Text(
+                [
+                  if (e.fecha != null) fecha(e.fecha),
+                  proveedor,
+                  e.archivos == 1 ? '1 archivo' : '${e.archivos} archivos',
+                  if (e.faltan > 0) '${e.faltan} no se pudo descargar',
+                  if ((e.nota ?? '').isNotEmpty) e.nota!,
+                ].join(' · '),
                 style: const pw.TextStyle(fontSize: 9, color: _textGrey)),
             pw.SizedBox(height: 10),
             pw.Expanded(
-              child: imagen == null
+              child: imagenes.isEmpty
                   ? pw.Center(
                       child: pw.Text('No se pudo descargar esta evidencia.', style: const pw.TextStyle(fontSize: 10, color: _textGrey)))
-                  : pw.Image(pw.MemoryImage(imagen), fit: pw.BoxFit.contain),
+                  : _cuadricula(imagenes),
             ),
           ]),
         ));
       }
     }
+  }
+
+  /// Las imágenes en filas iguales: 1 sola ocupa todo; hasta 4, dos columnas; más, tres.
+  static pw.Widget _cuadricula(List<Uint8List> imagenes) {
+    final columnas = imagenes.length == 1 ? 1 : (imagenes.length <= 4 ? 2 : 3);
+    final filas = <List<Uint8List>>[
+      for (var k = 0; k < imagenes.length; k += columnas) imagenes.sublist(k, (k + columnas).clamp(0, imagenes.length)),
+    ];
+    return pw.Column(children: [
+      for (final fila in filas)
+        pw.Expanded(
+          child: pw.Padding(
+            padding: const pw.EdgeInsets.only(bottom: 6),
+            child: pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
+              for (var c = 0; c < columnas; c++)
+                pw.Expanded(
+                  child: pw.Padding(
+                    padding: pw.EdgeInsets.only(right: c < columnas - 1 ? 6 : 0),
+                    child: c < fila.length ? pw.Image(pw.MemoryImage(fila[c]), fit: pw.BoxFit.contain) : pw.SizedBox(),
+                  ),
+                ),
+            ]),
+          ),
+        ),
+    ]);
   }
 
   static pw.Widget _lineaResumen(String k, String v) => pw.Padding(
