@@ -351,39 +351,62 @@ class ProveedorPdfService {
                 ].join(' · '),
                 style: const pw.TextStyle(fontSize: 9, color: _textGrey)),
             pw.SizedBox(height: 10),
-            pw.Expanded(
-              child: imagenes.isEmpty
-                  ? pw.Center(
-                      child: pw.Text('No se pudo descargar esta evidencia.', style: const pw.TextStyle(fontSize: 10, color: _textGrey)))
-                  : _cuadricula(imagenes),
-            ),
+            imagenes.isEmpty
+                ? pw.Padding(
+                    padding: const pw.EdgeInsets.only(top: 40),
+                    child: pw.Center(
+                        child: pw.Text('No se pudo descargar esta evidencia.', style: const pw.TextStyle(fontSize: 10, color: _textGrey))))
+                : _cuadricula(imagenes),
           ]),
         ));
       }
     }
   }
 
-  /// Las imágenes en filas iguales: 1 sola ocupa todo; hasta 4, dos columnas; más, tres.
+  /// Las imágenes ordenadas desde arriba, cada una con su forma (General Manager, 10 nov 2026: "organize this"): las
+  /// anchas (capturas del banco) van primero, cada una con todo el ancho; las demás, en 1, 2 o 3 columnas, la que las
+  /// muestre más grandes. Cada fila es tan alta como su imagen más alta y todo se achica junto si no entra.
   static pw.Widget _cuadricula(List<Uint8List> imagenes) {
-    final columnas = imagenes.length == 1 ? 1 : (imagenes.length <= 4 ? 2 : 3);
-    final filas = <List<Uint8List>>[
-      for (var k = 0; k < imagenes.length; k += columnas) imagenes.sublist(k, (k + columnas).clamp(0, imagenes.length)),
-    ];
-    return pw.Column(children: [
-      for (final fila in filas)
-        pw.Expanded(
-          child: pw.Padding(
-            padding: const pw.EdgeInsets.only(bottom: 6),
-            child: pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
-              for (var c = 0; c < columnas; c++)
-                pw.Expanded(
-                  child: pw.Padding(
-                    padding: pw.EdgeInsets.only(right: c < columnas - 1 ? 6 : 0),
-                    child: c < fila.length ? pw.Image(pw.MemoryImage(fila[c]), fit: pw.BoxFit.contain) : pw.SizedBox(),
-                  ),
-                ),
-            ]),
-          ),
+    const ancho = 539.0; // A4 menos los márgenes
+    const alto = 660.0; // lo que queda debajo del título
+    const sep = 8.0;
+    double prop(pw.MemoryImage i) => (i.height ?? 1) / ((i.width ?? 1) == 0 ? 1 : i.width!);
+    final imgs = [for (final b in imagenes) pw.MemoryImage(b)];
+    final anchas = imgs.where((i) => prop(i) < 0.75).toList();
+    final otras = imgs.where((i) => prop(i) >= 0.75).toList();
+    final altoAnchas = anchas.fold<double>(0, (a, i) => a + ancho * prop(i) + sep);
+    final areaAnchas = anchas.fold<double>(0, (a, i) => a + ancho * ancho * prop(i));
+    var columnas = 1;
+    var escala = altoAnchas > alto ? alto / altoAnchas : 1.0;
+    var mejor = -1.0;
+    for (var c = 1; c <= 3 && c <= otras.length; c++) {
+      final w = (ancho - sep * (c - 1)) / c;
+      var total = altoAnchas;
+      for (var k = 0; k < otras.length; k += c) {
+        total += otras.sublist(k, (k + c).clamp(0, otras.length)).map((i) => w * prop(i)).reduce((a, b) => a > b ? a : b) + sep;
+      }
+      final s = total > alto ? alto / total : 1.0;
+      final area = (areaAnchas + otras.fold<double>(0, (a, i) => a + w * w * prop(i))) * s * s;
+      if (area > mejor) {
+        mejor = area;
+        columnas = c;
+        escala = s;
+      }
+    }
+    final w = (ancho - sep * (columnas - 1)) / columnas * escala;
+    pw.Widget imagen(pw.MemoryImage img, double ancho) =>
+        pw.SizedBox(width: ancho, height: ancho * prop(img), child: pw.Image(img, fit: pw.BoxFit.contain));
+    return pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.center, children: [
+      for (final img in anchas) pw.Padding(padding: const pw.EdgeInsets.only(bottom: sep), child: imagen(img, ancho * escala)),
+      for (var k = 0; k < otras.length; k += columnas)
+        pw.Padding(
+          padding: const pw.EdgeInsets.only(bottom: sep),
+          child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.center, crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+            for (final (n, img) in otras.sublist(k, (k + columnas).clamp(0, otras.length)).indexed) ...[
+              if (n > 0) pw.SizedBox(width: sep),
+              imagen(img, w),
+            ],
+          ]),
         ),
     ]);
   }
