@@ -2217,7 +2217,13 @@ void main() {
       expect(find.textContaining('PU-0008'), findsOneWidget);
       await tester.drag(find.byType(ListView).last, const Offset(0, -2000));
       await tester.pumpAndSettle();
+      // Owners see the evidence right in the detail, asked with the detail (no button first), and Subir evidencia.
       expect(find.text('Evidencia'), dueno ? findsOneWidget : findsNothing);
+      expect(find.text('Subir evidencia'), dueno ? findsOneWidget : findsNothing);
+      expect(find.descendant(of: find.byKey(const ValueKey('evidencias-adelanto')), matching: find.byType(InkWell)),
+          dueno ? findsOneWidget : findsNothing);
+      final ev = pedidos.where((r) => r.url.path.endsWith('/evidencias') && r.method == 'GET').toList();
+      expect(ev.map((r) => '${r.url.queryParameters['tipo']} ${r.url.queryParameters['id']}'), dueno ? ['advance ADV-007'] : isEmpty);
       expect(tester.takeException(), isNull);
     });
   }

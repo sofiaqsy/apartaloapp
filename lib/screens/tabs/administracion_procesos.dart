@@ -3264,6 +3264,7 @@ class _AdelantoDetalleScreenState extends State<_AdelantoDetalleScreen> {
   static const _colores = {'open': Colors.blue, 'partly_used': Colors.teal, 'settled': Colors.green, 'cancelled': Colors.red};
   Map<String, dynamic>? _a;
   String? _error;
+  List<Map<String, dynamic>>? _evidencias; // dueños: se ve aquí mismo, sin otro toque (General Manager, 10 nov 2026)
 
   @override
   void initState() {
@@ -3272,12 +3273,22 @@ class _AdelantoDetalleScreenState extends State<_AdelantoDetalleScreen> {
   }
 
   Future<void> _cargar() async {
-    final r = await AdministracionService.adelanto(widget.id);
+    final pedidos = await Future.wait([
+      AdministracionService.adelanto(widget.id),
+      if (widget.esDueno) AdministracionService.evidencias('advance', widget.id),
+    ]);
     if (!mounted) return;
+    final r = pedidos.first;
     setState(() {
       _error = r.isSuccess ? null : r.error;
       if (r.isSuccess) _a = _mapa(r.data!['adelanto']);
+      if (pedidos.length > 1 && pedidos[1].isSuccess) _evidencias = _lista(pedidos[1].data!['evidencias']);
     });
+  }
+
+  Future<void> _cargarEvidencias() async {
+    final r = await AdministracionService.evidencias('advance', widget.id);
+    if (mounted && r.isSuccess) setState(() => _evidencias = _lista(r.data!['evidencias']));
   }
 
   Widget _dato(String nombre, String? valor) => valor == null || valor.isEmpty || valor == 'null'
@@ -3354,16 +3365,31 @@ class _AdelantoDetalleScreenState extends State<_AdelantoDetalleScreen> {
                     for (final c in compras)
                       _dato(_fechaCorta(c['fecha']), '${_soles(c['monto'])} · ${c['compra'] ?? ''}${c['kg'] != null ? ' · ${_kg(c['kg'])}' : ''}'),
                   ]),
-                // Dueños: la evidencia (fotos y documentos) se carga recién al tocar.
+                // Dueños: la evidencia (fotos y documentos) se ve aquí mismo, sin tocar otro botón (General Manager,
+                // 10 nov 2026: "i don't want to first touch the button of evidencia"); debajo, Subir evidencia.
                 if (widget.esDueno) ...[
+                  if ((_evidencias ?? const []).isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+                      child: Text('Evidencia', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    ),
+                    KeyedSubtree(
+                      key: const ValueKey('evidencias-adelanto'),
+                      child: _cuadriculaEvidencias(context, _evidencias!, (e) async {
+                        if (await _abrirEvidencia(context, e)) _cargarEvidencias();
+                      }),
+                    ),
+                  ],
                   const SizedBox(height: 16),
-                  _Ficha(
-                    inicio: const _InsigniaIcono(Icons.photo_library_outlined, tono: Colors.indigo),
-                    titulo: 'Evidencia',
-                    detalle: 'Vouchers, recibos y documentos de este adelanto',
-                    onTap: () => _abrirPantalla<void>(
-                        context, _EvidenciasScreen(tipo: 'advance', id: '${a['id']}', titulo: '${a['nombre'] ?? ''} · ${a['id']}')),
-                  ),
+                  _Acciones(acciones: [
+                    (
+                      Icons.add_a_photo_outlined,
+                      'Subir evidencia',
+                      () async {
+                        if (await _subirEvidencia(context, 'advance', '${a['id']}')) _cargarEvidencias();
+                      }
+                    ),
+                  ]),
                 ],
               ]),
       ),
@@ -3466,14 +3492,7 @@ class _EvidenciasScreenState extends State<_EvidenciasScreen> {
   }
 
   Future<void> _abrir(Map<String, dynamic> e) async {
-    final url = e['url'] as String?;
-    if (url == null) return;
-    if (e['tipo'] == 'application/pdf') {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-      return;
-    }
-    final quitada = await _abrirPantalla<bool>(context, _EvidenciaVista(evidencia: e));
-    if (quitada == true) _cargar();
+    if (await _abrirEvidencia(context, e)) _cargar();
   }
 
   @override
@@ -3504,6 +3523,26 @@ class _EvidenciasScreenState extends State<_EvidenciasScreen> {
           else if (lista.isEmpty)
             _vacio('Todavía no hay evidencia.')
           else
+            _cuadriculaEvidencias(context, lista, _abrir),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Abre una evidencia: un PDF en su app, una foto en grande (donde se puede quitar). true si se quitó.
+Future<bool> _abrirEvidencia(BuildContext context, Map<String, dynamic> e) async {
+  final url = e['url'] as String?;
+  if (url == null) return false;
+  if (e['tipo'] == 'application/pdf') {
+    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    return false;
+  }
+  return await _abrirPantalla<bool>(context, _EvidenciaVista(evidencia: e)) == true;
+}
+
+/// Las evidencias en cuadrícula de 3, con su fecha; tocar una la abre.
+Widget _cuadriculaEvidencias(BuildContext context, List<Map<String, dynamic>> lista, void Function(Map<String, dynamic>) abrir) =>
             GridView.count(
               crossAxisCount: 3,
               shrinkWrap: true,
@@ -3513,7 +3552,7 @@ class _EvidenciasScreenState extends State<_EvidenciasScreen> {
               children: [
                 for (final e in lista)
                   InkWell(
-                    onTap: () => _abrir(e),
+                    onTap: () => abrir(e),
                     borderRadius: BorderRadius.circular(10),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
@@ -3540,12 +3579,7 @@ class _EvidenciasScreenState extends State<_EvidenciasScreen> {
                     ),
                   ),
               ],
-            ),
-        ]),
-      ),
-    );
-  }
-}
+            );
 
 /// Una evidencia en grande (se puede acercar con los dedos) y Quitar evidencia (se archiva, nunca se borra).
 class _EvidenciaVista extends StatelessWidget {
