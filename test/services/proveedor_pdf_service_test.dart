@@ -69,6 +69,22 @@ void main() {
     expect(con, sin + 5);
   });
 
+  test('evidence goes newest first (12 Nov 2026): the latest record first, and its newest photo first', () {
+    final grupos = ProveedorPdfService.agruparEvidencias([
+      {'registro': 'advance', 'registro_id': 'ADV-003', 'fecha': '2026-05-24', 'subida': '2026-11-10T10:00:00Z', 'id': 1},
+      {'registro': 'advance', 'registro_id': 'ADV-007', 'fecha': '2026-07-20', 'subida': '2026-11-10T09:00:00Z', 'id': 2},
+      {'registro': 'advance', 'registro_id': 'ADV-007', 'fecha': '2026-07-20', 'subida': '2026-11-11T09:00:00Z', 'id': 3},
+      {'registro': 'advance', 'registro_id': 'ADV-014', 'fecha': '2026-10-23', 'subida': '2026-11-10T08:00:00Z', 'id': 4},
+      {'registro': 'purchase', 'registro_id': 'PU-0013', 'fecha': '2026-10-23', 'subida': '2026-11-12T08:00:00Z', 'id': 5},
+    ]);
+    expect(grupos.map((g) => g.map((e) => e['id']).toList()).toList(), [
+      [5], // 23 Oct, uploaded last
+      [4], // 23 Oct
+      [3, 2], // 20 Jul, newest photo first
+      [1], // 24 May
+    ]);
+  });
+
   test('the longest history (500 compras) still builds', () async {
     final bytes = await ProveedorPdfService.generarBytes(reporte(dueno: true, compras: 500),
         businessName: 'Negocio Ejemplo', base: pw.Font.helvetica(), bold: pw.Font.helveticaBold());

@@ -319,6 +319,27 @@ class ProveedorPdfService {
     return doc.save();
   }
 
+  /// Las evidencias de /proveedores/:id/evidencias agrupadas por registro (adelanto, compra, gasto), para una página
+  /// cada uno (General Manager, 10 nov 2026), de lo más nuevo a lo más antiguo (General Manager, 12 nov 2026: "first
+  /// the latest photos, then the oldest"): primero el registro con la fecha más reciente (a igual fecha, el de la foto
+  /// subida más reciente) y, dentro de cada uno, la foto más nueva primero.
+  static List<List<Map<String, dynamic>>> agruparEvidencias(List<Map<String, dynamic>> lista) {
+    final grupos = <String, List<Map<String, dynamic>>>{};
+    for (final e in lista) {
+      grupos.putIfAbsent('${e['registro']} ${e['registro_id'] ?? e['que']}', () => []).add(e);
+    }
+    String subida(Map<String, dynamic> e) => '${e['subida'] ?? ''}';
+    for (final g in grupos.values) {
+      g.sort((a, b) => subida(b).compareTo(subida(a)));
+    }
+    final orden = grupos.values.toList()
+      ..sort((a, b) {
+        final porFecha = '${b.first['fecha'] ?? ''}'.compareTo('${a.first['fecha'] ?? ''}');
+        return porFecha != 0 ? porFecha : subida(b.first).compareTo(subida(a.first));
+      });
+    return orden;
+  }
+
   /// Hasta 9 imágenes por página.
   static const _porPagina = 9;
 

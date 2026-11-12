@@ -2473,14 +2473,9 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
     if (!r.isSuccess) throw r.error ?? 'No se pudo traer la evidencia.';
     final lista = _lista(r.data!['evidencias']);
     if (lista.isEmpty) return null;
-    // Agrupadas por registro (General Manager, 10 nov 2026): todas las evidencias de un adelanto, compra o gasto van
-    // juntas en la misma página. La lista ya viene ordenada por registro.
-    final grupos = <String, List<Map<String, dynamic>>>{};
-    for (final e in lista) {
-      grupos.putIfAbsent('${e['registro']} ${e['registro_id'] ?? e['que']}', () => []).add(e);
-    }
+    // Agrupadas por registro, todas juntas en la misma página (10 nov 2026), de la más nueva a la más antigua (12 nov 2026).
     final evidencias = <EvidenciaPdf>[];
-    for (final grupo in grupos.values) {
+    for (final grupo in ProveedorPdfService.agruparEvidencias(lista)) {
       final imagenes = <Uint8List>[];
       var faltan = 0;
       for (final e in grupo) {
