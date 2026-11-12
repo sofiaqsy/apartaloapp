@@ -6,7 +6,21 @@ import 'package:flutter/material.dart';
 class InfoBasicaWidget extends StatefulWidget {
   final Map<String, dynamic> pedido;
 
-  const InfoBasicaWidget({super.key, required this.pedido});
+  /// Quién lo creó y por dónde (desde el 11 nov 2026): {origen: app|whatsapp, nombre, email}; null si no se sabe.
+  final Map<String, dynamic>? creadoPor;
+
+  const InfoBasicaWidget({super.key, required this.pedido, this.creadoPor});
+
+  /// "Obed · Nuevo Pedido en la app", "El cliente, por el bot de WhatsApp", o null.
+  static String? textoCreadoPor(Map<String, dynamic>? c) {
+    if (c == null) return null;
+    if (c['origen'] == 'whatsapp') return 'El cliente, por el bot de WhatsApp';
+    if (c['origen'] == 'app') {
+      final quien = (c['nombre'] ?? c['email'] ?? '').toString().trim();
+      return '${quien.isEmpty ? 'Alguien del equipo' : quien} · Nuevo Pedido en la app';
+    }
+    return null;
+  }
 
   @override
   State<InfoBasicaWidget> createState() => _InfoBasicaWidgetState();
@@ -106,11 +120,14 @@ class _InfoBasicaWidgetState extends State<InfoBasicaWidget> {
     final observaciones      = widget.pedido['observaciones'] ?? '';
     final fechaActualizacion = widget.pedido['fechaActualizacion']?.toString() ?? '';
     final estados            = _buildEstados();
+    final creadoPor          = InfoBasicaWidget.textoCreadoPor(widget.creadoPor);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildInfoRow(Icons.receipt_long, 'Pedido', pedidoId),
+        // Quién lo creó (General Manager, 11 nov 2026: "from which canal was created?").
+        if (creadoPor != null) _buildInfoRow(Icons.person_outline, 'Creado por', creadoPor),
         if (fechaActualizacion.isNotEmpty)
           _buildInfoRow(Icons.update, 'Última actualización', fechaActualizacion),
         if (whatsapp.isNotEmpty && whatsapp != '000000000')

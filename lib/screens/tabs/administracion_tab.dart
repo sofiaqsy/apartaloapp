@@ -185,7 +185,7 @@ final Map<String, List<_Campo>> _formularios = {
   // Un adelanto es una solicitud: Administración lo aprueba (eligiendo cómo pagarlo) o lo rechaza.
   'adelanto': [
     const _Campo('personaId', 'Para', _Tipo.persona, rol: 'ambos'),
-    const _Campo('monto', 'Monto (S/)', _Tipo.monto, ayuda: 'Máximo S/ 2,000 y uno abierto por persona'),
+    const _Campo('monto', 'Monto (S/)', _Tipo.monto, ayuda: 'Máximo S/ 4,000'),
     const _Campo('motivo', 'Para qué', _Tipo.texto, requerido: false),
     const _Campo('devuelveEn', 'Se devuelve en', _Tipo.opcion,
         opciones: {'coffee': 'Café', 'money': 'Dinero', 'coffee_or_money': 'Café o dinero'}, porDefecto: 'coffee', avanzado: true),

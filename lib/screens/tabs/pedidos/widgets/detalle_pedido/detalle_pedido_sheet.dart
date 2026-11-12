@@ -55,6 +55,9 @@ class _DetallePedidoSheetState extends State<DetallePedidoSheet> {
   // Productos enriquecidos con presentaciones
   List<Map<String, dynamic>>? _productosEnriquecidos;
 
+  // Quién creó el pedido y por dónde (se pide al abrir; null en los pedidos de antes del 11 nov 2026)
+  Map<String, dynamic>? _creadoPor;
+
   // Delivery data
   Map<String, dynamic>? _delivery;
   bool _loadingDelivery = false;
@@ -86,6 +89,7 @@ class _DetallePedidoSheetState extends State<DetallePedidoSheet> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _enriquecerProductos();
+      _loadCreadoPor();
       if (_tabIndex == 1) _loadDelivery();
     });
   }
@@ -176,6 +180,13 @@ class _DetallePedidoSheetState extends State<DetallePedidoSheet> {
   }
 
   // ==================== DELIVERY ====================
+
+  Future<void> _loadCreadoPor() async {
+    final pedidoId = widget.pedido['id']?.toString() ?? '';
+    if (pedidoId.isEmpty) return;
+    final c = await ApiService.getOrigenPedido(pedidoId);
+    if (mounted && c != null) setState(() => _creadoPor = c);
+  }
 
   Future<void> _loadDelivery() async {
     if (_deliveryLoaded || _loadingDelivery) return;
@@ -1224,7 +1235,7 @@ class _DetallePedidoSheetState extends State<DetallePedidoSheet> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Información básica
-                  InfoBasicaWidget(pedido: widget.pedido),
+                  InfoBasicaWidget(pedido: widget.pedido, creadoPor: _creadoPor),
 
                   const SizedBox(height: 20),
 

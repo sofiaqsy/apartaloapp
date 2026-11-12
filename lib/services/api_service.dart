@@ -964,6 +964,21 @@ class ApiService {
   }
 
   /// Obtener registro de Delivery para un pedido específico
+  /// Quién creó el pedido y por dónde (fincas 0074, 11 nov 2026): {origen: app|whatsapp, nombre, email, fecha};
+  /// null para los pedidos de antes o si no hay señal.
+  static Future<Map<String, dynamic>?> getOrigenPedido(String pedidoId) async {
+    try {
+      final url = '$baseUrl/api/pedidos/$businessId/${Uri.encodeComponent(pedidoId)}';
+      final response = await http.get(Uri.parse(url), headers: headers).timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) return null;
+      final creadoPor = (jsonDecode(response.body) as Map)['creadoPor'];
+      return creadoPor is Map ? Map<String, dynamic>.from(creadoPor) : null;
+    } catch (e) {
+      debugPrint('[ApiService] getOrigenPedido error: $e');
+      return null;
+    }
+  }
+
   static Future<Map<String, dynamic>?> getDelivery(String pedidoId) async {
     try {
       final url = '$baseUrl/api/delivery/$businessId?pedidoId=${Uri.encodeComponent(pedidoId)}';
