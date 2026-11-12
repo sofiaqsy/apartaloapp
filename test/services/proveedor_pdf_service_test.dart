@@ -91,6 +91,13 @@ void main() {
     expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
   });
 
+  test('notes leave out "Nombre completo pendiente" (12 Nov 2026)', () {
+    expect(ProveedorPdfService.notasSinPendientes('Vende café. Nombre completo pendiente.'), 'Vende café.');
+    expect(ProveedorPdfService.notasSinPendientes('Nombre completo pendiente.'), isNull);
+    expect(ProveedorPdfService.notasSinPendientes(null), isNull);
+    expect(ProveedorPdfService.notasSinPendientes('Trabajador: piso.'), 'Trabajador: piso.');
+  });
+
   test('dates and money read like the pedido PDF', () {
     expect(ProveedorPdfService.fecha('2026-11-03'), '03/11/2026');
     expect(ProveedorPdfService.soles(1800), 'S/ 1,800.00');

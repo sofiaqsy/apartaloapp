@@ -143,16 +143,13 @@ class ProveedorPdfService {
     final id = '${reporte['id'] ?? ''}';
     final emitido = fecha(reporte['generado'] ?? DateTime.now().toIso8601String());
     final esDueno = reporte['puede_editar'] == true;
-    final es = [
-      if (reporte['agricultor'] == true) 'Agricultor',
-      if (reporte['comprador'] == true) 'Comprador',
-      if (reporte['agricultor'] != true && reporte['comprador'] != true) 'Proveedor',
-    ].join(' y ');
     final compras = _lista(reporte['compras_lista']);
     final resumen = _mapa(reporte['compras']);
     final dinero = reporte['dinero'] == null ? null : _mapa(reporte['dinero']);
     final adelantos = _lista(reporte['adelantos_lista']);
     final cuentas = _lista(reporte['cuentas']);
+    // El último adelanto (la lista viene del más nuevo al más antiguo; sólo dueños).
+    final ultimoAdelanto = adelantos.isEmpty ? null : adelantos.map((a) => '${a['fecha'] ?? ''}').reduce((a, b) => a.compareTo(b) >= 0 ? a : b);
     final abiertos = adelantos.fold<double>(0, (s, a) => s + ((a['saldo'] as num?)?.toDouble() ?? double.tryParse('${a['saldo']}') ?? 0));
 
     doc.addPage(pw.MultiPage(
@@ -200,10 +197,10 @@ class ProveedorPdfService {
           padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: pw.BoxDecoration(color: _warmBg, borderRadius: pw.BorderRadius.circular(6), border: pw.Border.all(color: _cardBorder)),
           child: pw.Row(children: [
+            // Sin "Es" ni "Compras" (General Manager, 12 nov 2026); el último adelanto, para dueños.
             pw.Expanded(child: _metaChip('Moneda', 'PEN - Soles')),
-            pw.Expanded(child: _metaChip('Es', es)),
-            pw.Expanded(child: _metaChip('Compras', '${resumen['n'] ?? compras.length} · ${kg(resumen['kg'])}')),
-            pw.Expanded(child: _metaChip('Última compra', fecha(resumen['ultima']))),
+            pw.Expanded(child: _metaChip('Última compra', resumen['ultima'] == null ? '—' : fecha(resumen['ultima']))),
+            if (esDueno) pw.Expanded(child: _metaChip('Último adelanto', ultimoAdelanto == null || ultimoAdelanto.isEmpty ? '—' : fecha(ultimoAdelanto))),
           ]),
         ),
         pw.SizedBox(height: 12),
@@ -220,7 +217,7 @@ class ProveedorPdfService {
                   ('Comunidad:', reporte['comunidad']?.toString()),
                   ('Vende:', _vende[reporte['vende']] ?? reporte['vende']?.toString()),
                   ('Lo recoge:', reporte['recoge']?.toString()),
-                  ('Notas:', reporte['notas']?.toString()),
+                  ('Notas:', notasSinPendientes(reporte['notas'])),
                 ])),
           ),
           if (esDueno) ...[
@@ -247,10 +244,9 @@ class ProveedorPdfService {
             [
               'N°',
               'Fecha',
-              'Compra',
               'Café',
               'Kilos',
-              if (esDueno) ...['Precio/kg', 'Total'],
+              if (esDueno) ...['Precio/kg', 'Total', 'Falta pagar'],
               'Estado'
             ],
             [
@@ -258,17 +254,17 @@ class ProveedorPdfService {
                 [
                   '${i + 1}',
                   fecha(compras[i]['fecha']),
-                  '${compras[i]['id']}',
                   _cafe[compras[i]['estado']] ?? '${compras[i]['estado'] ?? ''}',
                   kg(compras[i]['kg']),
                   if (esDueno) ...[
                     compras[i]['precio'] == null ? '—' : soles(compras[i]['precio']),
                     compras[i]['total'] == null ? '—' : soles(compras[i]['total']),
+                    ((compras[i]['debe'] as num?) ?? 0) > 0 ? soles(compras[i]['debe']) : '—',
                   ],
                   '${compras[i]['situacion'] ?? ''}',
                 ],
             ],
-            esDueno ? {4, 5, 6} : {4},
+            esDueno ? {3, 4, 5, 6} : {3},
           ),
 
         // ── ADELANTOS ──
@@ -276,12 +272,13 @@ class ProveedorPdfService {
           pw.SizedBox(height: 12),
           ..._tabla(
             'ADELANTOS',
-            ['Fecha', 'Adelanto', 'Monto', 'Usado en café', 'Devuelto', 'Saldo'],
+            // Sin el código ni Devuelto; con el Nº de operación del banco (General Manager, 12 nov 2026).
+            ['Fecha', 'Monto', 'Usado en café', 'Saldo', 'Nº de operación'],
             [
               for (final a in adelantos)
-                [fecha(a['fecha']), '${a['id']}', soles(a['monto']), soles(a['usado']), soles(a['devuelto']), soles(a['saldo'])],
+                [fecha(a['fecha']), soles(a['monto']), soles(a['usado']), soles(a['saldo']), '${a['operacion'] ?? '—'}'],
             ],
-            {2, 3, 4, 5},
+            {1, 2, 3},
           ),
         ],
 
@@ -430,6 +427,13 @@ class ProveedorPdfService {
           ]),
         ),
     ]);
+  }
+
+  /// Las notas sin "Nombre completo pendiente" (General Manager, 12 nov 2026): es un recordatorio interno, no va en el
+  /// reporte. null si no queda nada.
+  static String? notasSinPendientes(dynamic notas) {
+    final limpio = '${notas ?? ''}'.replaceAll(RegExp(r'nombre completo pendiente\.?', caseSensitive: false), '').replaceAll(RegExp(r'\s+'), ' ').trim();
+    return limpio.isEmpty ? null : limpio;
   }
 
   static pw.Widget _lineaResumen(String k, String v) => pw.Padding(
