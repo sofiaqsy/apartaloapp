@@ -215,6 +215,12 @@ class AdministracionService {
   }
 
   /// Los gastos de un área para su pestaña Gastos, de 20 en 20 (4 nov 2026).
+  /// Finca → Inversiones (dueños, 14 nov 2026): el dinero que ponen los dueños, de 20 en 20 ({filas, total, hayMas}).
+  static Future<ApiResponse<Map<String, dynamic>>> inversiones({int desde = 0}) => _get('finca/inversiones?offset=$desde&limit=20');
+
+  /// Los dueños, para "Quién aporta" en Registrar inversión ({aportantes}).
+  static Future<ApiResponse<Map<String, dynamic>>> aportantes() => _get('finca/aportantes');
+
   static Future<ApiResponse<Map<String, dynamic>>> gastosArea(String area, {int desde = 0}) =>
       _get('gastos-area?area=${Uri.encodeComponent(area)}&offset=$desde&limit=20');
 

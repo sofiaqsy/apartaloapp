@@ -1864,7 +1864,66 @@ class _FincaScreenState extends _ProcesoState<_FincaScreen> with _ProveedoresDel
   // Rediseñada con el área (General Manager, 4 nov 2026; la propuesta de Finca): sin datos arriba, Registrar gasto,
   // pestañas Gastos | Proveedores y el reporte en PDF. Parcelas, cosechas, labores, lluvia y plagas vendrán con sus
   // formularios; hoy no se muestran pestañas vacías.
-  int _pestana = 0; // 0 Gastos, 1 Proveedores
+  int _pestana = 0; // 0 Gastos, 1 Proveedores, 2 Inversiones (dueños)
+
+  // Inversiones (General Manager, 14 nov 2026): el dinero que ponen los dueños, de 20 en 20, lo más nuevo primero.
+  final List<Map<String, dynamic>> _inversiones = [];
+  bool _cargandoInversiones = false;
+  bool _hayMasInversiones = true;
+  bool _inversionesPedidas = false;
+  String? _errorInversiones;
+
+  Future<void> _cargarInversiones() async {
+    _inversiones.clear();
+    _hayMasInversiones = true;
+    _errorInversiones = null;
+    _inversionesPedidas = true;
+    await _masInversiones();
+  }
+
+  Future<void> _masInversiones() async {
+    if (_cargandoInversiones || !_hayMasInversiones) return;
+    setState(() => _cargandoInversiones = true);
+    final r = await AdministracionService.inversiones(desde: _inversiones.length);
+    if (!mounted) return;
+    setState(() {
+      _cargandoInversiones = false;
+      if (r.isSuccess) {
+        _inversiones.addAll(_lista(r.data!['filas']));
+        _hayMasInversiones = r.data!['hayMas'] == true;
+      } else {
+        _errorInversiones = r.error ?? 'No se pudo cargar';
+        _hayMasInversiones = false;
+      }
+    });
+  }
+
+  static const _colorInversion = {'Conciliado': Colors.green, 'Falta en el banco': Colors.orange, 'En caja': Colors.teal};
+
+  // Cada inversión es información (no abre nada): una fila simple, con su estado frente al banco a la derecha.
+  List<Widget> _listaInversiones() {
+    if (_errorInversiones != null && _inversiones.isEmpty) {
+      return [Padding(padding: const EdgeInsets.all(16), child: Text(_errorInversiones!, textAlign: TextAlign.center))];
+    }
+    return [
+      const SizedBox(height: 8),
+      if (_inversiones.isEmpty && !_cargandoInversiones && _inversionesPedidas) _vacio('Todavía no hay inversiones.'),
+      for (final c in _inversiones)
+        _Ficha(
+          inicio: _Insignia(_fechaCorta(c['fecha']), tono: Colors.indigo),
+          titulo: '${c['quien'] ?? ''}',
+          detalle: [
+            _soles(c['monto']),
+            '${c['para'] ?? ''}',
+            if ((c['descripcion'] ?? '').toString().isNotEmpty) '${c['descripcion']}',
+            '${c['como'] ?? ''}',
+            if (c['operacion'] != null) 'Nº de operación ${c['operacion']}',
+          ].join(' · '),
+          fin: _Pildora('${c['estado'] ?? ''}', _colorInversion[c['estado']] ?? Colors.grey),
+        ),
+      if (_cargandoInversiones || !_inversionesPedidas) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
+    ];
+  }
 
   @override
   String get clave => 'finca';
@@ -1888,6 +1947,7 @@ class _FincaScreenState extends _ProcesoState<_FincaScreen> with _ProveedoresDel
   @override
   Future<void> cargar() async {
     if (_pestana == 0) cargarGastos();
+    if (_pestana == 2) _cargarInversiones();
     await super.cargar();
   }
 
@@ -1896,6 +1956,7 @@ class _FincaScreenState extends _ProcesoState<_FincaScreen> with _ProveedoresDel
     return pantalla('Finca', botonFlotante: botonReporte(), alFinal: () {
       if (_pestana == 0) masGastos();
       if (_pestana == 1) masProveedores();
+      if (_pestana == 2) _masInversiones();
     }, (d) {
       return [
         // Sin datos arriba (General Manager, 4 nov 2026): la tarjeta de Procesos ya los muestra.
@@ -1905,18 +1966,25 @@ class _FincaScreenState extends _ProcesoState<_FincaScreen> with _ProveedoresDel
             _titulos['gasto']!, // el mismo nombre en cada proceso; el área va fija (General Manager, 3 nov 2026)
             () => formulario('gasto', fijos: const {'area': 'farm'}, subtitulo: 'Área: Finca')
           ),
+          // Sólo dueños: el dinero es de los dueños (General Manager, 14 nov 2026).
+          if (widget.esDueno) (Icons.savings_outlined, _titulos['inversion']!, () => formulario('inversion')),
         ]),
         _Pestanas(
-          nombres: const ['Gastos', 'Proveedores'],
+          nombres: [
+            'Gastos',
+            'Proveedores',
+            if (widget.esDueno) 'Inversiones',
+          ],
           anchoPorNombre: true,
           elegida: _pestana,
           onElegir: (i) {
             setState(() => _pestana = i);
             if (i == 0) cargarGastos();
             if (i == 1) abrirProveedores();
+            if (i == 2) _cargarInversiones();
           },
         ),
-        if (_pestana == 1) ..._listaProveedores() else ...listaGastos(),
+        if (_pestana == 1) ..._listaProveedores() else if (_pestana == 2) ..._listaInversiones() else ...listaGastos(),
       ];
     });
   }

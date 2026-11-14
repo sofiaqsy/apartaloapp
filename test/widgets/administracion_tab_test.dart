@@ -469,6 +469,18 @@ void main() {
     if (p.endsWith('/tostador/events/create')) return http.Response(jsonEncode({'ok': true, 'eventId': 'ev-1'}), 201);
     if (p.contains('/tostador/events/')) return http.Response(jsonEncode({'ok': true}), 200);
     if (p.endsWith('/resumen')) return http.Response(jsonEncode({'rol': 'owner', 'meses': []}), 200);
+    if (p.endsWith('/finca/aportantes')) {
+      return http.Response(jsonEncode({'aportantes': ['Jared Ejemplo Uno', 'Misael Ejemplo', 'Misael Ejemplo Dos']}), 200);
+    }
+    if (p.endsWith('/finca/inversiones')) {
+      return http.Response(jsonEncode({
+        'filas': [
+          {'id': 'CAP-0001', 'fecha': '2026-11-13', 'monto': 3500, 'quien': 'Jared Ejemplo', 'para': 'Equipo', 'descripcion': 'Secadora solar',
+           'como': 'Transferencia al BCP', 'estado': 'Conciliado', 'operacion': '7900001'},
+        ],
+        'total': 1, 'hayMas': false,
+      }), 200);
+    }
     if (p.contains('/registrar/')) return http.Response(jsonEncode({'ok': true, 'result': {'expense_id': 'EX-0001'}}), 200);
     return http.Response(jsonEncode({'pedidos': [], 'total': 0}), 200);
   }
@@ -1500,6 +1512,53 @@ void main() {
     expect(abajo, lessThan(844 - 190), reason: 'bottom of the Compras card at $abajo');
     await tester.scrollUntilVisible(find.text('Finca'), 200, scrollable: find.byType(Scrollable).last);
     expect(tester.getTopLeft(find.text('Finca')).dy, greaterThan(tester.getTopLeft(find.text('Compras')).dy));
+  });
+
+  testWidgets('Finca: owners Registrar inversión and see Inversiones with the bank state (14 Nov 2026)', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await tester.scrollUntilVisible(find.text('Finca'), 200, scrollable: find.byType(Scrollable).last);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Finca'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Inversiones'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    for (final t in ['Registrar inversión', 'Jared Ejemplo', 'Conciliado']) {
+      expect(find.text(t), findsWidgets, reason: t);
+    }
+    expect(find.textContaining('S/ 3,500 · Equipo · Secadora solar · Transferencia al BCP · Nº de operación 7900001'), findsOneWidget);
+    // The form: who are the owners (each once, name and first surname), what for, how it came.
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Registrar inversión'));
+      await tester.pumpAndSettle();
+      for (final t in ['Quién aporta', 'Jared Ejemplo', 'Misael Ejemplo', 'Para qué', 'Equipo', 'Cómo llegó', 'Transferencia al BCP']) {
+        expect(find.text(t), findsWidgets, reason: t);
+      }
+      expect(find.text('Misael Ejemplo'), findsOneWidget);
+      await tester.enterText(find.widgetWithText(TextField, 'Monto (S/)'), '3500');
+      await tester.tap(find.text('Jared Ejemplo').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final req = pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/inversion'));
+    final body = jsonDecode(req.body);
+    expect(body['monto'], 3500);
+    expect(body['quien'], 'Jared Ejemplo');
+    expect(body['para'], 'equipment');
+    expect(body['como'], 'transfer');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Finca: staff have no Registrar inversión and no Inversiones tab', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await tester.scrollUntilVisible(find.text('Finca'), 200, scrollable: find.byType(Scrollable).last);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Finca'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Registrar inversión'), findsNothing);
+    expect(find.text('Inversiones'), findsNothing);
   });
 
   testWidgets('Finca redesigned with Farm (4 Nov 2026): no data on top, Gastos 20 a page that open their detail, Proveedores, PDF', (tester) async {

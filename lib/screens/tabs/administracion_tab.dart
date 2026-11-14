@@ -280,6 +280,18 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('notas', 'Para qué', _Tipo.texto, requerido: false),
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
+  // Registrar inversión (General Manager, 14 nov 2026): un dueño pone dinero en el negocio. Quién aporta son los dueños
+  // (se cargan al abrir). Por transferencia se concilia sola con la línea del BCP; nunca se pide el Nº de operación.
+  'inversion': [
+    const _Campo('monto', 'Monto (S/)', _Tipo.monto),
+    const _Campo('quien', 'Quién aporta', _Tipo.opcion),
+    const _Campo('para', 'Para qué', _Tipo.opcion,
+        opciones: {'equipment': 'Equipo', 'coffee': 'Compra de café', 'need': 'Requerimiento', 'other': 'Otro'}, porDefecto: 'equipment'),
+    const _Campo('descripcion', 'Descripción', _Tipo.texto, requerido: false),
+    const _Campo('como', 'Cómo llegó', _Tipo.opcion,
+        opciones: {'transfer': 'Transferencia al BCP', 'cash': 'Efectivo'}, porDefecto: 'transfer'),
+    const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
+  ],
 };
 
 bool _esDevolucion(Map<String, dynamic> v) => v['tipo'] == 'advance_return';
@@ -302,6 +314,7 @@ const _titulos = {
   'solicitarPago': 'Solicitar pago',
   'editarProveedor': 'Editar proveedor',
   'cuentaProveedor': 'Guardar cuenta',
+  'inversion': 'Registrar inversión',
 };
 
 // Lo que pasó y lo que sigue, después de guardar.
@@ -319,6 +332,7 @@ const _hecho = {
   'solicitarPago': 'Pago solicitado ✓ Finanzas lo pagará',
   'editarProveedor': 'Proveedor actualizado ✓',
   'cuentaProveedor': 'Cuenta guardada ✓',
+  'inversion': 'Inversión registrada ✓ Se concilia sola con el banco',
 };
 
 /// Abre un formulario a pantalla completa. Se cierra con la X o deslizando hacia la derecha (como
@@ -388,6 +402,7 @@ class _FormularioSheetState extends State<_FormularioSheet> {
     _valores.addAll(widget.iniciales);
     _opciones.addAll(widget.opciones);
     if (widget.formulario == 'entrega') _cargarProductos();
+    if (widget.formulario == 'inversion') _cargarAportantes();
     if (widget.formulario == 'gasto') {
       final inicial = _guia[_categoriaInicial];
       if (inicial != null) {
@@ -535,6 +550,17 @@ class _FormularioSheetState extends State<_FormularioSheet> {
       }).join(' · ');
 
   Map<String, String> _opcionesDe(_Campo c) => _opciones[c.clave] ?? c.opciones;
+
+  /// Quién aporta: los dueños, cada persona una vez con su nombre y primer apellido (Misael tiene dos perfiles).
+  Future<void> _cargarAportantes() async {
+    final r = await AdministracionService.aportantes();
+    if (!mounted || !r.isSuccess) return;
+    final nombres = <String>{
+      for (final n in (r.data!['aportantes'] as List? ?? const []))
+        '$n'.trim().split(RegExp(r'\s+')).take(2).map((p) => p.isEmpty ? p : p[0].toUpperCase() + p.substring(1)).join(' '),
+    }..removeWhere((n) => n.isEmpty);
+    setState(() => _opciones['quien'] = {for (final n in nombres) n: n});
+  }
 
   /// Producto vinculado: los productos activos del negocio, el café primero; marca el Blend si existe.
   Future<void> _cargarProductos() async {
