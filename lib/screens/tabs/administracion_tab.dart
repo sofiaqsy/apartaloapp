@@ -282,6 +282,17 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('notas', 'Para qué', _Tipo.texto, requerido: false),
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
+  // Pago mensual (General Manager, 16 nov 2026): un proveedor que se paga cada mes (la luz). Cada mes queda esperando en
+  // Finanzas sin monto; se paga con el monto del recibo (pagoMensual) o al conciliar la línea del banco.
+  'servicioMensual': [
+    const _Campo('nombre', 'Qué es (por ejemplo Luz)', _Tipo.texto),
+    const _Campo('dia', 'Día de pago (1 a 28)', _Tipo.numero),
+  ],
+  'pagoMensual': [
+    const _Campo('monto', 'Monto del recibo (S/)', _Tipo.monto),
+    const _Campo('metodo', 'Cómo se pagó', _Tipo.opcion, opciones: _metodosPago, porDefecto: 'transfer'),
+    const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
+  ],
   // Registrar inversión (General Manager, 14 nov 2026): un dueño pone dinero en el negocio. Quién aporta son los dueños
   // (se cargan al abrir). Por transferencia se concilia sola con la línea del BCP; nunca se pide el Nº de operación.
   'inversion': [
@@ -317,6 +328,8 @@ const _titulos = {
   'editarProveedor': 'Editar proveedor',
   'cuentaProveedor': 'Guardar cuenta',
   'inversion': 'Registrar inversión',
+  'servicioMensual': 'Pago mensual',
+  'pagoMensual': 'Pagar el mes',
 };
 
 // Lo que pasó y lo que sigue, después de guardar.
@@ -335,6 +348,8 @@ const _hecho = {
   'editarProveedor': 'Proveedor actualizado ✓',
   'cuentaProveedor': 'Cuenta guardada ✓',
   'inversion': 'Inversión registrada ✓ Se concilia sola con el banco',
+  'servicioMensual': 'Pago mensual guardado ✓ Cada mes aparece en Finanzas',
+  'pagoMensual': 'Mes pagado ✓ Quedó como gasto pagado',
 };
 
 /// Abre un formulario a pantalla completa. Se cierra con la X o deslizando hacia la derecha (como

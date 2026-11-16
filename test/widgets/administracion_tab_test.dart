@@ -2212,6 +2212,65 @@ void main() {
     expect((jsonDecode(r.body) as Map)['compraId'], 'PU-0002');
   });
 
+  testWidgets('a provider is marked as a monthly payment from its detail, owners only (16 Nov 2026)', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Proveedores'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pedro Ramírez Ñique'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pago mensual'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Qué es (por ejemplo Luz)'), 'Luz');
+      await tester.enterText(find.widgetWithText(TextField, 'Día de pago (1 a 28)'), '15');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final body = jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/servicioMensual')).body);
+    expect(body['proveedorId'], 'P-0001');
+    expect(body['nombre'], 'Luz');
+    expect('${body['dia']}', '15');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Finanzas → Gastos: a monthly payment waits without amount, and Pagar el mes asks the amount (16 Nov 2026)', (tester) async {
+    Future<http.Response> conMensual(http.Request req) async {
+      if (req.url.path.endsWith('/finanzas/lista') && req.url.queryParameters['tipo'] == 'gastos') {
+        return http.Response(jsonEncode({
+          'filas': [
+            {'id': 'MB-0001', 'mensual': true, 'fecha': '2026-11-15', 'categoria': 'Servicios', 'nombre': 'Luz', 'proveedor': 'Luz Ejemplo',
+             'mes': 'noviembre 2026', 'estado': 'Por confirmar', 'espera': 1},
+          ],
+          'total': 1, 'hayMas': false,
+        }), 200);
+      }
+      return responder(req);
+    }
+
+    await abrir(tester, rol: 'owner');
+    await entrarFinanzas(tester);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Gastos').last);
+      await tester.pumpAndSettle();
+      expect(find.text('Luz · Luz Ejemplo'), findsOneWidget);
+      expect(find.textContaining('Monto por confirmar · Pago mensual · noviembre 2026'), findsOneWidget);
+      expect(find.text('Por confirmar'), findsOneWidget);
+      await tester.tap(find.text('Luz · Luz Ejemplo'));
+      await tester.pumpAndSettle();
+      expect(find.text('Pagar el mes'), findsWidgets);
+      await tester.enterText(find.widgetWithText(TextField, 'Monto del recibo (S/)'), '87.40');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient(conMensual));
+    final body = jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/pagoMensual')).body);
+    expect(body['mensualId'], 'MB-0001');
+    expect(body['monto'], 87.4);
+    expect(body['metodo'], 'transfer');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Finanzas keeps the last month with Pendiente, Urgente or Pagado, and a paid row has no Pagar', (tester) async {
     await abrir(tester, rol: 'owner');
     await entrarFinanzas(tester);
@@ -2542,6 +2601,8 @@ void main() {
     await tester.scrollUntilVisible(find.text('S/ 500 · ADV-007'), 200, scrollable: lista);
     expect(find.text('Saldo S/ 200'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Editar datos'), -200, scrollable: lista);
+    await tester.drag(lista, const Offset(0, 3000)); // all the way up: the buttons are three since 16 Nov 2026
+    await tester.pumpAndSettle();
     await http.runWithClient(() async {
       await tester.tap(find.text('Editar datos'));
       await tester.pumpAndSettle();

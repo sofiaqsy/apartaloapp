@@ -1423,11 +1423,12 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
     'Urgente': Colors.red,
     'Pendiente': Colors.orange,
     'Pagado': Colors.green,
+    'Por confirmar': Colors.orange, // un pago mensual que espera su monto (16 nov 2026)
     'Pagado en parte': Colors.orange, // el mismo color que Pendiente: todavía se debe (General Manager, 3 nov 2026)
     'Aprobado': Colors.green,
     'Rechazado': Colors.grey,
   };
-  static bool _esperaFila(Map<String, dynamic> f) => f['estado'] == 'Pendiente' || f['estado'] == 'Urgente';
+  static bool _esperaFila(Map<String, dynamic> f) => f['estado'] == 'Pendiente' || f['estado'] == 'Urgente' || f['estado'] == 'Por confirmar';
   static _Pildora _estado(Map<String, dynamic> f) => _Pildora('${f['estado'] ?? ''}', _coloresEstado[f['estado']] ?? Colors.grey);
   static String? _diasEsperando(Map<String, dynamic> f) {
     final d = (f['espera'] as num?)?.toInt();
@@ -1697,7 +1698,23 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
     );
   }
 
+  /// Un pago mensual que espera (16 nov 2026): sin monto todavía; tocarlo abre Pagar el mes, con el monto del recibo.
+  Widget _filaMensual(Map<String, dynamic> g) => _Ficha(
+        inicio: _Insignia(_fechaCorta(g['fecha']), tono: Colors.orange),
+        titulo: '${g['nombre'] ?? 'Pago mensual'} · ${g['proveedor'] ?? ''}',
+        detalle: ['Monto por confirmar', 'Pago mensual · ${g['mes'] ?? ''}', 'vence el ${_fechaCorta(g['fecha'])}'].join(' · '),
+        fin: _estado(g),
+        onTap: () async {
+          if (await _abrirFormulario(context, 'pagoMensual',
+                  fijos: {'mensualId': g['id']}, subtitulo: '${g['nombre'] ?? ''} · ${g['mes'] ?? ''} · ${g['proveedor'] ?? ''}') &&
+              mounted) {
+            cargar();
+          }
+        },
+      );
+
   Widget _filaGasto(Map<String, dynamic> g) {
+    if (g['mensual'] == true) return _filaMensual(g);
     final espera = _esperaFila(g);
     return _Ficha(
       inicio: _Insignia(_fechaCorta(g['fecha']), tono: Colors.orange),
@@ -2452,6 +2469,48 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
     if (await _abrirFormulario(context, form, fijos: {'proveedorId': widget.id, ...fijos}, iniciales: iniciales, subtitulo: subtitulo)) _cargar();
   }
 
+  /// Pago mensual: marcarlo (qué es y el día) o, si ya lo tiene, cambiarlo o quitarlo (deja de aparecer cada mes).
+  Future<void> _pagoMensual(Map<String, dynamic> p) async {
+    final actual = p['pago_mensual'] == null ? null : _mapa(p['pago_mensual']);
+    if (actual == null) {
+      await _formulario('servicioMensual', subtitulo: '${p['nombre'] ?? ''}');
+      return;
+    }
+    final eleccion = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Cambiar pago mensual'), onTap: () => Navigator.pop(ctx, 'cambiar')),
+          ListTile(
+              leading: Icon(Icons.remove_circle_outline, color: Colors.red.shade700),
+              title: Text('Quitar pago mensual', style: TextStyle(color: Colors.red.shade700)),
+              onTap: () => Navigator.pop(ctx, 'quitar')),
+        ]),
+      ),
+    );
+    if (!mounted || eleccion == null) return;
+    if (eleccion == 'cambiar') {
+      await _formulario('servicioMensual', iniciales: {'nombre': '${actual['nombre']}', 'dia': '${actual['dia']}'}, subtitulo: '${p['nombre'] ?? ''}');
+      return;
+    }
+    final si = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Quitar pago mensual'),
+        content: Text('${actual['nombre']} dejará de aparecer cada mes en Finanzas. Lo ya pagado se queda.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Quitar pago mensual')),
+        ],
+      ),
+    );
+    if (si != true || !mounted) return;
+    final r = await AdministracionService.registrar('quitarMensual', {'proveedorId': widget.id}, clave: AdministracionService.nuevaClave('quitarMensual'));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.isSuccess ? 'Pago mensual quitado' : (r.error ?? 'No se pudo quitar'))));
+    if (r.isSuccess) _cargar();
+  }
+
   void _editarDatos(Map<String, dynamic> p) => _formulario('editarProveedor',
       iniciales: {
         for (final (k, v) in [
@@ -2665,6 +2724,8 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
                   _Acciones(acciones: [
                     (Icons.edit_outlined, 'Editar datos', () => _editarDatos(p)),
                     (Icons.add_card_outlined, 'Agregar cuenta', () => _formulario('cuentaProveedor', subtitulo: '${p['nombre'] ?? ''}')),
+                    // Pago mensual (General Manager, 16 nov 2026): se paga cada mes, el monto llega con el recibo.
+                    (Icons.event_repeat, p['pago_mensual'] == null ? 'Pago mensual' : 'Cambiar pago mensual', () => _pagoMensual(p)),
                   ]),
                 _panel('Datos', [
                   _dato('Vende', _vende[p['vende']] ?? p['vende']?.toString()),
@@ -2674,6 +2735,8 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
                   _dato('DNI o RUC', p['documento']?.toString()),
                   _dato('Teléfono', p['telefono']?.toString()),
                   _dato('Notas', p['notas']?.toString()),
+                  _dato('Pago mensual',
+                      p['pago_mensual'] == null ? null : '${_mapa(p['pago_mensual'])['nombre']} · cada día ${_mapa(p['pago_mensual'])['dia']}'),
                 ]),
                 // Dueños: cada cuenta se toca para editarla o quitarla; sin dueño no llegan cuentas.
                 if (puedeEditar) ...[
@@ -4871,7 +4934,8 @@ class _MovimientoDetalleScreenState extends State<_MovimientoDetalleScreen> {
 
   Future<void> _conciliar(Map<String, dynamic> s) async {
     final m = _m!;
-    final paga = s['tipo'] == 'gasto' || s['tipo'] == 'compra';
+    // Un pago mensual también se paga con esta línea, con el monto del banco (16 nov 2026).
+    final paga = s['tipo'] == 'gasto' || s['tipo'] == 'compra' || s['tipo'] == 'mensual';
     final monto = _soles((num.tryParse('${m['monto']}') ?? 0).abs());
     final ok = await showDialog<bool>(
       context: context,
@@ -4984,9 +5048,12 @@ class _MovimientoDetalleScreenState extends State<_MovimientoDetalleScreen> {
                       if (s['detalle'] != null) '${s['detalle']}',
                       _fechaLarga(s['fecha']),
                       _soles(s['monto']),
-                      if (s['tipo'] == 'gasto' || s['tipo'] == 'compra') 'por pagar',
+                      if (s['tipo'] == 'gasto' || s['tipo'] == 'compra' || s['tipo'] == 'mensual') 'por pagar',
                     ].where((t) => t.isNotEmpty).join(' · '),
                     style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+                // Lo que dice el comprobante del pedido (14 nov 2026): fecha, monto y Nº de operación leídos de la foto.
+                if (s['comprobante'] != null)
+                  Text('${s['comprobante']}', style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
                 // Para conciliar bien, los datos y la foto del pago (General Manager, 5 nov 2026).
                 if (s['por'] != null || s['nota'] != null)
                   Text([if (s['nota'] != null) '${s['nota']}', if (s['por'] != null) 'registró ${s['por']}'].join(' · '),
