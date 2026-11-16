@@ -166,12 +166,14 @@ const _devuelveEn = {'coffee': 'Café', 'money': 'Dinero', 'coffee_or_money': 'C
 final Map<String, List<_Campo>> _formularios = {
   // Un gasto es una solicitud de pago: Administración lo paga (se paga desde Finanzas).
   'gasto': [
+    // A quién se le paga (General Manager, 6 nov 2026), opcional: al pagar se ven su Yape, sus cuentas o su Nº de servicio.
+    // Va primero y, al elegirlo, la categoría se elige sola: la de su último gasto, o Servicios si es un servicio
+    // (General Manager, 16 nov 2026). Se puede cambiar.
+    const _Campo('proveedorId', 'Proveedor', _Tipo.persona, requerido: false),
     // Las categorías y el área sugerida vienen de la base (expense_categories); esta lista es el respaldo.
     const _Campo('categoria', 'Categoría', _Tipo.opcion), // las opciones son la guía de categorías (_guia)
     const _Campo('monto', 'Monto (S/)', _Tipo.monto),
     const _Campo('descripcion', 'Descripción', _Tipo.texto, requerido: false),
-    // A quién se le paga (General Manager, 6 nov 2026), opcional: al pagar se ven su Yape, sus cuentas o su Nº de servicio.
-    const _Campo('proveedorId', 'Proveedor', _Tipo.persona, requerido: false),
     // Quien registra elige el área que responde por el gasto; se llena sola según la categoría.
     const _Campo('area', 'Área', _Tipo.opcion, opciones: _areas, porDefecto: 'shared', avanzado: true),
     const _Campo('centro', 'Centro de costo', _Tipo.opcion,
@@ -584,6 +586,18 @@ class _FormularioSheetState extends State<_FormularioSheet> {
   }
 
   /// Al elegir la categoría, se sugieren el área y el centro de costo (se pueden cambiar en Más opciones).
+  /// Con el proveedor elegido, la categoría se elige sola (General Manager, 16 nov 2026), si la base la sabe y es una de
+  /// la guía; con ella, el área y el centro de costo, como al tocarla.
+  Future<void> _categoriaDelProveedor(String proveedorId) async {
+    final r = await AdministracionService.sugerirCategoria(proveedorId);
+    if (!mounted || !r.isSuccess || _valores['proveedorId'] != proveedorId) return;
+    final cat = r.data!['categoria'];
+    if (cat is! String || !_guia.containsKey(cat)) return;
+    setState(() => _valores['categoria'] = cat);
+    _sugerirPorCategoria(cat);
+    if (cat == 'Combustible') _pedirSugerencia();
+  }
+
   void _sugerirPorCategoria(String? categoria) {
     final g = _guia[categoria];
     setState(() {
@@ -714,6 +728,7 @@ class _FormularioSheetState extends State<_FormularioSheet> {
                 _nombresElegidos[c.clave] = '${p['nombre']}';
               }
             });
+            if (widget.formulario == 'gasto' && c.clave == 'proveedorId' && p.isNotEmpty) _categoriaDelProveedor('${p['id']}');
           },
           child: InputDecorator(
             decoration: deco.copyWith(suffixIcon: const Icon(Icons.search)),

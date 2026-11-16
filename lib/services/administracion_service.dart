@@ -283,6 +283,11 @@ class AdministracionService {
   static Future<ApiResponse<Map<String, dynamic>>> categorias() => _get('categorias', vida: _vidaCategorias);
 
   /// Qué área pondría la base a un gasto (para Combustible: compra o entrega del mismo día, o la de la persona).
+  /// Registrar gasto (16 nov 2026): la categoría del proveedor elegido, por su último gasto o Servicios si es un
+  /// servicio ({categoria, por}; categoria null si no se sabe).
+  static Future<ApiResponse<Map<String, dynamic>>> sugerirCategoria(String proveedorId) =>
+      _get('sugerir-categoria?proveedor=${Uri.encodeQueryComponent(proveedorId)}');
+
   static Future<ApiResponse<Map<String, dynamic>>> sugerirArea(String categoria, [String? fecha]) =>
       _get('sugerir-area?categoria=${Uri.encodeQueryComponent(categoria)}${fecha == null ? '' : '&fecha=$fecha'}');
 

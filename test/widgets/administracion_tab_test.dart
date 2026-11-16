@@ -469,6 +469,7 @@ void main() {
     if (p.endsWith('/tostador/events/create')) return http.Response(jsonEncode({'ok': true, 'eventId': 'ev-1'}), 201);
     if (p.contains('/tostador/events/')) return http.Response(jsonEncode({'ok': true}), 200);
     if (p.endsWith('/resumen')) return http.Response(jsonEncode({'rol': 'owner', 'meses': []}), 200);
+    if (p.endsWith('/sugerir-categoria')) return http.Response(jsonEncode({'categoria': 'Transporte', 'por': 'ultimo_gasto'}), 200);
     if (p.endsWith('/finca/aportantes')) {
       return http.Response(jsonEncode({'aportantes': ['Jared Ejemplo Uno', 'Misael Ejemplo', 'Misael Ejemplo Dos']}), 200);
     }
@@ -1486,7 +1487,21 @@ void main() {
     }, () => MockClient((req) async => responder(req)));
     final req = pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/gasto'));
     expect(jsonDecode(req.body)['proveedorId'], 'P-0001');
+    // The provider chose the category by itself (16 Nov 2026): its last gasto was Transporte.
+    expect(jsonDecode(req.body)['categoria'], 'Transporte');
+    expect(pedidos.lastWhere((r) => r.url.path.endsWith('/sugerir-categoria')).url.queryParameters['proveedor'], 'P-0001');
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Registrar gasto: Proveedor goes first, above Categoría (16 Nov 2026)', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Producción'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Registrar gasto'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(tester.getTopLeft(find.text('Proveedor (opcional)')).dy, lessThan(tester.getTopLeft(find.text('Categoría')).dy));
   });
 
   testWidgets('a gasto without a provider sends none', (tester) async {
