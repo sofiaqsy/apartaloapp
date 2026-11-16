@@ -1550,6 +1550,28 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('Finca: Registrar proveedor starts on Proveedor de servicios with its Nº de servicio, in the Finca area (16 Nov 2026)', (tester) async {
+    await abrir(tester, rol: 'staff');
+    await tester.scrollUntilVisible(find.text('Finca'), 200, scrollable: find.byType(Scrollable).last);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Finca'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Registrar proveedor'));
+      await tester.pumpAndSettle();
+      expect(find.text('Área: Finca'), findsOneWidget);
+      expect(find.text('Código de pago (Nº de servicio)'), findsOneWidget);
+      await tester.enterText(find.widgetWithText(TextField, 'Nombre'), 'Luz Ejemplo');
+      await tester.enterText(find.widgetWithText(TextField, 'Código de pago (Nº de servicio)'), '1234567');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final body = jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/proveedor')).body);
+    expect(body['rol'], 'service');
+    expect(body['area'], 'farm');
+    expect(body['codigo'], '1234567');
+    expect(body['nombre'], 'Luz Ejemplo');
+  });
+
   testWidgets('Finca: staff have no Registrar inversión and no Inversiones tab', (tester) async {
     await abrir(tester, rol: 'staff');
     await tester.scrollUntilVisible(find.text('Finca'), 200, scrollable: find.byType(Scrollable).last);

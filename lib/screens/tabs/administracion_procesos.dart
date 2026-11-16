@@ -1966,6 +1966,13 @@ class _FincaScreenState extends _ProcesoState<_FincaScreen> with _ProveedoresDel
             _titulos['gasto']!, // el mismo nombre en cada proceso; el área va fija (General Manager, 3 nov 2026)
             () => formulario('gasto', fijos: const {'area': 'farm'}, subtitulo: 'Área: Finca')
           ),
+          // Registrar proveedor (General Manager, 16 nov 2026: "similar to Entel, I need to pay services of luz"): queda en
+          // el área Finca y empieza en Proveedor de servicios, con su Nº de servicio; se puede elegir otro tipo.
+          (
+            Icons.person_add_alt_1,
+            _titulos['proveedor']!,
+            () => formulario('proveedor', fijos: const {'area': 'farm'}, subtitulo: 'Área: Finca', iniciales: const {'rol': 'service'})
+          ),
           // Sólo dueños: el dinero es de los dueños (General Manager, 14 nov 2026).
           if (widget.esDueno) (Icons.savings_outlined, _titulos['inversion']!, () => formulario('inversion')),
         ]),
