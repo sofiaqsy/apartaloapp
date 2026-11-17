@@ -3799,10 +3799,96 @@ class _ComercialScreen extends StatefulWidget {
 class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _ProveedoresDelProceso, _GastosDelArea, _ReporteDelProceso {
   // Primero Clientes, luego Gastos y al final Últimos pagos (General Manager, 4 nov 2026); Proveedores después de
   // Clientes, como en los demás procesos (General Manager, 6 nov 2026).
-  int _pestana = 0; // 0 Clientes, 1 Proveedores, 2 Gastos, 3 Últimos pagos
+  // Vendedores en lugar de Clientes (General Manager, 17 nov 2026: "change clientes to Vendedores, a list of
+  // vendedores"); los clientes siguen en la pestaña Clientes de la app.
+  int _pestana = 0; // 0 Vendedores, 1 Proveedores, 2 Gastos, 3 Últimos pagos
 
-  /// La lista de cada pestaña: 0 pagos, 1 clientes (Proveedores y Gastos tienen la suya).
-  static int? _listaDe(int pestana) => pestana == 0 ? 1 : (pestana == 3 ? 0 : null);
+  /// La lista de cada pestaña que viene de a 20: sólo Últimos pagos (0); las demás tienen la suya.
+  static int? _listaDe(int pestana) => pestana == 3 ? 0 : null;
+
+  // Vendedores: el equipo con quién vende, su %, sus clientes y su comisión del mes (dueños y Comercial).
+  List<Map<String, dynamic>> _equipo = const [];
+  bool _puedeEditarVendedores = false;
+  bool _cargandoVendedores = false;
+  bool _vendedoresPedidos = false;
+  String? _errorVendedores;
+
+  Future<void> _cargarVendedores() async {
+    setState(() {
+      _cargandoVendedores = true;
+      _vendedoresPedidos = true;
+    });
+    final r = await AdministracionService.vendedores();
+    if (!mounted) return;
+    setState(() {
+      _cargandoVendedores = false;
+      _errorVendedores = r.isSuccess ? null : (r.error ?? 'No se pudo cargar.');
+      if (r.isSuccess) {
+        _equipo = _lista(r.data!['equipo']);
+        _puedeEditarVendedores = r.data!['puede_editar'] == true;
+      }
+    });
+  }
+
+  /// Registrar vendedor (dueños, 17 nov 2026): elegir a alguien del equipo que todavía no vende y poner su %.
+  Future<void> _registrarVendedor() async {
+    if (!_vendedoresPedidos || _equipo.isEmpty) await _cargarVendedores();
+    if (!mounted) return;
+    final libres = _equipo.where((p) => p['vendedor'] != true).toList();
+    if (libres.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Todo el equipo ya vende. Invita a la persona a Finca Rosal y vuelve aquí.')));
+      return;
+    }
+    final elegido = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: ListView(shrinkWrap: true, children: [
+          const ListTile(title: Text('¿Quién va a vender?', style: TextStyle(fontWeight: FontWeight.w600))),
+          for (final p in libres)
+            ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: Text('${p['nombre'] ?? ''}'),
+              subtitle: Text(p['rol'] == 'owner' ? 'Dueño' : 'Equipo'),
+              onTap: () => Navigator.pop(ctx, p),
+            ),
+        ]),
+      ),
+    );
+    if (elegido == null || !mounted) return;
+    if (await _abrirFormulario(context, 'vendedor', fijos: {'perfilId': elegido['perfil']}, subtitulo: 'Registrar vendedor: ${elegido['nombre']}')) {
+      _cargarVendedores();
+    }
+  }
+
+  // Cada vendedor: su %, cuántos clientes y su comisión del mes; los dueños lo tocan para ver sus comisiones.
+  List<Widget> _listaVendedores() {
+    final vendedores = _equipo.where((p) => p['vendedor'] == true).toList();
+    if (_errorVendedores != null && vendedores.isEmpty) {
+      return [Padding(padding: const EdgeInsets.all(16), child: Text(_errorVendedores!, textAlign: TextAlign.center))];
+    }
+    return [
+      const SizedBox(height: 8),
+      if (vendedores.isEmpty && !_cargandoVendedores && _vendedoresPedidos) _vacio('Todavía no hay vendedores.'),
+      for (final p in vendedores)
+        _Ficha(
+          inicio: const _InsigniaIcono(Icons.storefront_outlined, tono: Colors.indigo),
+          titulo: '${p['nombre'] ?? ''}',
+          detalle: [
+            'Comisión ${p['porcentaje']}%',
+            '${p['clientes'] ?? 0} ${p['clientes'] == 1 ? 'cliente' : 'clientes'}',
+            'este mes ${_soles(p['comision_mes'] ?? 0)}',
+          ].join(' · '),
+          onTap: _puedeEditarVendedores
+              ? () async {
+                  await _abrirPantalla<void>(context, _VendedorDetalleScreen(perfil: '${p['perfil']}', nombre: '${p['nombre']}'));
+                  _cargarVendedores();
+                }
+              : null,
+        ),
+      if (_cargandoVendedores || !_vendedoresPedidos) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
+    ];
+  }
 
   @override
   String get clave => 'comercial';
@@ -3841,6 +3927,7 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Provee
       _erroresFilas[i] = null;
     }
     final l = _listaDe(_pestana);
+    if (_pestana == 0) _cargarVendedores();
     if (_pestana == 1) recargarProveedores();
     if (_pestana == 2) cargarGastos();
     await Future.wait([super.cargar(), if (l != null) _mas(l)]);
@@ -3850,14 +3937,12 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Provee
     if (_cargandoFilas[i] || !_hayMasFilas[i]) return;
     final vuelta = _vuelta;
     setState(() => _cargandoFilas[i] = true);
-    final r = i == 0
-        ? await AdministracionService.pagosComercial(desde: _filas[0].length)
-        : await AdministracionService.clientesComercial(desde: _filas[1].length);
+    final r = await AdministracionService.pagosComercial(desde: _filas[0].length);
     if (!mounted || vuelta != _vuelta) return;
     setState(() {
       _cargandoFilas[i] = false;
       if (r.isSuccess) {
-        _filas[i].addAll(_lista(r.data![i == 0 ? 'pagos' : 'clientes']));
+        _filas[i].addAll(_lista(r.data!['pagos']));
         _hayMasFilas[i] = r.data!['hay_mas'] == true;
       } else {
         _erroresFilas[i] = r.error ?? 'No se pudo cargar.';
@@ -3895,22 +3980,8 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Provee
   List<Widget> _listaComercial(int i) {
     final filas = _filas[i];
     return [
-      if (filas.isEmpty && !_cargandoFilas[i])
-        _vacio(_erroresFilas[i] ?? const ['Todavía no hay pagos registrados.', 'Todavía no hay clientes.'][i]),
-      for (final f in filas)
-        if (i == 0)
-          _filaPago(f)
-        else
-          _Ficha(
-            inicio: _Insignia(_fechaCorta(f['ultimo']), tono: Colors.blue),
-            titulo: '${f['nombre'] ?? 'Sin nombre'}',
-            detalle: [
-              '${f['pedidos']} ${f['pedidos'] == 1 ? 'pedido' : 'pedidos'}',
-              if (f['total'] != null) _soles(f['total']),
-              if (f['primero'] != null) 'desde ${_fechaCorta(f['primero'])}',
-            ].join(' · '),
-            onTap: () => _abrirPantalla<void>(context, _ClienteComercialScreen(cliente: f)),
-          ),
+      if (filas.isEmpty && !_cargandoFilas[i]) _vacio(_erroresFilas[i] ?? 'Todavía no hay pagos registrados.'),
+      for (final f in filas) _filaPago(f),
       if (_cargandoFilas[i]) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
     ];
   }
@@ -3938,22 +4009,25 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Provee
             _titulos['proveedor']!,
             () => formulario('proveedor', fijos: const {'area': 'commercial'}, subtitulo: 'Área: Comercial', iniciales: const {'rol': 'supplier'})
           ),
-          // Vendedores y comisiones (General Manager, 17 nov 2026): una pantalla aparte, no una quinta pestaña (no caben).
-          (Icons.groups_outlined, 'Vendedores y comisiones', () => _abrirPantalla<void>(context, const _VendedoresScreen())),
+          // Registrar vendedor (General Manager, 17 nov 2026, en lugar de "Vendedores y comisiones"): sólo dueños.
+          if (widget.esDueno) (Icons.person_add_alt, 'Registrar vendedor', _registrarVendedor),
         ]),
         _Pestanas(
-          nombres: const ['Clientes', 'Proveedores', 'Gastos', 'Últimos pagos'],
+          nombres: const ['Vendedores', 'Proveedores', 'Gastos', 'Últimos pagos'],
           anchoPorNombre: true,
           elegida: _pestana,
           onElegir: (i) {
             setState(() => _pestana = i);
             final l = _listaDe(i);
             if (l != null && _filas[l].isEmpty) _mas(l);
+            if (i == 0) _cargarVendedores();
             if (i == 1) abrirProveedores();
             if (i == 2) cargarGastos();
           },
         ),
-        if (_pestana == 1)
+        if (_pestana == 0)
+          ..._listaVendedores()
+        else if (_pestana == 1)
           ..._listaProveedores()
         else if (_pestana == 2)
           ...listaGastos()
@@ -3961,89 +4035,6 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Provee
           ..._listaComercial(_listaDe(_pestana)!),
       ];
     });
-  }
-}
-
-/// Vendedores y comisiones (General Manager, 17 nov 2026): el equipo; quién vende con qué % de lo que pagan sus
-/// clientes, cuántos clientes tiene y su comisión del mes. Los dueños lo cambian (Hacer vendedor, el %); Comercial sólo
-/// lo ve. Un vendedor ve sólo sus clientes; por eso un vendedor no lleva el área Comercial.
-class _VendedoresScreen extends StatefulWidget {
-  const _VendedoresScreen();
-
-  @override
-  State<_VendedoresScreen> createState() => _VendedoresScreenState();
-}
-
-class _VendedoresScreenState extends State<_VendedoresScreen> {
-  Map<String, dynamic>? _d;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _cargar();
-  }
-
-  Future<void> _cargar() async {
-    final r = await AdministracionService.vendedores();
-    if (!mounted) return;
-    setState(() {
-      _error = r.isSuccess ? null : r.error;
-      if (r.isSuccess) _d = r.data;
-    });
-  }
-
-  Future<void> _abrir(Map<String, dynamic> p, bool puedeEditar) async {
-    if (!puedeEditar) return;
-    if (p['vendedor'] == true) {
-      await _abrirPantalla<void>(context, _VendedorDetalleScreen(perfil: '${p['perfil']}', nombre: '${p['nombre']}'));
-    } else {
-      await _abrirFormulario(context, 'vendedor', fijos: {'perfilId': p['perfil']}, subtitulo: 'Hacer vendedor a ${p['nombre']}');
-    }
-    _cargar();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final d = _d;
-    final puedeEditar = d?['puede_editar'] == true;
-    final equipo = d == null ? const <Map<String, dynamic>>[] : _lista(d['equipo']);
-    return Scaffold(
-      appBar: AppBar(title: const Text('Vendedores')),
-      body: RefreshIndicator(
-        onRefresh: _cargar,
-        child: ListView(padding: const EdgeInsets.all(16), children: [
-          if (d == null)
-            Padding(
-              padding: const EdgeInsets.all(32),
-              child: _error != null ? Text(_error!, textAlign: TextAlign.center) : const Center(child: CircularProgressIndicator()),
-            )
-          else ...[
-            Text(
-                puedeEditar
-                    ? 'Toca a una persona del equipo para hacerla vendedor o ver sus comisiones. Un vendedor ve sólo sus clientes.'
-                    : 'Un vendedor ve sólo sus clientes. Los dueños cambian los vendedores y su comisión.',
-                style: TextStyle(color: Colors.grey.shade700)),
-            const SizedBox(height: 12),
-            for (final p in equipo)
-              _Ficha(
-                inicio: _InsigniaIcono(p['vendedor'] == true ? Icons.storefront_outlined : Icons.person_outline,
-                    tono: p['vendedor'] == true ? Colors.indigo : Colors.grey),
-                titulo: '${p['nombre'] ?? ''}',
-                detalle: p['vendedor'] == true
-                    ? [
-                        'Comisión ${p['porcentaje']}%',
-                        '${p['clientes'] ?? 0} ${p['clientes'] == 1 ? 'cliente' : 'clientes'}',
-                        'este mes ${_soles(p['comision_mes'] ?? 0)}',
-                      ].join(' · ')
-                    : (p['rol'] == 'owner' ? 'Dueño' : 'Equipo'),
-                fin: p['vendedor'] == true ? const _Pildora('Vendedor', Colors.indigo) : null,
-                onTap: puedeEditar ? () => _abrir(p, puedeEditar) : null,
-              ),
-          ],
-        ]),
-      ),
-    );
   }
 }
 
@@ -4245,94 +4236,6 @@ Widget fichaPedidoCliente(BuildContext context, Map<String, dynamic> p, {require
     ),
   );
 }
-
-/// Un cliente de Comercialización (4 nov 2026): sus datos (teléfono y total sólo para dueños) y sus pedidos, de 20 en
-/// 20; cada pedido abre su detalle.
-class _ClienteComercialScreen extends StatefulWidget {
-  const _ClienteComercialScreen({required this.cliente});
-  final Map<String, dynamic> cliente;
-
-  @override
-  State<_ClienteComercialScreen> createState() => _ClienteComercialScreenState();
-}
-
-class _ClienteComercialScreenState extends State<_ClienteComercialScreen> {
-  final _pedidos = <Map<String, dynamic>>[];
-  int _pagina = 0;
-  bool _hayMas = true;
-  bool _cargando = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _mas();
-  }
-
-  Future<void> _mas() async {
-    if (_cargando || !_hayMas) return;
-    setState(() => _cargando = true);
-    final r = await ApiService.getPedidos(cliente: '${widget.cliente['nombre'] ?? ''}', pagina: _pagina + 1, limite: 20);
-    if (!mounted) return;
-    setState(() {
-      _cargando = false;
-      if (r.isSuccess && r.data != null) {
-        _pedidos.addAll(r.data!.pedidos);
-        _pagina++;
-        _hayMas = r.data!.hayMas;
-      } else {
-        _error = r.error ?? 'No se pudieron cargar los pedidos.';
-        _hayMas = false;
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = widget.cliente;
-    Widget dato(String nombre, String? valor) => valor == null || valor.isEmpty
-        ? const SizedBox.shrink()
-        : Container(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade300))),
-            child: Row(children: [
-              SizedBox(width: 130, child: Text(nombre, style: TextStyle(color: Colors.grey.shade700))),
-              Expanded(child: Text(valor, style: const TextStyle(fontWeight: FontWeight.w600))),
-            ]),
-          );
-    return Scaffold(
-      appBar: AppBar(title: const Text('Cliente')),
-      body: NotificationListener<ScrollNotification>(
-        onNotification: (n) {
-          if (n.metrics.extentAfter < 300) _mas();
-          return false;
-        },
-        child: ListView(padding: const EdgeInsets.all(16), children: [
-          Text('${c['nombre'] ?? 'Sin nombre'}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(16)),
-            child: Column(children: [
-              dato('Pedidos', '${c['pedidos'] ?? 0}'),
-              dato('Total comprado', c['total'] == null ? null : _soles(c['total'])),
-              dato('Primer pedido', c['primero'] == null ? null : _fechaLarga(c['primero'])),
-              dato('Último pedido', c['ultimo'] == null ? null : _fechaLarga(c['ultimo'])),
-              dato('Teléfono', c['telefono']?.toString()),
-              dato('Correo', c['email']?.toString()),
-            ].where((w) => w is! SizedBox).toList()),
-          ),
-          _encabezado('Pedidos', ''),
-          if (_pedidos.isEmpty && !_cargando) _vacio(_error ?? 'Sin pedidos.'),
-          for (final p in _pedidos) _fichaPedido(context, p, onActualizado: () {}),
-          if (_cargando) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
-        ]),
-      ),
-    );
-  }
-}
-
-// ─── Producción ──────────────────────────────────────────────────────────────
 
 class _ProduccionScreen extends StatefulWidget {
   const _ProduccionScreen({this.esDueno = false});

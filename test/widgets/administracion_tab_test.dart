@@ -469,6 +469,15 @@ void main() {
     if (p.endsWith('/tostador/events/create')) return http.Response(jsonEncode({'ok': true, 'eventId': 'ev-1'}), 201);
     if (p.contains('/tostador/events/')) return http.Response(jsonEncode({'ok': true}), 200);
     if (p.endsWith('/resumen')) return http.Response(jsonEncode({'rol': 'owner', 'meses': []}), 200);
+    if (p.endsWith('/comercial/vendedores')) {
+      return http.Response(jsonEncode({
+        'puede_editar': true,
+        'equipo': [
+          {'perfil': 'v-1', 'nombre': 'Vendedora Ejemplo', 'rol': 'staff', 'vendedor': true, 'porcentaje': 5, 'clientes': 3, 'comision_mes': 30},
+          {'perfil': 'n-1', 'nombre': 'Nuevo Ejemplo', 'rol': 'staff', 'vendedor': false, 'clientes': 0},
+        ],
+      }), 200);
+    }
     if (p.endsWith('/sugerir-categoria')) return http.Response(jsonEncode({'categoria': 'Transporte', 'por': 'ultimo_gasto'}), 200);
     if (p.endsWith('/finca/aportantes')) {
       return http.Response(jsonEncode({'aportantes': ['Jared Ejemplo Uno', 'Misael Ejemplo', 'Misael Ejemplo Dos']}), 200);
@@ -1785,7 +1794,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Comercialización → Vendedores y comisiones: owners make a seller with a %, see months and send one to Finanzas (17 Nov 2026)', (tester) async {
+  testWidgets('Comercialización: Registrar vendedor chooses who and the %; a seller opens his months and sends one to Finanzas (17 Nov 2026)', (tester) async {
     Future<http.Response> conVendedores(http.Request req) async {
       final p = req.url.path;
       if (p.endsWith('/comercial/vendedores')) {
@@ -1813,10 +1822,11 @@ void main() {
     await http.runWithClient(() async {
       await tester.tap(find.text('Comercialización'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Vendedores y comisiones'));
-      await tester.pumpAndSettle();
       expect(find.textContaining('Comisión 5% · 3 clientes · este mes S/ 30'), findsOneWidget);
-      // A team member who does not sell: Hacer vendedor with a %.
+      // Registrar vendedor: who (only the team members who do not sell yet), then the %.
+      await tester.tap(find.text('Registrar vendedor'));
+      await tester.pumpAndSettle();
+      expect(find.text('Vendedora Ejemplo'), findsOneWidget); // only in the list behind, not offered
       await tester.tap(find.text('Nuevo Ejemplo'));
       await tester.pumpAndSettle();
       await tester.enterText(find.widgetWithText(TextField, 'Comisión (%)'), '4');
@@ -1853,7 +1863,7 @@ void main() {
     }, () => MockClient((req) async => responder(req)));
     expect(find.text('Reporte de ventas'), findsNothing);
     expect(find.text('Ticket promedio'), findsNothing); // no data on top
-    for (final t in ['Registrar gasto', 'Últimos pagos', 'Clientes', 'Proveedores', 'Gastos']) {
+    for (final t in ['Registrar gasto', 'Registrar vendedor', 'Últimos pagos', 'Vendedores', 'Proveedores', 'Gastos']) {
       expect(find.text(t), findsWidgets, reason: t);
     }
     for (final t in ['Registrar pedido', 'Pedidos', 'Productos']) {
@@ -1862,23 +1872,14 @@ void main() {
     expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
     // The tabs in her order (4 Nov 2026, Proveedores added 6 Nov): Clientes, Proveedores, Gastos, Últimos pagos; it opens
     // on Clientes.
-    final x = ['Clientes', 'Proveedores', 'Gastos', 'Últimos pagos'].map((t) => tester.getCenter(find.text(t).last).dx).toList();
+    // Vendedores in place of Clientes (17 Nov 2026): the first tab, only the sellers with their %, clients and commission.
+    final x = ['Vendedores', 'Proveedores', 'Gastos', 'Últimos pagos'].map((t) => tester.getCenter(find.text(t).last).dx).toList();
     expect(x[0] < x[1] && x[1] < x[2] && x[2] < x[3], isTrue);
     expect(pedidos.any((r) => r.url.path.endsWith('/comercial/pagos')), isFalse); // asked only when opened
-    // Clientes: from the orders, 20 a page.
-    expect(pedidos.any((r) => r.url.path.endsWith('/comercial/clientes') && r.url.queryParameters['limit'] == '20'), isTrue);
-    expect(find.text('Cafe Uno'), findsOneWidget);
-    expect(find.textContaining('2 pedidos · S/ 150'), findsOneWidget);
-    await http.runWithClient(() async {
-      await tester.tap(find.text('Cafe Uno'));
-      await tester.pumpAndSettle();
-    }, () => MockClient((req) async => responder(req)));
-    for (final t in ['Cliente', 'Total comprado', 'Último pedido']) {
-      expect(find.text(t), findsOneWidget, reason: t);
-    }
-    expect(pedidos.lastWhere((r) => r.url.path.contains('/api/pedidos/')).url.queryParameters['cliente'], 'Cafe Uno');
-    await tester.pageBack();
-    await tester.pumpAndSettle();
+    expect(find.text('Vendedora Ejemplo'), findsOneWidget);
+    expect(find.text('Nuevo Ejemplo'), findsNothing); // not a seller
+    expect(find.textContaining('Comisión 5% · 3 clientes · este mes S/ 30'), findsOneWidget);
+    expect(pedidos.any((r) => r.url.path.endsWith('/comercial/clientes')), isFalse);
     // Últimos pagos, the last tab: 20 a page; each payment with its order opens the order detail.
     await http.runWithClient(() async {
       await tester.tap(find.text('Últimos pagos').last);
