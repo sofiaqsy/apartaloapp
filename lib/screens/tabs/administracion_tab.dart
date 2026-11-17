@@ -293,6 +293,10 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('metodo', 'Cómo se pagó', _Tipo.opcion, opciones: _metodosPago, porDefecto: 'transfer'),
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
+  // Un vendedor y su comisión (General Manager, 17 nov 2026): el % de lo que pagan sus clientes.
+  'vendedor': [
+    const _Campo('porcentaje', 'Comisión (%)', _Tipo.numero, ayuda: 'De lo que pagan sus clientes, de 0 a 50'),
+  ],
   // Registrar inversión (General Manager, 14 nov 2026): un dueño pone dinero en el negocio. Quién aporta son los dueños
   // (se cargan al abrir). Por transferencia se concilia sola con la línea del BCP; nunca se pide el Nº de operación.
   'inversion': [
@@ -330,6 +334,7 @@ const _titulos = {
   'inversion': 'Registrar inversión',
   'servicioMensual': 'Pago mensual',
   'pagoMensual': 'Pagar el mes',
+  'vendedor': 'Comisión del vendedor',
 };
 
 // Lo que pasó y lo que sigue, después de guardar.
@@ -350,6 +355,7 @@ const _hecho = {
   'inversion': 'Inversión registrada ✓ Se concilia sola con el banco',
   'servicioMensual': 'Pago mensual guardado ✓ Cada mes aparece en Finanzas',
   'pagoMensual': 'Mes pagado ✓ Quedó como gasto pagado',
+  'vendedor': 'Vendedor guardado ✓',
 };
 
 /// Abre un formulario a pantalla completa. Se cierra con la X o deslizando hacia la derecha (como

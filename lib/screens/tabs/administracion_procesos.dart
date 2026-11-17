@@ -3938,6 +3938,8 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Provee
             _titulos['proveedor']!,
             () => formulario('proveedor', fijos: const {'area': 'commercial'}, subtitulo: 'Área: Comercial', iniciales: const {'rol': 'supplier'})
           ),
+          // Vendedores y comisiones (General Manager, 17 nov 2026): una pantalla aparte, no una quinta pestaña (no caben).
+          (Icons.groups_outlined, 'Vendedores y comisiones', () => _abrirPantalla<void>(context, const _VendedoresScreen())),
         ]),
         _Pestanas(
           nombres: const ['Clientes', 'Proveedores', 'Gastos', 'Últimos pagos'],
@@ -3959,6 +3961,210 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Provee
           ..._listaComercial(_listaDe(_pestana)!),
       ];
     });
+  }
+}
+
+/// Vendedores y comisiones (General Manager, 17 nov 2026): el equipo; quién vende con qué % de lo que pagan sus
+/// clientes, cuántos clientes tiene y su comisión del mes. Los dueños lo cambian (Hacer vendedor, el %); Comercial sólo
+/// lo ve. Un vendedor ve sólo sus clientes; por eso un vendedor no lleva el área Comercial.
+class _VendedoresScreen extends StatefulWidget {
+  const _VendedoresScreen();
+
+  @override
+  State<_VendedoresScreen> createState() => _VendedoresScreenState();
+}
+
+class _VendedoresScreenState extends State<_VendedoresScreen> {
+  Map<String, dynamic>? _d;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    final r = await AdministracionService.vendedores();
+    if (!mounted) return;
+    setState(() {
+      _error = r.isSuccess ? null : r.error;
+      if (r.isSuccess) _d = r.data;
+    });
+  }
+
+  Future<void> _abrir(Map<String, dynamic> p, bool puedeEditar) async {
+    if (!puedeEditar) return;
+    if (p['vendedor'] == true) {
+      await _abrirPantalla<void>(context, _VendedorDetalleScreen(perfil: '${p['perfil']}', nombre: '${p['nombre']}'));
+    } else {
+      await _abrirFormulario(context, 'vendedor', fijos: {'perfilId': p['perfil']}, subtitulo: 'Hacer vendedor a ${p['nombre']}');
+    }
+    _cargar();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = _d;
+    final puedeEditar = d?['puede_editar'] == true;
+    final equipo = d == null ? const <Map<String, dynamic>>[] : _lista(d['equipo']);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Vendedores')),
+      body: RefreshIndicator(
+        onRefresh: _cargar,
+        child: ListView(padding: const EdgeInsets.all(16), children: [
+          if (d == null)
+            Padding(
+              padding: const EdgeInsets.all(32),
+              child: _error != null ? Text(_error!, textAlign: TextAlign.center) : const Center(child: CircularProgressIndicator()),
+            )
+          else ...[
+            Text(
+                puedeEditar
+                    ? 'Toca a una persona del equipo para hacerla vendedor o ver sus comisiones. Un vendedor ve sólo sus clientes.'
+                    : 'Un vendedor ve sólo sus clientes. Los dueños cambian los vendedores y su comisión.',
+                style: TextStyle(color: Colors.grey.shade700)),
+            const SizedBox(height: 12),
+            for (final p in equipo)
+              _Ficha(
+                inicio: _InsigniaIcono(p['vendedor'] == true ? Icons.storefront_outlined : Icons.person_outline,
+                    tono: p['vendedor'] == true ? Colors.indigo : Colors.grey),
+                titulo: '${p['nombre'] ?? ''}',
+                detalle: p['vendedor'] == true
+                    ? [
+                        'Comisión ${p['porcentaje']}%',
+                        '${p['clientes'] ?? 0} ${p['clientes'] == 1 ? 'cliente' : 'clientes'}',
+                        'este mes ${_soles(p['comision_mes'] ?? 0)}',
+                      ].join(' · ')
+                    : (p['rol'] == 'owner' ? 'Dueño' : 'Equipo'),
+                fin: p['vendedor'] == true ? const _Pildora('Vendedor', Colors.indigo) : null,
+                onTap: puedeEditar ? () => _abrir(p, puedeEditar) : null,
+              ),
+          ],
+        ]),
+      ),
+    );
+  }
+}
+
+/// Un vendedor (dueños): su %, sus comisiones mes por mes (lo que pagaron sus clientes y la comisión) y, para un mes ya
+/// terminado, Enviar a Finanzas: queda como gasto Personal del área Comercial que Finanzas paga.
+class _VendedorDetalleScreen extends StatefulWidget {
+  const _VendedorDetalleScreen({required this.perfil, required this.nombre});
+  final String perfil;
+  final String nombre;
+
+  @override
+  State<_VendedorDetalleScreen> createState() => _VendedorDetalleScreenState();
+}
+
+class _VendedorDetalleScreenState extends State<_VendedorDetalleScreen> {
+  Map<String, dynamic>? _d;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    final r = await AdministracionService.comisionesVendedor(widget.perfil);
+    if (!mounted) return;
+    setState(() {
+      _error = r.isSuccess ? null : r.error;
+      if (r.isSuccess) _d = r.data;
+    });
+  }
+
+  Future<bool> _confirmar(String titulo, String texto, String si) async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(titulo),
+          content: Text(texto),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: Text(si)),
+          ],
+        ),
+      ) ==
+      true;
+
+  Future<void> _guardar(String form, Map<String, dynamic> datos, String hecho) async {
+    final r = await AdministracionService.registrar(form, datos, clave: AdministracionService.nuevaClave(form));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.isSuccess ? hecho : (r.error ?? 'No se guardó'))));
+    if (r.isSuccess) _cargar();
+  }
+
+  Future<void> _enviar(Map<String, dynamic> m) async {
+    if (!await _confirmar('¿Enviar a Finanzas?',
+        'La comisión de ${m['nombre_mes']} de ${widget.nombre}, ${_soles(m['comision'])}, queda como gasto que Finanzas paga.', 'Enviar')) {
+      return;
+    }
+    await _guardar('pagarComision', {'perfilId': widget.perfil, 'mes': m['mes']}, 'Comisión enviada a Finanzas ✓');
+  }
+
+  Future<void> _quitar() async {
+    if (!await _confirmar('Quitar vendedor', '${widget.nombre} deja de vender. Sus clientes y sus comisiones ya ganadas se quedan.', 'Quitar')) return;
+    await _guardar('quitarVendedor', {'perfilId': widget.perfil}, 'Ya no es vendedor');
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = _d;
+    final meses = d == null ? const <Map<String, dynamic>>[] : _lista(d['meses']);
+    final mesActual = '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}';
+    return Scaffold(
+      appBar: AppBar(title: const Text('Vendedor')),
+      body: RefreshIndicator(
+        onRefresh: _cargar,
+        child: ListView(padding: const EdgeInsets.all(16), children: [
+          Text(widget.nombre, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          if (d?['porcentaje'] != null) Text('Comisión ${d!['porcentaje']}% de lo que pagan sus clientes', style: TextStyle(color: Colors.grey.shade700)),
+          const SizedBox(height: 12),
+          _Acciones(acciones: [
+            (
+              Icons.percent,
+              'Cambiar comisión',
+              () async {
+                if (await _abrirFormulario(context, 'vendedor',
+                    fijos: {'perfilId': widget.perfil}, iniciales: {if (d?['porcentaje'] != null) 'porcentaje': '${d!['porcentaje']}'}, subtitulo: widget.nombre)) {
+                  _cargar();
+                }
+              }
+            ),
+            (Icons.person_off_outlined, 'Quitar vendedor', _quitar),
+          ]),
+          const SizedBox(height: 8),
+          if (d == null)
+            Padding(
+              padding: const EdgeInsets.all(32),
+              child: _error != null ? Text(_error!, textAlign: TextAlign.center) : const Center(child: CircularProgressIndicator()),
+            )
+          else if (meses.isEmpty)
+            _vacio('Todavía no hay pagos de sus clientes.')
+          else
+            for (final m in meses)
+              _Ficha(
+                inicio: const _InsigniaIcono(Icons.calendar_month_outlined, tono: Colors.indigo),
+                titulo: '${m['nombre_mes'] ?? m['mes']}',
+                detalle: [
+                  '${m['pedidos']} ${m['pedidos'] == 1 ? 'pedido' : 'pedidos'}',
+                  'cobrado ${_soles(m['cobrado'])}',
+                  'comisión ${_soles(m['comision'])}',
+                ].join(' · '),
+                fin: m['enviado'] != null
+                    ? const _Pildora('Enviado a Finanzas', Colors.green)
+                    : (m['mes'] == mesActual ? const _Pildora('En curso', Colors.grey) : const _Pildora('Por enviar', Colors.orange)),
+                // Sólo un mes terminado y no enviado se puede enviar a Finanzas.
+                onTap: m['enviado'] == null && m['mes'] != mesActual ? () => _enviar(m) : null,
+              ),
+        ]),
+      ),
+    );
   }
 }
 

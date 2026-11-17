@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services/administracion_service.dart';
 import '../services/api_service.dart';
 import '../services/proveedor_pdf_service.dart';
 import 'crear_pedido_screen.dart';
@@ -33,6 +35,10 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
   String? _pedidosError;
   int _pedidosVuelta = 0; // al recargar, las respuestas viejas se descartan
   bool _generandoReporte = false;
+
+  // Su vendedor (General Manager, 17 nov 2026): null = de la casa. Los dueños lo cambian.
+  Map<String, dynamic>? _vendedor;
+  bool _esDueno = false;
 
   // Direcciones guardadas en customer_addresses
   List<Map<String, dynamic>> _direcciones = [];
@@ -77,6 +83,9 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
   void initState() {
     super.initState();
     _initControllers();
+    SharedPreferences.getInstance().then((p) {
+      if (mounted) setState(() => _esDueno = p.getString('business_role') == 'owner');
+    });
     if (!_esNuevo) {
       _cargarEstadisticas();
       _cargarDirecciones();
@@ -99,6 +108,7 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
         final data = jsonDecode(response.body);
         final c = Map<String, dynamic>.from(data['cliente'] ?? {});
         setState(() {
+          _vendedor = c['vendedor'] is Map ? Map<String, dynamic>.from(c['vendedor'] as Map) : null;
           if (c.isNotEmpty) {
             if ((c['nombreResponsable'] ?? '').toString().isNotEmpty)
               _nombreResponsableController.text = c['nombreResponsable'];
@@ -643,11 +653,65 @@ class _DetalleClienteScreenState extends State<DetalleClienteScreen> {
     );
   }
 
+  /// Cambiar vendedor (dueños, 17 nov 2026): uno de los vendedores o De la casa. Los pedidos ya hechos se quedan con
+  /// quien los vendió.
+  Future<void> _cambiarVendedor() async {
+    final r = await AdministracionService.vendedores();
+    if (!mounted) return;
+    if (!r.isSuccess) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.error ?? 'No se pudo cargar')));
+      return;
+    }
+    final vendedores = [
+      for (final p in (r.data!['equipo'] as List? ?? const []))
+        if (p is Map && p['vendedor'] == true) Map<String, dynamic>.from(p),
+    ];
+    final elegido = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: ListView(shrinkWrap: true, children: [
+          const ListTile(title: Text('Cambiar vendedor', style: TextStyle(fontWeight: FontWeight.w600))),
+          ListTile(leading: const Icon(Icons.home_outlined), title: const Text('De la casa'), onTap: () => Navigator.pop(ctx, <String, dynamic>{})),
+          for (final v in vendedores)
+            ListTile(
+              leading: const Icon(Icons.storefront_outlined),
+              title: Text('${v['nombre']}'),
+              subtitle: Text('Comisión ${v['porcentaje']}%'),
+              trailing: _vendedor?['perfil'] == v['perfil'] ? const Icon(Icons.check) : null,
+              onTap: () => Navigator.pop(ctx, v),
+            ),
+        ]),
+      ),
+    );
+    if (elegido == null || !mounted) return;
+    final res = await AdministracionService.registrar(
+        'moverCliente', {'clienteId': widget.cliente!['id'], if (elegido['perfil'] != null) 'vendedorId': elegido['perfil']},
+        clave: AdministracionService.nuevaClave('moverCliente'));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res.isSuccess ? 'Vendedor cambiado ✓' : (res.error ?? 'No se cambió'))));
+    if (res.isSuccess) {
+      setState(() => _vendedor = elegido['perfil'] == null ? null : {'perfil': elegido['perfil'], 'nombre': elegido['nombre']});
+    }
+  }
+
   Widget _buildSeccionDatos() {
     return _buildSeccion(
       titulo: 'Datos del Cliente',
       icon: Icons.person,
       children: [
+        // Su vendedor (17 nov 2026): información; los dueños lo cambian.
+        if (!_esNuevo && !_esInvitado)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Row(children: [
+              Icon(Icons.storefront_outlined, size: 20, color: Colors.grey.shade600),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Vendedor: ${_vendedor?['nombre'] ?? 'De la casa'}', style: const TextStyle(fontWeight: FontWeight.w500)),
+              ),
+              if (_esDueno) TextButton(onPressed: _cambiarVendedor, child: const Text('Cambiar vendedor')),
+            ]),
+          ),
         _buildCampo(label: 'WhatsApp *', controller: _whatsappController, hint: '51999888777', icon: Icons.phone, keyboard: TextInputType.phone, validator: (v) => v == null || v.isEmpty ? 'Requerido' : null),
         _buildCampo(label: 'Nombre del Negocio', controller: _nombreNegocioController, hint: 'Café Aromático', icon: Icons.store),
         _buildCampo(label: 'Responsable', controller: _nombreResponsableController, hint: 'Juan Pérez', icon: Icons.badge),

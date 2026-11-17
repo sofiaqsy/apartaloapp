@@ -215,6 +215,12 @@ class AdministracionService {
   }
 
   /// Los gastos de un área para su pestaña Gastos, de 20 en 20 (4 nov 2026).
+  /// Comercialización → Vendedores (17 nov 2026): el equipo, quién vende con qué %, sus clientes y la comisión del mes
+  /// ({puede_editar, equipo}); y los meses de un vendedor ({nombre, porcentaje, meses}).
+  static Future<ApiResponse<Map<String, dynamic>>> vendedores() => _get('comercial/vendedores');
+  static Future<ApiResponse<Map<String, dynamic>>> comisionesVendedor(String perfil) =>
+      _get('comercial/vendedores/${Uri.encodeComponent(perfil)}');
+
   /// Finca → Inversiones (dueños, 14 nov 2026): el dinero que ponen los dueños, de 20 en 20 ({filas, total, hayMas}).
   static Future<ApiResponse<Map<String, dynamic>>> inversiones({int desde = 0}) => _get('finca/inversiones?offset=$desde&limit=20');
 

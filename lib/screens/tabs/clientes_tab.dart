@@ -438,6 +438,10 @@ class _ClienteCard extends StatelessWidget {
                           Text(whatsapp, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
                         ],
                       ),
+                      // Su vendedor (17 nov 2026); sin vendedor es de la casa y no se muestra nada.
+                      if ((cliente['vendedor'] ?? '').toString().isNotEmpty)
+                        Text('Vendedor: ${cliente['vendedor']}',
+                            style: TextStyle(fontSize: 12, color: Colors.indigo.shade400), maxLines: 1, overflow: TextOverflow.ellipsis),
                       // Badges de actividad
                       if (tieneActivos) ...[
                         const SizedBox(height: 6),

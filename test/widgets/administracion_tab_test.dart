@@ -1785,6 +1785,64 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('Comercialización → Vendedores y comisiones: owners make a seller with a %, see months and send one to Finanzas (17 Nov 2026)', (tester) async {
+    Future<http.Response> conVendedores(http.Request req) async {
+      final p = req.url.path;
+      if (p.endsWith('/comercial/vendedores')) {
+        return http.Response(jsonEncode({
+          'puede_editar': true,
+          'equipo': [
+            {'perfil': 'v-1', 'nombre': 'Vendedora Ejemplo', 'rol': 'staff', 'vendedor': true, 'porcentaje': 5, 'clientes': 3, 'comision_mes': 30},
+            {'perfil': 'n-1', 'nombre': 'Nuevo Ejemplo', 'rol': 'staff', 'vendedor': false, 'clientes': 0},
+          ],
+        }), 200);
+      }
+      if (p.endsWith('/comercial/vendedores/v-1')) {
+        return http.Response(jsonEncode({
+          'nombre': 'Vendedora Ejemplo', 'porcentaje': 5,
+          'meses': [
+            {'mes': '2026-10', 'nombre_mes': 'octubre 2026', 'pedidos': 4, 'cobrado': 1200, 'comision': 60},
+          ],
+        }), 200);
+      }
+      return responder(req);
+    }
+
+    await abrir(tester, rol: 'owner');
+    await tester.scrollUntilVisible(find.text('Vendido este mes'), 200, scrollable: find.byType(Scrollable).last);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Comercialización'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Vendedores y comisiones'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Comisión 5% · 3 clientes · este mes S/ 30'), findsOneWidget);
+      // A team member who does not sell: Hacer vendedor with a %.
+      await tester.tap(find.text('Nuevo Ejemplo'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Comisión (%)'), '4');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient(conVendedores));
+    final vendedor = jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/vendedor')).body);
+    expect(vendedor['perfilId'], 'n-1');
+    expect('${vendedor['porcentaje']}', '4');
+    // A seller: his months; a finished month is sent to Finanzas.
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Vendedora Ejemplo'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('4 pedidos · cobrado S/ 1,200 · comisión S/ 60'), findsOneWidget);
+      expect(find.text('Por enviar'), findsOneWidget);
+      await tester.tap(find.text('octubre 2026'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Enviar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient(conVendedores));
+    final pago = jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/pagarComision')).body);
+    expect(pago['perfilId'], 'v-1');
+    expect(pago['mes'], '2026-10');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Comercialización (4 Nov 2026): no data on top, Clientes, Proveedores, Gastos and Últimos pagos 20 a page, PDF; no Pedidos or Productos', (tester) async {
     await abrir(tester, rol: 'owner');
     await tester.scrollUntilVisible(find.text('Vendido este mes'), 200, scrollable: find.byType(Scrollable).last);
