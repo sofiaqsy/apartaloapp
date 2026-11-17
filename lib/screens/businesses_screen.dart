@@ -72,7 +72,7 @@ class _BusinessesScreenState extends State<BusinessesScreen> {
       final r = await AuthService.joinWithCode(code);
       _snack(r.error ??
           (r.status == 'joined' || r.status == 'already_member'
-              ? 'Listo: ya eres parte de ${r.businessName.isEmpty ? 'ese negocio' : r.businessName}.'
+              ? 'Listo: ya eres ${r.vendedor ? 'vendedor' : 'parte'} de ${r.businessName.isEmpty ? 'ese negocio' : r.businessName}.'
               : 'Solicitud enviada. El dueño del negocio debe aprobarla.'));
       if (r.error == null) await _refresh();
     } catch (_) {

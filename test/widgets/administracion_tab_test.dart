@@ -1853,6 +1853,56 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('Comercialización → Registrar vendedor → Crear enlace de invitación: for someone with no account, with the % (17 Nov 2026)', (tester) async {
+    Map<String, dynamic>? pedido;
+    Future<http.Response> conInvitacion(http.Request req) async {
+      final p = req.url.path;
+      if (p.endsWith('/comercial/vendedores')) {
+        return http.Response(jsonEncode({
+          'puede_editar': true,
+          'equipo': [
+            {'perfil': 'v-1', 'nombre': 'Vendedora Ejemplo', 'rol': 'staff', 'vendedor': true, 'porcentaje': 5, 'clientes': 3, 'comision_mes': 30},
+          ],
+        }), 200);
+      }
+      if (p.endsWith('/api/auth/join-codes')) {
+        pedido = jsonDecode(req.body) as Map<String, dynamic>;
+        return http.Response(jsonEncode({'code': 'ABCD-EFGH', 'expiresAt': '2026-11-19T12:00:00Z', 'vendedor': true, 'porcentaje': 6}), 200);
+      }
+      return responder(req);
+    }
+
+    await abrir(tester, rol: 'owner');
+    await tester.scrollUntilVisible(find.text('Vendido este mes'), 200, scrollable: find.byType(Scrollable).last);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Comercialización'));
+      await tester.pumpAndSettle();
+      // Everyone in the team already sells: the invitation is still offered, first.
+      await tester.tap(find.text('Registrar vendedor'));
+      await tester.pumpAndSettle();
+      expect(find.text('Crear enlace de invitación'), findsOneWidget);
+      expect(find.text('Para quien todavía no tiene cuenta'), findsOneWidget);
+      await tester.tap(find.text('Crear enlace de invitación'));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.close), findsOneWidget);
+      await tester.enterText(find.widgetWithText(TextField, 'Comisión (%)'), '80');
+      await tester.tap(find.text('Crear enlace'));
+      await tester.pumpAndSettle();
+      expect(find.text('Escribe la comisión, de 0 a 50.'), findsOneWidget);
+      expect(pedido, isNull);
+      await tester.enterText(find.widgetWithText(TextField, 'Comisión (%)'), '6');
+      await tester.tap(find.text('Crear enlace'));
+      await tester.pumpAndSettle();
+    }, () => MockClient(conInvitacion));
+    expect(pedido!['role'], 'staff');
+    expect(pedido!['vendedor'], {'porcentaje': 6});
+    expect(find.text('Enlace de invitación'), findsOneWidget);
+    expect(find.text('ABCD-EFGH'), findsOneWidget);
+    expect(find.textContaining('queda como vendedor con 6% de comisión'), findsOneWidget);
+    expect(find.text('Compartir invitación'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Comercialización (4 Nov 2026): no data on top, Clientes, Proveedores, Gastos and Últimos pagos 20 a page, PDF; no Pedidos or Productos', (tester) async {
     await abrir(tester, rol: 'owner');
     await tester.scrollUntilVisible(find.text('Vendido este mes'), 200, scrollable: find.byType(Scrollable).last);

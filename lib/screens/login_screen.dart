@@ -199,7 +199,8 @@ class _LoginScreenState extends State<LoginScreen> {
       _codeController.clear();
       InviteLink.codigo.value = null;
       if (r.status == 'joined' || r.status == 'already_member') {
-        _snack(r.businessName.isEmpty ? 'Listo: ya eres parte del equipo.' : 'Listo: ya eres parte de ${r.businessName}.');
+        final donde = r.businessName.isEmpty ? 'del equipo' : 'de ${r.businessName}';
+        _snack(r.vendedor ? 'Listo: ya eres vendedor $donde.' : 'Listo: ya eres parte $donde.');
         await _continueWithSession(); // abre el negocio
         return;
       }

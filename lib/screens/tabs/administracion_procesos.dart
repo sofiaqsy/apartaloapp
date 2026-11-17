@@ -3830,21 +3830,26 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Provee
     });
   }
 
-  /// Registrar vendedor (dueños, 17 nov 2026): elegir a alguien del equipo que todavía no vende y poner su %.
+  /// Registrar vendedor (dueños, 17 nov 2026): primero Crear enlace de invitación, para quien todavía no tiene cuenta
+  /// (General Manager, 17 nov 2026: "the seller not necessary should have an account"); luego alguien del equipo que
+  /// todavía no vende. Con el enlace, la persona crea su cuenta o ingresa y queda como vendedor con el %.
   Future<void> _registrarVendedor() async {
     if (!_vendedoresPedidos || _equipo.isEmpty) await _cargarVendedores();
     if (!mounted) return;
     final libres = _equipo.where((p) => p['vendedor'] != true).toList();
-    if (libres.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Todo el equipo ya vende. Invita a la persona a Finca Rosal y vuelve aquí.')));
-      return;
-    }
     final elegido = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       builder: (ctx) => SafeArea(
         child: ListView(shrinkWrap: true, children: [
           const ListTile(title: Text('¿Quién va a vender?', style: TextStyle(fontWeight: FontWeight.w600))),
+          ListTile(
+            leading: const Icon(Icons.link),
+            title: const Text('Crear enlace de invitación'),
+            subtitle: const Text('Para quien todavía no tiene cuenta'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.pop(ctx, const {'invitar': true}),
+          ),
+          if (libres.isNotEmpty) const Divider(height: 1),
           for (final p in libres)
             ListTile(
               leading: const Icon(Icons.person_outline),
@@ -3856,8 +3861,61 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Provee
       ),
     );
     if (elegido == null || !mounted) return;
+    if (elegido['invitar'] == true) return _invitarVendedor();
     if (await _abrirFormulario(context, 'vendedor', fijos: {'perfilId': elegido['perfil']}, subtitulo: 'Registrar vendedor: ${elegido['nombre']}')) {
       _cargarVendedores();
+    }
+  }
+
+  /// El enlace de invitación de un vendedor: la comisión y luego compartirlo por WhatsApp (o copiarlo).
+  Future<void> _invitarVendedor() async {
+    final porcentaje = await _abrirPantalla<num>(context, const _InvitarVendedorScreen());
+    if (porcentaje == null || !mounted) return;
+    try {
+      final data = await AuthService.createJoinCode(ApiService.businessId, porcentajeVendedor: porcentaje);
+      if (!mounted) return;
+      final code = '${data['code']}';
+      final negocio = ApiService.businessName.isEmpty ? 'Finca Rosal' : ApiService.businessName;
+      final texto = 'Te invito a vender con $negocio en la app Fincas. Abre este enlace, crea tu cuenta o ingresa, '
+          'y quedas como vendedor: ${InviteLink.paginaWeb(code)} · Código: $code (sirve una vez, vence en 48 horas).';
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Enlace de invitación'),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Center(child: SelectableText(code, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 3))),
+            const SizedBox(height: 12),
+            Text('Quien lo abra crea su cuenta o ingresa y queda como vendedor con $porcentaje% de comisión. '
+                'Sirve una vez y vence en 48 horas.'),
+            const SizedBox(height: 8),
+            const Text('Envíalo solo por chat privado.'),
+          ]),
+          actionsAlignment: MainAxisAlignment.spaceBetween,
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar')),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.share),
+              label: const Text('Compartir invitación'),
+              onPressed: () async {
+                final wa = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(texto)}');
+                final abierto = await launchUrl(wa, mode: LaunchMode.externalApplication).catchError((_) => false);
+                if (!abierto) {
+                  await Clipboard.setData(ClipboardData(text: texto));
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Mensaje copiado. Pégalo en el chat de la persona.')));
+                  }
+                }
+              },
+            ),
+          ],
+        ),
+      );
+    } on AuthException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se creó: revisa la señal e inténtalo de nuevo.')));
+      }
     }
   }
 
@@ -4040,6 +4098,71 @@ class _ComercialScreenState extends _ProcesoState<_ComercialScreen> with _Provee
 
 /// Un vendedor (dueños): su %, sus comisiones mes por mes (lo que pagaron sus clientes y la comisión) y, para un mes ya
 /// terminado, Enviar a Finanzas: queda como gasto Personal del área Comercial que Finanzas paga.
+/// Crear enlace de invitación de un vendedor (17 nov 2026): sólo la comisión; quien abra el enlace crea su cuenta o
+/// ingresa y queda como vendedor. Devuelve el % elegido.
+class _InvitarVendedorScreen extends StatefulWidget {
+  const _InvitarVendedorScreen();
+
+  @override
+  State<_InvitarVendedorScreen> createState() => _InvitarVendedorScreenState();
+}
+
+class _InvitarVendedorScreenState extends State<_InvitarVendedorScreen> {
+  final _pct = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _pct.dispose();
+    super.dispose();
+  }
+
+  void _crear() {
+    final n = num.tryParse(_pct.text.trim().replaceAll(',', '.'));
+    if (n == null || n < 0 || n > 50) {
+      setState(() => _error = 'Escribe la comisión, de 0 a 50.');
+      return;
+    }
+    Navigator.of(context).pop<num>(n);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(icon: const Icon(Icons.close), tooltip: 'Cerrar', onPressed: () => Navigator.of(context).pop()),
+          title: const Text('Crear enlace de invitación'),
+        ),
+        body: SafeArea(
+          child: ListView(padding: const EdgeInsets.all(16), children: [
+            const Text('Para quien todavía no tiene cuenta. Al abrir el enlace crea su cuenta o ingresa, entra al equipo '
+                'y queda como vendedor.'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _pct,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Comisión (%)',
+                helperText: 'De lo que pagan sus clientes, de 0 a 50',
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (_) => _crear(),
+            ),
+            const SizedBox(height: 16),
+            if (_error != null) ...[
+              Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              const SizedBox(height: 8),
+            ],
+            FilledButton(onPressed: _crear, child: const Text('Crear enlace')),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
 class _VendedorDetalleScreen extends StatefulWidget {
   const _VendedorDetalleScreen({required this.perfil, required this.nombre});
   final String perfil;

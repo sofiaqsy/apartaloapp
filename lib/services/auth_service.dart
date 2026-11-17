@@ -158,22 +158,33 @@ class AuthService {
   static Future<String?> submitJoinCode(String code) async => (await joinWithCode(code)).error;
 
   /// Sends an invitation code. status: joined (in at once), join_pending (an owner approves) or already_member.
-  static Future<({String? error, String status, String businessName})> joinWithCode(String code) async {
+  static Future<({String? error, String status, String businessName, bool vendedor})> joinWithCode(String code) async {
     final res = await http
         .post(Uri.parse('${ApiService.baseUrl}/api/auth/join'), headers: _json, body: jsonEncode({'code': code}))
         .timeout(const Duration(seconds: 15));
     final body = _decode(res);
     if (res.statusCode != 200) {
-      return (error: (body['error'] ?? 'No se pudo enviar el código.').toString(), status: '', businessName: '');
+      return (error: (body['error'] ?? 'No se pudo enviar el código.').toString(), status: '', businessName: '', vendedor: false);
     }
-    return (error: null, status: (body['status'] ?? '').toString(), businessName: (body['businessName'] ?? '').toString());
+    return (
+      error: null,
+      status: (body['status'] ?? '').toString(),
+      businessName: (body['businessName'] ?? '').toString(),
+      vendedor: body['vendedor'] == true,
+    );
   }
 
   /// Owner: creates a temporary invitation code. Returns {code, expiresAt, role, maxUses}.
-  static Future<Map<String, dynamic>> createJoinCode(String businessId) async {
+  /// With [porcentajeVendedor] it is a seller invitation: whoever joins with it sells with that % (17 Nov 2026).
+  static Future<Map<String, dynamic>> createJoinCode(String businessId, {num? porcentajeVendedor}) async {
     final res = await http
         .post(Uri.parse('${ApiService.baseUrl}/api/auth/join-codes'),
-            headers: _json, body: jsonEncode({'businessId': businessId, 'role': 'staff'}))
+            headers: _json,
+            body: jsonEncode({
+              'businessId': businessId,
+              'role': 'staff',
+              if (porcentajeVendedor != null) 'vendedor': {'porcentaje': porcentajeVendedor},
+            }))
         .timeout(const Duration(seconds: 15));
     final body = _decode(res);
     if (res.statusCode != 200) throw AuthException((body['error'] ?? 'No se pudo crear el código.').toString());
