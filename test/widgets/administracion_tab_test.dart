@@ -1641,6 +1641,33 @@ void main() {
     expect(body['nombre'], 'Luz Ejemplo');
   });
 
+  testWidgets('Finanzas: Registrar proveedor is a service provider with the account to transfer to; no Agricultor or Comprador (18 Nov 2026)', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await entrarFinanzas(tester);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Registrar proveedor'));
+      await tester.pumpAndSettle();
+      expect(find.text('Proveedor de servicios · Finanzas'), findsOneWidget);
+      for (final t in ['Agricultor', 'Comprador', 'Proveedor de insumos', 'Vende']) {
+        expect(find.text(t), findsNothing, reason: t);
+      }
+      for (final t in ['Cuenta', 'CCI', 'Yape o Plin', 'Banco (opcional)']) {
+        expect(find.text(t), findsWidgets, reason: t);
+      }
+      await tester.enterText(find.widgetWithText(TextField, 'Nombre'), 'Contadora Ejemplo');
+      await tester.enterText(find.widgetWithText(TextField, 'Banco (opcional)'), 'BCP');
+      await tester.enterText(find.widgetWithText(TextField, 'Número de cuenta'), '191-0000000-0-00');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final body = jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/proveedorFinanzas')).body);
+    expect(body['nombre'], 'Contadora Ejemplo');
+    expect(body['tipoCuenta'], 'bank_account');
+    expect(body['banco'], 'BCP');
+    expect(body['numero'], '191-0000000-0-00');
+    expect(body.containsKey('rol'), isFalse);
+  });
+
   testWidgets('Finca: staff have no Registrar inversión and no Inversiones tab', (tester) async {
     await abrir(tester, rol: 'staff');
     await tester.scrollUntilVisible(find.text('Finca'), 200, scrollable: find.byType(Scrollable).last);

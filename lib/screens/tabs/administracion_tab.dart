@@ -274,6 +274,20 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('comunidad', 'Comunidad o sector', _Tipo.texto, requerido: false),
     const _Campo('notas', 'Notas (apodo, qué vende)', _Tipo.texto, requerido: false),
   ],
+  // Registrar proveedor en Finanzas (General Manager, 18 nov 2026: "we don't have agricultor or comprador, just proveedor
+  // de servicios with numero de cuenta para transferir"), por ejemplo la contadora: el nombre y la cuenta, juntos.
+  'proveedorFinanzas': [
+    const _Campo('nombre', 'Nombre', _Tipo.texto),
+    const _Campo('tipoCuenta', 'Cuenta para transferir', _Tipo.opcion,
+        opciones: {'bank_account': 'Cuenta', 'cci': 'CCI', 'phone_wallet': 'Yape o Plin'}, porDefecto: 'bank_account'),
+    _Campo('banco', 'Banco', _Tipo.texto, requerido: false, visibleSi: (v) => v['tipoCuenta'] != 'phone_wallet'),
+    const _Campo('numero', 'Número de cuenta', _Tipo.texto),
+    const _Campo('titular', 'Titular (si es otra persona)', _Tipo.texto, requerido: false),
+    const _Campo('documento', 'DNI o RUC', _Tipo.texto, requerido: false),
+    const _Campo('telefono', 'Teléfono', _Tipo.texto, requerido: false),
+    const _Campo('tipo', 'Persona o empresa', _Tipo.opcion,
+        opciones: {'person': 'Persona', 'business': 'Empresa'}, porDefecto: 'person', avanzado: true),
+  ],
   // Al editar una cuenta, la anterior queda archivada (nunca se borra) y se guarda la nueva.
   'cuentaProveedor': [
     const _Campo('tipo', 'Tipo', _Tipo.opcion, opciones: _tiposCuenta, porDefecto: 'bank_account'),
@@ -327,6 +341,7 @@ const _titulos = {
   'aprobarAdelanto': 'Aprobar adelanto',
   'rechazarAdelanto': 'Rechazar adelanto',
   'proveedor': 'Registrar proveedor',
+  'proveedorFinanzas': 'Registrar proveedor',
   'entrega': 'Registrar compra',
   'precio': 'Poner precio a la compra',
   'pago': 'Pagar compra',
@@ -349,6 +364,7 @@ const _hecho = {
   'aprobarAdelanto': 'Adelanto aprobado y entregado ✓',
   'rechazarAdelanto': 'Adelanto rechazado',
   'proveedor': 'Proveedor registrado ✓',
+  'proveedorFinanzas': 'Proveedor registrado ✓ Con su cuenta para transferir',
   'entrega': 'Compra registrada ✓',
   'precio': 'Precio puesto ✓ Lo que falta queda por pagar',
   'pago': 'Compra pagada ✓',

@@ -1700,12 +1700,9 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
           _Acciones(acciones: [
           (Icons.account_balance_wallet, _titulos['retiro']!, () => formulario('retiro')),
           (Icons.receipt_long, _titulos['gasto']!, () => formulario('gasto', fijos: const {'area': 'finance'}, subtitulo: 'Área: Finanzas')),
-          // Registrar proveedor (General Manager, 18 nov 2026), por ejemplo la contadora: queda en Finanzas.
-          (
-            Icons.person_add_alt_1,
-            _titulos['proveedor']!,
-            () => formulario('proveedor', fijos: const {'area': 'finance'}, subtitulo: 'Área: Finanzas', iniciales: const {'rol': 'service'})
-          ),
+          // Registrar proveedor (General Manager, 18 nov 2026), por ejemplo la contadora: queda en Finanzas, con su cuenta.
+          // Sin Agricultor ni Comprador (General Manager, 18 nov 2026).
+          (Icons.person_add_alt_1, _titulos['proveedorFinanzas']!, () => formulario('proveedorFinanzas', subtitulo: 'Proveedor de servicios · Finanzas')),
         ]),
         // Sin números en las pestañas: un número no parece botón (4 nov 2026). Cada lista trae primero lo que espera.
         _Pestanas(
