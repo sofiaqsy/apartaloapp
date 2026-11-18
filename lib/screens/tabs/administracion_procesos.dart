@@ -2512,12 +2512,20 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
     _cargar();
   }
 
+  // Las compras con su precio, total, lo que falta y su estado, como en el reporte (General Manager, 18 nov 2026: "the
+  // easy way to watch the detail of compras and adelantos is like in the report").
+  List<Map<String, dynamic>>? _comprasReporte;
+
   Future<void> _cargar() async {
-    final r = await AdministracionService.proveedor(widget.id);
+    final pedidos = await Future.wait([AdministracionService.proveedor(widget.id), AdministracionService.reporteProveedor(widget.id)]);
+    final r = pedidos[0], rep = pedidos[1];
     if (!mounted) return;
     setState(() {
       _error = r.isSuccess ? null : r.error;
       if (r.isSuccess) _p = _mapa(r.data!['proveedor']);
+      // Sin el reporte (sin señal), las últimas compras del detalle.
+      final lista = rep.isSuccess ? _lista(_mapa(rep.data!['reporte'])['compras_lista']) : const <Map<String, dynamic>>[];
+      _comprasReporte = lista.isEmpty ? null : lista;
     });
   }
 
@@ -2779,6 +2787,15 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
                   _Pildora(es, p['agricultor'] == true ? Colors.green : Colors.blue),
                 ]),
                 Text('${p['id']}${p['tipo'] == 'business' ? ' · Empresa' : ' · Persona'}', style: TextStyle(color: Colors.grey.shade700)),
+                // Lo que estaba en "Lo que le compramos", en una línea como la franja del reporte.
+                if ((compras['n'] ?? 0) != 0)
+                  Text(
+                      [
+                        '${compras['n']} ${compras['n'] == 1 ? 'compra' : 'compras'}',
+                        _kg(compras['kg']),
+                        if (compras['ultima'] != null) 'última el ${_fechaCorta(compras['ultima'])}',
+                      ].join(' · '),
+                      style: TextStyle(color: Colors.grey.shade700)),
                 const SizedBox(height: 12),
                 if (puedeEditar)
                   _Acciones(acciones: [
@@ -2787,22 +2804,51 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
                     // Pago mensual (General Manager, 16 nov 2026): se paga cada mes, el monto llega con el recibo.
                     (Icons.event_repeat, p['pago_mensual'] == null ? 'Pago mensual' : 'Cambiar pago mensual', () => _pagoMensual(p)),
                   ]),
-                _panel('Datos', [
-                  _dato('Vende', _vende[p['vende']] ?? p['vende']?.toString()),
-                  _dato('Lo recoge', p['recoge']?.toString()),
-                  _dato('Comunidad', p['comunidad']?.toString()),
-                  _dato('Procesos', procesos.isEmpty ? null : procesos.join(', ')),
-                  _dato('DNI o RUC', p['documento']?.toString()),
-                  _dato('Teléfono', p['telefono']?.toString()),
-                  _dato('Notas', p['notas']?.toString()),
-                  _dato('Pago mensual',
-                      p['pago_mensual'] == null
-                          ? null
-                          : [
-                              '${_mapa(p['pago_mensual'])['nombre']} · cada día ${_mapa(p['pago_mensual'])['dia']}',
-                              if (_mapa(p['pago_mensual'])['monto'] != null) _soles(_mapa(p['pago_mensual'])['monto']),
-                            ].join(' · ')),
-                ]),
+                // Primero lo que se mira: sus adelantos y sus últimas compras (General Manager, 18 nov 2026: "the first thing I
+                // want to see is adelantos and últimas compras"); cada compra abre el mismo detalle de la compra, con Marcar
+                // como pagado desde adelantos para los dueños. Datos va al final.
+                // Como el reporte del proveedor (General Manager, 18 nov 2026): COMPRAS y ADELANTOS en tablas y el resumen con
+                // LE DEBEMOS. Cada fila abre su detalle; la compra, con Marcar como pagado desde adelantos (dueños).
+                if ((_comprasReporte ?? recientes).isNotEmpty)
+                  _TablaReporte(
+                    titulo: 'COMPRAS',
+                    columnas: puedeEditar
+                        ? const [('Fecha', 3, false), ('Kilos', 3, true), ('Total', 3, true), ('Falta pagar', 3, true), ('Estado', 4, false)]
+                        : const [('Fecha', 3, false), ('Café', 3, false), ('Kilos', 3, true), ('Estado', 4, false)],
+                    filas: [
+                      for (final c in _comprasReporte ?? recientes)
+                        (
+                          puedeEditar
+                              ? [
+                                  _fechaCorta(c['fecha']),
+                                  _kg(c['kg']),
+                                  c['total'] == null ? '—' : _soles(c['total']),
+                                  ((c['debe'] as num?) ?? 0) > 0 ? _soles(c['debe']) : '—',
+                                  '${c['situacion'] ?? ''}',
+                                ]
+                              : [_fechaCorta(c['fecha']), _estadosCafe[c['estado']] ?? '${c['estado'] ?? ''}', _kg(c['kg']), '${c['situacion'] ?? ''}'],
+                          () => _abrirPantalla<void>(context, _CompraDetalleScreen(id: '${c['id']}', esDueno: puedeEditar, onCambio: _cargar)),
+                        ),
+                    ],
+                  ),
+                if (listaAdelantos.isNotEmpty)
+                  _TablaReporte(
+                    titulo: 'ADELANTOS',
+                    columnas: const [('Fecha', 3, false), ('Monto', 3, true), ('Usado en café', 3, true), ('Saldo', 3, true), ('Nº de operación', 4, false)],
+                    filas: [
+                      for (final a in listaAdelantos)
+                        (
+                          [_fechaCorta(a['fecha']), _soles(a['monto']), _soles(a['usado']), _soles(a['saldo']), '${a['operacion'] ?? '—'}'],
+                          () => _abrirPantalla<void>(context, _AdelantoDetalleScreen(id: '${a['id']}', esDueno: puedeEditar)),
+                        ),
+                    ],
+                  ),
+                if (dinero != null)
+                  _ResumenReporte(
+                    comprado: _soles(dinero['comprado']),
+                    abiertos: _soles(adelantos == null ? 0 : (adelantos['saldo'] ?? 0)),
+                    debe: _soles(dinero['debe']),
+                  ),
                 // Dueños: cada cuenta se toca para editarla o quitarla; sin dueño no llegan cuentas.
                 if (puedeEditar) ...[
                   _encabezado('Cuentas para pagarle', ''),
@@ -2819,41 +2865,114 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
                     ),
                   if (cuentas.isEmpty) _vacio('Sin cuentas todavía.'),
                 ],
-                _panel('Lo que le compramos', [
-                  _dato('Compras', '${compras['n'] ?? 0}'),
-                  _dato('Kilos', _kg(compras['kg'])),
-                  _dato('Última compra', compras['ultima'] == null ? null : _fechaCorta(compras['ultima'])),
-                  _dato('Comprado', dinero == null ? null : _soles(dinero['comprado'])),
-                  _dato('Le debemos', dinero == null ? null : _soles(dinero['debe'])),
-                  _dato('Adelantos abiertos',
-                      adelantos == null || (adelantos['n'] ?? 0) == 0 ? null : '${_soles(adelantos['saldo'])} (${adelantos['n']})'),
+                _panel('Datos', [
+                  _dato('Vende', _vende[p['vende']] ?? p['vende']?.toString()),
+                  _dato('Lo recoge', p['recoge']?.toString()),
+                  _dato('Comunidad', p['comunidad']?.toString()),
+                  _dato('Procesos', procesos.isEmpty ? null : procesos.join(', ')),
+                  _dato('DNI o RUC', p['documento']?.toString()),
+                  _dato('Teléfono', p['telefono']?.toString()),
+                  _dato('Notas', p['notas']?.toString()),
+                  _dato('Pago mensual',
+                      p['pago_mensual'] == null
+                          ? null
+                          : [
+                              '${_mapa(p['pago_mensual'])['nombre']} · cada día ${_mapa(p['pago_mensual'])['dia']}',
+                              if (_mapa(p['pago_mensual'])['monto'] != null) _soles(_mapa(p['pago_mensual'])['monto']),
+                            ].join(' · ')),
                 ]),
-                if (listaAdelantos.isNotEmpty) ...[
-                  _encabezado('Adelantos', ''),
-                  for (final a in listaAdelantos)
-                    _Ficha(
-                      inicio: _Insignia(_fechaCorta(a['fecha']), tono: Colors.orange),
-                      titulo: '${_soles(a['monto'])} · ${a['id']}',
-                      detalle:
-                          'Usado en café ${_soles(a['usado'])}${((a['devuelto'] as num?) ?? 0) > 0 ? ' · Devuelto ${_soles(a['devuelto'])}' : ''}',
-                      fin: Text(((a['saldo'] as num?) ?? num.tryParse('${a['saldo']}') ?? 0) > 0 ? 'Saldo ${_soles(a['saldo'])}' : 'Cerrado',
-                          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey.shade800)),
-                    ),
-                ],
-                if (recientes.isNotEmpty) ...[
-                  _encabezado('Últimas compras', ''),
-                  for (final c in recientes)
-                    _Ficha(
-                      inicio: _Insignia(_fechaCorta(c['fecha']), tono: Colors.green),
-                      titulo: '${_estadosCafe[c['estado']] ?? c['estado']} · ${_kg(c['kg'])}',
-                      detalle: '${c['id']}',
-                      onTap: () => _abrirPantalla<void>(context, _CompraDetalleScreen(id: '${c['id']}', esDueno: false, onCambio: _cargar)),
-                    ),
-                ],
               ]),
       ),
     );
   }
+}
+
+const _cafeReporte = Color(0xFF5C3317), _fondoReporte = Color(0xFFF9F5F1), _bordeReporte = Color(0xFFE8DDD5), _grisReporte = Color(0xFF7A6A5E);
+
+/// Una tabla con el diseño del reporte del proveedor (título café en mayúsculas, cabecera crema, líneas finas). Cada fila
+/// abre su detalle: lleva una flecha pequeña al final (General Manager, 18 nov 2026).
+class _TablaReporte extends StatelessWidget {
+  const _TablaReporte({required this.titulo, required this.columnas, required this.filas});
+  final String titulo;
+  final List<(String, int, bool)> columnas; // nombre, ancho relativo, a la derecha
+  final List<(List<String>, VoidCallback?)> filas;
+
+  Widget _fila(List<String> celdas, {bool cabecera = false, VoidCallback? onTap}) {
+    final estilo = TextStyle(
+        fontSize: 12.5, fontWeight: cabecera ? FontWeight.w700 : FontWeight.w400, color: cabecera ? _grisReporte : const Color(0xFF1F2328));
+    final fila = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      decoration: BoxDecoration(
+        color: cabecera ? _fondoReporte : null,
+        border: const Border(bottom: BorderSide(color: _bordeReporte, width: 0.8)),
+      ),
+      child: Row(children: [
+        for (var i = 0; i < columnas.length; i++)
+          Expanded(
+            flex: columnas[i].$2,
+            child: Text(i < celdas.length ? celdas[i] : '',
+                textAlign: columnas[i].$3 ? TextAlign.right : TextAlign.left, style: estilo, maxLines: 2, overflow: TextOverflow.ellipsis),
+          ),
+        SizedBox(width: 18, child: onTap == null ? null : const Icon(Icons.chevron_right, size: 16, color: _grisReporte)),
+      ]),
+    );
+    return onTap == null ? fila : InkWell(onTap: onTap, child: fila);
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Container(
+            padding: const EdgeInsets.only(bottom: 6),
+            decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: _cafeReporte, width: 1.5))),
+            child: Text(titulo, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _cafeReporte, letterSpacing: 1.5)),
+          ),
+          Container(
+            decoration: const BoxDecoration(border: Border(left: BorderSide(color: _bordeReporte), right: BorderSide(color: _bordeReporte))),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              _fila([for (final c in columnas) c.$1], cabecera: true),
+              for (final f in filas) _fila(f.$1, onTap: f.$2),
+            ]),
+          ),
+        ]),
+      );
+}
+
+/// El resumen del reporte: Comprado, Adelantos abiertos y LE DEBEMOS en la franja café. Es información, no un botón.
+class _ResumenReporte extends StatelessWidget {
+  const _ResumenReporte({required this.comprado, required this.abiertos, required this.debe});
+  final String comprado, abiertos, debe;
+
+  Widget _linea(String nombre, String valor) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        child: Row(children: [
+          Expanded(child: Text(nombre, style: const TextStyle(fontSize: 13, color: _grisReporte))),
+          Text(valor, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+        ]),
+      );
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 16),
+        child: Container(
+          decoration: BoxDecoration(border: Border.all(color: _bordeReporte), borderRadius: BorderRadius.circular(8)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            _linea('Comprado:', comprado),
+            const Divider(height: 1, thickness: 0.6, color: _bordeReporte),
+            _linea('Adelantos abiertos:', abiertos),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              decoration: const BoxDecoration(color: _cafeReporte, borderRadius: BorderRadius.vertical(bottom: Radius.circular(7))),
+              child: Row(children: [
+                const Expanded(
+                    child: Text('LE DEBEMOS:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: 1))),
+                Text(debe, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
+              ]),
+            ),
+          ]),
+        ),
+      );
 }
 
 /// El reporte de un proveedor en PDF, con el botón de compartir (como el PDF del detalle de pedido).

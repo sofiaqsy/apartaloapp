@@ -2892,17 +2892,20 @@ void main() {
       await tester.tap(find.text('Pedro Ramírez Ñique'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    for (final t in ['Proveedor', 'Pergamino', 'Sector Ejemplo', 'Lo que le compramos', '130 kg', 'Últimas compras']) {
+    // Like the report (18 Nov 2026): COMPRAS as a table, without money for staff; no ADELANTOS or LE DEBEMOS.
+    for (final t in ['Proveedor', 'COMPRAS', 'Fecha', 'Café', 'Kilos', 'Estado', 'Pergamino', '2 compras · 130 kg · última el 3 nov']) {
       expect(find.text(t), findsWidgets, reason: t);
     }
-    for (final t in ['DNI o RUC', 'Teléfono', 'Cuentas para pagarle', 'Le debemos', 'Editar datos', 'Agregar cuenta', 'Adelantos']) {
+    final lista = find.ancestor(of: find.text('COMPRAS'), matching: find.byType(Scrollable)).first;
+    await tester.scrollUntilVisible(find.text('Sector Ejemplo'), 150, scrollable: lista);
+    for (final t in ['DNI o RUC', 'Teléfono', 'Cuentas para pagarle', 'LE DEBEMOS:', 'Total', 'Editar datos', 'Agregar cuenta', 'ADELANTOS']) {
       expect(find.text(t), findsNothing, reason: t);
     }
     // Everyone can make the report (without money for staff): the round PDF floating button, as in the processes.
     expect(find.widgetWithIcon(FloatingActionButton, Icons.picture_as_pdf_outlined), findsOneWidget);
     expect(find.byTooltip('Generar reporte'), findsOneWidget);
-    // Opening the detail never asks for the report: it is read only when Generar reporte is tapped.
-    expect(pedidos.where((r) => r.url.path.endsWith('/reporte')), isEmpty);
+    // The detail reads the report's compras to show them like the report (18 Nov 2026).
+    expect(pedidos.where((r) => r.url.path.endsWith('/proveedores/P-0001/reporte')), isNotEmpty);
   });
 
   testWidgets('Compras: the PDF floating button hides while the provider search has the keyboard, and comes back', (tester) async {
@@ -2950,9 +2953,11 @@ void main() {
     }
     expect(find.text('Generar reporte'), findsNothing); // not a tile any more: the floating PDF button
     expect(find.byTooltip('Generar reporte'), findsOneWidget);
-    final lista = find.ancestor(of: find.text('Datos'), matching: find.byType(Scrollable)).first;
-    await tester.scrollUntilVisible(find.text('S/ 500 · ADV-007'), 200, scrollable: lista);
-    expect(find.text('Saldo S/ 200'), findsOneWidget);
+    final lista = find.ancestor(of: find.text('Editar datos'), matching: find.byType(Scrollable)).first;
+    // COMPRAS and ADELANTOS come first, like the report; Datos last (18 Nov 2026).
+    expect(find.text('ADELANTOS'), findsOneWidget);
+    expect(find.text('S/ 500'), findsOneWidget);
+    expect(find.text('S/ 200'), findsWidgets); // its saldo
     await tester.scrollUntilVisible(find.text('Editar datos'), -200, scrollable: lista);
     await tester.drag(lista, const Offset(0, 3000)); // all the way up: the buttons are three since 16 Nov 2026
     await tester.pumpAndSettle();
@@ -2981,9 +2986,38 @@ void main() {
       await tester.tap(find.text('Pedro Ramírez Ñique'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    for (final t in ['DNI o RUC', 'Teléfono', 'Cuentas para pagarle', '000-0000000-0-00', 'Cuenta · BCP · Pedro Ramírez Ñique', 'Le debemos', 'S/ 300']) {
+    // Adelantos and Últimas compras first; Datos (DNI, teléfono) at the end (General Manager, 18 Nov 2026).
+    final lista = find.ancestor(of: find.text('Editar datos'), matching: find.byType(Scrollable)).first;
+    expect(tester.getTopLeft(find.text('COMPRAS')).dy, lessThan(tester.getTopLeft(find.text('ADELANTOS')).dy));
+    for (final t in ['Total', 'Falta pagar', 'LE DEBEMOS:', 'S/ 300', 'Cuentas para pagarle', '000-0000000-0-00', 'Cuenta · BCP · Pedro Ramírez Ñique', 'DNI o RUC', 'Teléfono']) {
+      for (var i = 0; i < 20 && find.text(t).evaluate().isEmpty; i++) {
+        await tester.drag(lista, const Offset(0, -150));
+        await tester.pumpAndSettle();
+      }
       expect(find.text(t), findsWidgets, reason: t);
     }
+  });
+
+  testWidgets('a compra opened from its provider has the owner\'s Marcar como pagado desde adelantos (18 Nov 2026)', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Proveedores'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pedro Ramírez Ñique'));
+      await tester.pumpAndSettle();
+      // Últimas compras is near the top now; its compra opens the same detail as in the Compras tab.
+      await tester.tap(find.text('3 nov').first);
+      await tester.pumpAndSettle();
+      expect(find.text('Marcar como pagado desde adelantos'), findsOneWidget);
+    }, () => MockClient((req) async {
+          // This compra, like DL-0002 in the mock, owes S/ 500 and its farmer has an open advance.
+          if (req.url.path.endsWith('/compras/DL-0001')) {
+            return responder(http.Request('GET', req.url.replace(path: req.url.path.replaceAll('DL-0001', 'DL-0002'))));
+          }
+          return responder(req);
+        }));
   });
 
   testWidgets('Finanzas shows how much evidence a row has, and its detail shows the image itself (18 Nov 2026)', (tester) async {
