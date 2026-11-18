@@ -2553,37 +2553,63 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
               : 'No hay compras por pagar.')));
       return;
     }
-    final lineas = <(String, String)>[
-      ('Por pagar', '${_soles(n('debe'))} · ${n('compras')} ${n('compras') == 1 ? 'compra' : 'compras'}'),
-      ('Adelantos abiertos', _soles(n('adelantos'))),
-      if (n('con_adelantos') > 0) ('Se paga con adelantos', _soles(n('con_adelantos'))),
-      if (n('solicitar') > 0) ('Se pide a Finanzas', '${_soles(n('solicitar'))} por transferencia'),
-      if (n('queda_adelanto') > 0) ('Queda en adelantos', '${_soles(n('queda_adelanto'))} (lo devuelve en café o dinero)'),
-      if (n('ya_solicitadas') > 0) ('Ya espera en Finanzas', _soles(n('ya_solicitado'))),
-    ];
-    final si = await showDialog<bool>(
+    // Lo que se pide ahora (General Manager, 18 nov 2026: "the farmer just request 10k ... it will keep a saldo"): por
+    // defecto todo lo que falta; con menos, el resto queda por pagar y se pide otro día con Cerrar cuentas.
+    final maximo = n('solicitar');
+    final montoCtl = TextEditingController(text: maximo > 0 ? maximo.toStringAsFixed(maximo % 1 == 0 ? 0 : 2) : '');
+    num? leer() => num.tryParse(montoCtl.text.trim().replaceAll(' ', '').replaceAll(',', montoCtl.text.contains('.') ? '' : '.'));
+    Widget linea(String nombre, String valor) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: Text(nombre, style: TextStyle(color: Colors.grey.shade700))),
+            const SizedBox(width: 8),
+            Flexible(child: Text(valor, textAlign: TextAlign.right, style: const TextStyle(fontWeight: FontWeight.w600))),
+          ]),
+        );
+    final monto = await showDialog<num>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Cerrar cuentas · ${p['nombre'] ?? ''}'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          for (final l in lineas)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(child: Text(l.$1, style: TextStyle(color: Colors.grey.shade700))),
-                const SizedBox(width: 8),
-                Flexible(child: Text(l.$2, textAlign: TextAlign.right, style: const TextStyle(fontWeight: FontWeight.w600))),
-              ]),
-            ),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Cerrar cuentas')),
-        ],
-      ),
+      builder: (ctx) => StatefulBuilder(builder: (ctx, refrescar) {
+        final pedido = leer();
+        final valido = maximo <= 0 || (pedido != null && pedido > 0 && pedido <= maximo);
+        return AlertDialog(
+          title: Text('Cerrar cuentas · ${p['nombre'] ?? ''}'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              linea('Por pagar', '${_soles(n('debe'))} · ${n('compras')} ${n('compras') == 1 ? 'compra' : 'compras'}'),
+              linea('Adelantos abiertos', _soles(n('adelantos'))),
+              if (n('con_adelantos') > 0) linea('Se paga con adelantos', _soles(n('con_adelantos'))),
+              if (n('queda_adelanto') > 0) linea('Queda en adelantos', '${_soles(n('queda_adelanto'))} (lo devuelve en café o dinero)'),
+              if (n('ya_solicitadas') > 0) linea('Ya espera en Finanzas', _soles(n('ya_solicitado'))),
+              if (maximo > 0) ...[
+                const SizedBox(height: 16),
+                TextField(
+                  controller: montoCtl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  onChanged: (_) => refrescar(() {}),
+                  decoration: InputDecoration(
+                    labelText: 'Monto a pedir ahora (S/)',
+                    helperText: 'Falta ${_soles(maximo)}: pide todo o solo lo que pide el agricultor',
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (valido && pedido != null && pedido < maximo) linea('Queda por pagar', _soles(maximo - pedido)),
+                if (!valido)
+                  Text('Escribe un monto de más de 0 y hasta ${_soles(maximo)}.',
+                      style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+              ],
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+            ElevatedButton(onPressed: valido ? () => Navigator.pop(ctx, maximo > 0 ? pedido : 0) : null, child: const Text('Cerrar cuentas')),
+          ],
+        );
+      }),
     );
-    if (si != true || !mounted) return;
-    final g = await AdministracionService.registrar('cerrarCuentas', {'proveedorId': widget.id},
+    // Sin dispose aquí: la animación de cierre del diálogo todavía lo usa; es sólo de este diálogo y se libera solo.
+    if (monto == null || !mounted) return;
+    final g = await AdministracionService.registrar('cerrarCuentas', {'proveedorId': widget.id, if (monto > 0) 'monto': monto},
         clave: AdministracionService.nuevaClave('cerrarCuentas'));
     if (!mounted) return;
     final res = g.data ?? const {};
@@ -2596,6 +2622,7 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
                 'Cuentas cerradas ✓',
                 if (v('con_adelantos') > 0) '${_soles(v('con_adelantos'))} con adelantos',
                 if (v('solicitado') > 0) '${_soles(v('solicitado'))} pedido a Finanzas',
+                if (v('queda_debiendo') > 0) 'quedan ${_soles(v('queda_debiendo'))} por pagar',
                 if (v('queda_adelanto') > 0) 'quedan ${_soles(v('queda_adelanto'))} en adelantos',
               ].join(' · '))));
     if (g.isSuccess) _cargar();

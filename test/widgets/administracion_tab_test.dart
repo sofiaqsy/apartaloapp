@@ -3032,15 +3032,26 @@ void main() {
       expect(find.text('Pago mensual'), findsNothing); // a farmer
       await tester.tap(find.text('Cerrar cuentas'));
       await tester.pumpAndSettle();
-      for (final t in ['Por pagar', 'S/ 1,000 · 2 compras', 'Adelantos abiertos', 'Se paga con adelantos', 'Se pide a Finanzas', 'S/ 700 por transferencia']) {
+      for (final t in ['Por pagar', 'S/ 1,000 · 2 compras', 'Adelantos abiertos', 'Se paga con adelantos', 'Monto a pedir ahora (S/)']) {
         expect(find.text(t), findsWidgets, reason: t);
       }
       expect(find.text('Queda en adelantos'), findsNothing);
+      // The farmer asks only S/ 500 now: S/ 200 stays owed (18 Nov 2026).
+      await tester.enterText(find.widgetWithText(TextField, 'Monto a pedir ahora (S/)'), '500');
+      await tester.pumpAndSettle();
+      expect(find.text('Queda por pagar'), findsOneWidget);
+      expect(find.text('S/ 200'), findsWidgets);
+      await tester.enterText(find.widgetWithText(TextField, 'Monto a pedir ahora (S/)'), '900');
+      await tester.pumpAndSettle();
+      expect(find.textContaining('hasta S/ 700'), findsOneWidget); // more than what is owed
+      await tester.enterText(find.widgetWithText(TextField, 'Monto a pedir ahora (S/)'), '500');
+      await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(ElevatedButton, 'Cerrar cuentas'));
       await tester.pumpAndSettle();
     }, () => MockClient(conCierre));
     final body = jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/cerrarCuentas')).body);
     expect(body['proveedorId'], 'P-0001');
+    expect('${body['monto']}', '500');
     expect(find.textContaining('Cuentas cerradas ✓'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
