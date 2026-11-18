@@ -582,8 +582,12 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
     await entrarFinanzas(tester);
-    for (final t in ['Registrar retiro de efectivo', 'Compras', 'Gastos', 'Adelantos', 'Movimientos', 'Pedro Ramírez Ñique']) {
+    for (final t in ['Registrar retiro de efectivo', 'Registrar proveedor', 'Pendientes', 'Movimientos', 'Pedro Ramírez Ñique']) {
       expect(find.text(t), findsOneWidget, reason: t);
+    }
+    // Compras, Gastos and Adelantos are one list now (18 Nov 2026).
+    for (final t in ['Compras', 'Gastos', 'Adelantos']) {
+      expect(find.text(t), findsNothing, reason: t);
     }
   });
 
@@ -604,7 +608,7 @@ void main() {
     await abrir(tester, rol: 'owner');
     await entrarFinanzas(tester);
     await http.runWithClient(() async {
-      await tester.tap(find.text('Adelantos').last);
+      await tester.ensureVisible(find.text('Misael Cusi')); // Pendientes: one list (18 Nov 2026)
       await tester.pumpAndSettle();
       await tester.tap(find.text('Misael Cusi'));
       await tester.pumpAndSettle();
@@ -918,7 +922,7 @@ void main() {
     await abrir(tester, rol: 'owner');
     await entrarFinanzas(tester);
     await http.runWithClient(() async {
-      await tester.tap(find.text('Gastos').last);
+      await tester.ensureVisible(find.text('Gas')); // Pendientes: one list (18 Nov 2026)
       await tester.pumpAndSettle();
       expect(find.textContaining('Logística por revisar'), findsOneWidget);
       await tester.tap(find.text('Gas'));
@@ -937,7 +941,7 @@ void main() {
     await abrir(tester, rol: 'owner');
     await entrarFinanzas(tester);
     await http.runWithClient(() async {
-      await tester.tap(find.text('Gastos').last);
+      await tester.ensureVisible(find.text('Mano de obra')); // Pendientes: one list (18 Nov 2026)
       await tester.pumpAndSettle();
       await tester.tap(find.text('Mano de obra'));
       await tester.pumpAndSettle();
@@ -2515,9 +2519,12 @@ void main() {
     }
 
     await abrir(tester, rol: 'owner');
-    await entrarFinanzas(tester);
+    await tester.scrollUntilVisible(find.text('Finanzas'), 200, scrollable: find.byType(Scrollable).last);
     await http.runWithClient(() async {
-      await tester.tap(find.text('Gastos').last);
+      // Pendientes loads compras, gastos and adelantos as Finanzas opens (18 Nov 2026).
+      await tester.tap(find.text('Finanzas'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Luz · Luz Ejemplo'));
       await tester.pumpAndSettle();
       expect(find.text('Luz · Luz Ejemplo'), findsOneWidget);
       expect(find.textContaining('Monto por confirmar · Pago mensual · noviembre 2026'), findsOneWidget);
@@ -2543,9 +2550,16 @@ void main() {
       expect(find.text(t), findsWidgets, reason: t);
     }
     expect(find.textContaining('espera 9 días'), findsOneWidget);
-    expect(pedidos.any((r) => r.url.path.endsWith('/finanzas/lista') && r.url.queryParameters['tipo'] == 'compras'), isTrue);
-    expect(pedidos.any((r) => r.url.queryParameters['tipo'] == 'gastos'), isFalse); // a tab loads only when opened
+    // Pendientes asks the three lists at once (18 Nov 2026).
+    for (final t in ['compras', 'gastos', 'adelantos']) {
+      expect(pedidos.any((r) => r.url.path.endsWith('/finanzas/lista') && r.url.queryParameters['tipo'] == t), isTrue, reason: t);
+    }
+    // What waits comes first, the urgent on top; what was paid comes after.
+    final ys = (String t) => tester.getTopLeft(find.text(t).first).dy;
+    expect(ys('Urgente') < ys('Pendiente'), isTrue);
     await http.runWithClient(() async {
+      await tester.scrollUntilVisible(find.text('Agricultor Pagado'), 200, scrollable: find.byType(Scrollable).last);
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Agricultor Pagado'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
@@ -2574,7 +2588,7 @@ void main() {
     await abrir(tester, rol: 'owner');
     await entrarFinanzas(tester);
     await http.runWithClient(() async {
-      await tester.tap(find.text('Gastos').last);
+      await tester.ensureVisible(find.text('Mano de obra')); // Pendientes: one list (18 Nov 2026)
       await tester.pumpAndSettle();
       await tester.tap(find.text('Mano de obra'));
       await tester.pumpAndSettle();
@@ -2919,7 +2933,7 @@ void main() {
     await abrir(tester, rol: 'owner');
     await entrarFinanzas(tester);
     await http.runWithClient(() async {
-      await tester.tap(find.text('Gastos').last);
+      await tester.ensureVisible(find.text('Gas')); // Pendientes: one list (18 Nov 2026)
       await tester.pumpAndSettle();
       await tester.tap(find.text('Gas'));
       await tester.pumpAndSettle();
@@ -2930,7 +2944,7 @@ void main() {
     await tester.tapAt(const Offset(10, 10)); // close the menu
     await tester.pumpAndSettle();
     await http.runWithClient(() async {
-      await tester.tap(find.text('Adelantos').last);
+      await tester.ensureVisible(find.text('Misael Cusi')); // Pendientes: one list (18 Nov 2026)
       await tester.pumpAndSettle();
       await tester.tap(find.text('Misael Cusi'));
       await tester.pumpAndSettle();

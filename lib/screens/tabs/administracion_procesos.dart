@@ -1111,7 +1111,10 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
   // Rediseñada con el área (General Manager, 4 nov 2026; la propuesta de Finanzas): sin datos arriba, los mismos pagos
   // y aprobaciones de siempre y el reporte en PDF. Sin pestaña "Gastos del área": Finanzas paga los gastos de todas las
   // áreas en Gastos. Movimientos en lugar de Proveedores (General Manager, 5 nov 2026).
-  int _pestana = 0; // 0 Compras, 1 Gastos, 2 Adelantos, 3 Movimientos
+  // Pendientes en lugar de Compras, Gastos y Adelantos (General Manager, 18 nov 2026: "join Compras gastos adelantos in
+  // just one option like Pendientes"): una sola lista, primero lo que espera pago o aprobación (lo urgente primero, luego
+  // lo más antiguo) y después lo pagado o decidido del último mes, lo más nuevo primero.
+  int _pestana = 0; // 0 Pendientes, 1 Movimientos
 
   ComprobanteLeido? _leido;
   bool _pagadoConComprobante = false;
@@ -1216,7 +1219,47 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
     _hayMasMov = true;
     _errorMov = null;
     _inicial = null;
-    await Future.wait([super.cargar(), if (_pestana < 3) _mas(_pestana) else _masMovimientos()]);
+    _pendientes = null;
+    _errorPend = null;
+    _mostrados = 20;
+    _cargandoPend = false;
+    await Future.wait([super.cargar(), if (_pestana == 0) _cargarPendientes() else _masMovimientos()]);
+  }
+
+  // Pendientes: las tres listas juntas. Cada una trae sólo el último mes, así que se piden enteras y se muestran de 20 en
+  // 20 al bajar.
+  List<(int, Map<String, dynamic>)>? _pendientes; // (0 compra, 1 gasto, 2 adelanto; la fila)
+  String? _errorPend;
+  bool _cargandoPend = false;
+  int _mostrados = 20;
+
+  Future<void> _cargarPendientes() async {
+    if (_cargandoPend) return;
+    _cargandoPend = true;
+    final vuelta = _vuelta;
+    await Future.wait([for (var i = 0; i < 3; i++) _todas(i)]);
+    if (vuelta == _vuelta) _cargandoPend = false;
+    if (!mounted || vuelta != _vuelta) return;
+    final todas = [for (var i = 0; i < 3; i++) for (final f in _filas[i]) (i, f)];
+    String cuando((int, Map<String, dynamic>) x) => '${x.$2['pagado_el'] ?? x.$2['decidido_el'] ?? x.$2['fecha'] ?? ''}';
+    final esperan = todas.where((x) => _esperaFila(x.$2)).toList()
+      ..sort((a, b) {
+        final u = (a.$2['estado'] == 'Urgente' ? 0 : 1).compareTo(b.$2['estado'] == 'Urgente' ? 0 : 1);
+        return u != 0 ? u : cuando(a).compareTo(cuando(b));
+      });
+    final hechas = todas.where((x) => !_esperaFila(x.$2)).toList()..sort((a, b) => cuando(b).compareTo(cuando(a)));
+    setState(() {
+      _errorPend = _errores.firstWhere((e) => e != null, orElse: () => null);
+      _pendientes = [...esperan, ...hechas];
+    });
+  }
+
+  /// Una lista entera, página por página (a lo más 10 páginas de 20).
+  Future<void> _todas(int i) async {
+    for (var n = 0; n < 10 && _hayMas[i] && _errores[i] == null; n++) {
+      _cargando[i] = false;
+      await _mas(i);
+    }
   }
 
   // Movimientos (General Manager, 5 nov 2026): el estado de una cuenta, como el Estado de lote; lo que entra en verde y
@@ -1644,11 +1687,11 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
     final conComprobante = widget.comprobante != null;
     return pantalla(conComprobante ? '¿Qué se pagó?' : 'Finanzas',
         botonFlotante: datos?['solo_duenos'] == true || conComprobante ? null : botonReporte(), alFinal: () {
-      if (_pestana < 3) _mas(_pestana);
-      if (_pestana == 3) _masMovimientos();
+      if (_pestana == 0 && (_pendientes?.length ?? 0) > _mostrados) setState(() => _mostrados += 20);
+      if (_pestana == 1) _masMovimientos();
     }, (d) {
       if (d['solo_duenos'] == true) return [_vacio('Finanzas es sólo para los dueños.')];
-      final filas = _pestana < 3 ? _filas[_pestana] : const <Map<String, dynamic>>[];
+      final pend = _pendientes ?? const <(int, Map<String, dynamic>)>[];
       return [
         // Sin datos arriba (General Manager, 4 nov 2026): la tarjeta de Procesos ya los muestra.
         if (conComprobante)
@@ -1657,34 +1700,36 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
           _Acciones(acciones: [
           (Icons.account_balance_wallet, _titulos['retiro']!, () => formulario('retiro')),
           (Icons.receipt_long, _titulos['gasto']!, () => formulario('gasto', fijos: const {'area': 'finance'}, subtitulo: 'Área: Finanzas')),
+          // Registrar proveedor (General Manager, 18 nov 2026), por ejemplo la contadora: queda en Finanzas.
+          (
+            Icons.person_add_alt_1,
+            _titulos['proveedor']!,
+            () => formulario('proveedor', fijos: const {'area': 'finance'}, subtitulo: 'Área: Finanzas', iniciales: const {'rol': 'service'})
+          ),
         ]),
         // Sin números en las pestañas: un número no parece botón (4 nov 2026). Cada lista trae primero lo que espera.
         _Pestanas(
-          nombres: const ['Compras', 'Gastos', 'Adelantos', 'Movimientos'],
+          nombres: const ['Pendientes', 'Movimientos'],
           anchoPorNombre: true,
           elegida: _pestana,
           onElegir: (i) {
             setState(() => _pestana = i);
-            if (i < 3 && _filas[i].isEmpty) _mas(i);
-            if (i == 3 && _movimientos.isEmpty) _masMovimientos();
+            if (i == 0 && _pendientes == null) _cargarPendientes();
+            if (i == 1 && _movimientos.isEmpty) _masMovimientos();
           },
         ),
-        if (_pestana == 3) ..._listaMovimientos(),
-        if (_pestana < 3) const SizedBox(height: 12),
-        for (final f in filas)
-          if (_pestana == 0) _filaCompra(f) else if (_pestana == 1) _filaGasto(f) else _filaAdelanto(f),
-        if (_pestana == 3)
-          const SizedBox.shrink()
-        else if (_errores[_pestana] != null)
-          Padding(padding: const EdgeInsets.all(16), child: Text(_errores[_pestana]!, textAlign: TextAlign.center))
-        else if (_cargando[_pestana] || _hayMas[_pestana])
-          const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
-        else if (filas.isEmpty)
-          _vacio(const [
-            'Ninguna compra pidió pago en el último mes.',
-            'No hay gastos en el último mes.',
-            'No hay adelantos en el último mes.'
-          ][_pestana]),
+        if (_pestana == 1) ..._listaMovimientos(),
+        if (_pestana == 0) ...[
+          const SizedBox(height: 12),
+          for (final x in pend.take(_mostrados))
+            if (x.$1 == 0) _filaCompra(x.$2) else if (x.$1 == 1) _filaGasto(x.$2) else _filaAdelanto(x.$2),
+          if (_pendientes == null && _errorPend == null)
+            const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
+          else if (_errorPend != null && pend.isEmpty)
+            Padding(padding: const EdgeInsets.all(16), child: Text(_errorPend!, textAlign: TextAlign.center))
+          else if (pend.isEmpty)
+            _vacio('Nada por pagar ni por aprobar, y nada pagado en el último mes.'),
+        ],
       ];
     });
   }
