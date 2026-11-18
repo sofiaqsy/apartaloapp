@@ -1084,13 +1084,19 @@ class _LogisticaScreenState extends _ProcesoState<_LogisticaScreen> with _Provee
 Future<void> abrirFinanzas(BuildContext context) => _abrirPantalla<void>(context, const _FinanzasScreen());
 
 /// Abre Finanzas con un comprobante compartido, para elegir qué se pagó (ver [_FinanzasScreen.comprobante]).
-Future<void> pagarConComprobante(BuildContext context, String imagen) => _abrirPantalla<void>(context, _FinanzasScreen(comprobante: imagen));
+/// Con [tipo] y [fila] (el último registro abierto, 18 nov 2026) se abre ese registro de una vez, con el comprobante.
+Future<void> pagarConComprobante(BuildContext context, String imagen, {String? tipo, Map<String, dynamic>? fila}) =>
+    _abrirPantalla<void>(context, _FinanzasScreen(comprobante: imagen, primeroTipo: tipo, primero: fila));
 
 /// Finanzas paga lo que piden las otras áreas (General Manager, 3 nov 2026): compras con precio, gastos, y
 /// aprueba los adelantos. Cada fila abre su pago (transferencia por defecto; el número de operación llega solo
 /// con el archivo del BCP). Sólo dueños.
 class _FinanzasScreen extends StatefulWidget {
-  const _FinanzasScreen({this.comprobante});
+  const _FinanzasScreen({this.comprobante, this.primeroTipo, this.primero});
+
+  /// El último registro abierto, que se abre al entrar (con el comprobante compartido).
+  final String? primeroTipo;
+  final Map<String, dynamic>? primero;
 
   /// Un comprobante compartido desde WhatsApp (General Manager, 7 nov 2026: con el área Finanzas se abre lo que está
   /// por pagar): arriba se ve el comprobante, se marca lo que coincide con su monto y, al pagar con el formulario de
@@ -1117,6 +1123,12 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
     if (c != null) {
       ComprobanteService.leer(c).then((l) {
         if (mounted) setState(() => _leido = l);
+      });
+    }
+    final t = widget.primeroTipo, f = widget.primero;
+    if (t != null && f != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _detalle(t, f);
       });
     }
   }
@@ -1442,6 +1454,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
   /// Tocar una fila abre su detalle (General Manager, 3 nov 2026); debajo, lo que se puede hacer: pagar o aprobar
   /// (sólo si espera), Subir evidencia y Ver evidencia. Al volver, si algo cambió, Finanzas se recarga.
   Future<void> _detalle(String tipo, Map<String, dynamic> f) async {
+    UltimoRegistro.finanzas(ApiService.businessId, tipo, f);
     final espera = _esperaFila(f);
     final datos = <(String, String?)>[
       ('Estado', '${f['estado'] ?? ''}${_diasEsperando(f) != null ? ' · ${_diasEsperando(f)}' : ''}'),

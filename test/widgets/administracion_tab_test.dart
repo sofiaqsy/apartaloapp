@@ -11,6 +11,8 @@ import 'package:apartalo_app/screens/perfil_screen.dart';
 import 'package:apartalo_app/services/administracion_service.dart';
 import 'package:apartalo_app/services/proveedor_pdf_service.dart';
 import 'package:apartalo_app/services/comprobante_service.dart';
+import 'package:apartalo_app/services/ultimo_registro.dart';
+import 'package:apartalo_app/services/api_service.dart';
 import 'dart:io';
 
 void main() {
@@ -658,6 +660,45 @@ void main() {
     expect(jsonDecode(ev.body)['id'], 'PU-0001');
     expect(find.text('¿Qué se pagó?'), findsNothing); // paid: back where it was
     expect(f.existsSync(), isFalse); // and the temporary copy is gone
+  });
+
+  testWidgets('Finanzas remembers the last record opened, and a shared comprobante can go straight to it (18 Nov 2026)', (tester) async {
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    esDuenoMock = true;
+    SharedPreferences.setMockInitialValues({'business_role': 'owner', 'mi_area_elegidas': marcadas});
+    ComprobanteService.leerTextoParaPruebas = (_) async => 'Monto S/ 300.00';
+    addTearDown(() => ComprobanteService.leerTextoParaPruebas = null);
+    final carpeta = Directory.systemTemp.createTempSync('comprobante');
+    addTearDown(() => carpeta.existsSync() ? carpeta.deleteSync(recursive: true) : null);
+    // Opening a compra in Finanzas saves it as the last record.
+    await http.runWithClient(() async {
+      await tester.pumpWidget(MaterialApp(home: Builder(
+        builder: (context) => Scaffold(body: Center(child: TextButton(onPressed: () => abrirFinanzas(context), child: const Text('abrir')))),
+      )));
+      await tester.tap(find.text('abrir'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pedro Ramírez Ñique'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final ultimo = (await tester.runAsync(() => UltimoRegistro.leer(ApiService.businessId)))!;
+    expect(ultimo.clase, 'finanzas');
+    expect(ultimo.tipo, 'purchase');
+    expect(ultimo.titulo, 'Compra · Pedro Ramírez Ñique');
+    // A comprobante shared for it: Finanzas opens that compra at once.
+    final f = File('${carpeta.path}/compartido_9.jpg')..writeAsBytesSync([0xFF, 0xD8, 0xFF, 0xD9]);
+    await http.runWithClient(() async {
+      await tester.pumpWidget(MaterialApp(key: const ValueKey('compartir'), home: Builder(
+        builder: (context) => Scaffold(body: Center(child: TextButton(
+            onPressed: () => pagarConComprobante(context, f.path, tipo: ultimo.tipo, fila: ultimo.fila), child: const Text('compartir')))),
+      )));
+      await tester.tap(find.text('compartir'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Pagar compra'), findsOneWidget);
+    expect(find.text('Compra · Pedro Ramírez Ñique'), findsWidgets);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('a comprobante shared for something already paid is uploaded as its evidence, without the gallery', (tester) async {

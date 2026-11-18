@@ -12,8 +12,12 @@ import 'tabs/pedidos/widgets/pedido_card.dart';
 /// pago; los que coinciden con el monto leído van primero. Al elegir, se abre el mismo Registrar pago de siempre con
 /// la imagen y el monto. Cerrar sin guardar borra la copia temporal (General Manager, 6 nov 2026).
 class ElegirPedidoComprobanteScreen extends StatefulWidget {
-  const ElegirPedidoComprobanteScreen({super.key, required this.imagen});
+  const ElegirPedidoComprobanteScreen({super.key, required this.imagen, this.pedidoId});
   final String imagen;
+
+  /// El último pedido abierto (18 nov 2026): se abre su Registrar pago de una vez; si vuelve sin guardar, puede
+  /// elegir otro de la lista.
+  final String? pedidoId;
 
   @override
   State<ElegirPedidoComprobanteScreen> createState() => _ElegirPedidoComprobanteScreenState();
@@ -34,6 +38,18 @@ class _ElegirPedidoComprobanteScreenState extends State<ElegirPedidoComprobanteS
       if (mounted) setState(() => _leido = l);
     });
     _mas();
+    final id = widget.pedidoId;
+    if (id != null) {
+      ApiService.getPedido(id).then((p) {
+        if (!mounted) return;
+        if (p == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('No se encontró el último pedido: elígelo de la lista.')));
+          return;
+        }
+        _elegir(p);
+      });
+    }
   }
 
   @override

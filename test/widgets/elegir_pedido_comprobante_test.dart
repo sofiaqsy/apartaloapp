@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:apartalo_app/screens/elegir_pedido_comprobante_screen.dart';
 import 'package:apartalo_app/services/api_service.dart';
 import 'package:apartalo_app/services/comprobante_service.dart';
+import 'package:apartalo_app/services/ultimo_registro.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -61,5 +63,40 @@ void main() {
     await tester.pumpAndSettle();
     await tester.pumpWidget(const SizedBox());
     expect(f.existsSync(), isFalse); // closing deletes the temporary copy
+  });
+
+  testWidgets('the last pedido opened: its Registrar pago opens at once with the comprobante (18 Nov 2026)', (tester) async {
+    tester.view.physicalSize = const Size(1290, 2796);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final f = File('${carpeta.path}/compartido_3.jpg')..writeAsBytesSync([0xFF, 0xD8, 0xFF, 0xD9]);
+    await http.runWithClient(() async {
+      await tester.pumpWidget(MaterialApp(home: ElegirPedidoComprobanteScreen(imagen: f.path, pedidoId: 'PED-002')));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async {
+          pedidos.add(req);
+          if (req.url.path.endsWith('/api/pedidos/b1/PED-002')) {
+            return http.Response(jsonEncode({'id': 'PED-002', 'cliente': 'Café Cusco', 'total': 200, 'montoPagado': 50, 'pagos': []}), 200);
+          }
+          return http.Response(jsonEncode({'pedidos': [], 'total': 0, 'pagina': 1, 'totalPaginas': 1}), 200);
+        }));
+    expect(find.text('Registrar Abono'), findsOneWidget);
+    expect(find.text('PED-002 · Café Cusco'), findsOneWidget);
+    // Back without saving: the list is there to choose another one.
+    await tester.tap(find.byTooltip('Cerrar').last);
+    await tester.pumpAndSettle();
+    expect(find.text('¿De qué pedido es?'), findsOneWidget);
+  });
+
+  test('the last record opened is remembered per business', () async {
+    SharedPreferences.setMockInitialValues({});
+    await UltimoRegistro.pedido('b1', {'id': 'PED-009', 'cliente': 'Café Lima'});
+    var u = await UltimoRegistro.leer('b1');
+    expect([u!.clase, u.id, u.titulo], ['pedido', 'PED-009', 'Pedido PED-009 · Café Lima']);
+    await UltimoRegistro.finanzas('b1', 'purchase', {'id': 'PU-0001', 'agricultor': 'Pedro'});
+    u = await UltimoRegistro.leer('b1');
+    expect([u!.clase, u.tipo, u.titulo, u.fila!['id']], ['finanzas', 'purchase', 'Compra · Pedro', 'PU-0001']);
+    expect(await UltimoRegistro.leer('otro'), isNull);
   });
 }

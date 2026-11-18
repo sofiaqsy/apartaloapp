@@ -11,6 +11,7 @@ import 'package:pdf/pdf.dart' show PdfPageFormat;
 import 'package:printing/printing.dart' show PdfPreview, PdfPreviewAction, Printing;
 import '../../../../../services/api_service.dart';
 import '../../../../../services/printer_service.dart';
+import '../../../../../services/ultimo_registro.dart';
 import '../../../../../providers/printer_provider.dart';
 import '../../helpers/estado_pago_helper.dart';
 import '../../helpers/producto_parser.dart';
@@ -66,6 +67,7 @@ class _DetallePedidoSheetState extends State<DetallePedidoSheet> {
   @override
   void initState() {
     super.initState();
+    UltimoRegistro.pedido(ApiService.businessId, widget.pedido); // para ofrecerlo al compartir un comprobante
     // Deduplicar por URL para evitar duplicados visuales en la carga inicial
     final rawEv = (widget.pedido['evidencias'] as List? ?? []).cast<Map<String, dynamic>>();
     final seenUrls = <String>{};

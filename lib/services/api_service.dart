@@ -979,6 +979,20 @@ class ApiService {
     }
   }
 
+  /// Un pedido por su id o número (para el último registro abierto, 18 nov 2026); null si no está o no hay señal.
+  static Future<Map<String, dynamic>?> getPedido(String pedidoId) async {
+    try {
+      final url = '$baseUrl/api/pedidos/$businessId/${Uri.encodeComponent(pedidoId)}';
+      final response = await http.get(Uri.parse(url), headers: headers).timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) return null;
+      final body = jsonDecode(response.body);
+      return body is Map ? Map<String, dynamic>.from(body) : null;
+    } catch (e) {
+      debugPrint('[ApiService] getPedido error: $e');
+      return null;
+    }
+  }
+
   static Future<Map<String, dynamic>?> getDelivery(String pedidoId) async {
     try {
       final url = '$baseUrl/api/delivery/$businessId?pedidoId=${Uri.encodeComponent(pedidoId)}';

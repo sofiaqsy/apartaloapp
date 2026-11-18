@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import '../services/administracion_service.dart';
 import '../services/api_service.dart';
+import '../services/ultimo_registro.dart';
 import '../services/notification_service.dart';
 import '../providers/printer_provider.dart';
 import 'login_screen.dart';
@@ -65,22 +66,28 @@ class _MainScreenState extends State<MainScreen> {
     final ruta = ComprobanteService.compartido.value;
     if (ruta == null || !mounted) return;
     ComprobanteService.compartido.value = null;
-    final destino = await _destinoComprobante();
+    final ultimo = await UltimoRegistro.leer(widget.businessId);
+    if (!mounted) return;
+    final destino = await _destinoComprobante(ultimo);
     if (!mounted) return;
     if (destino == null) {
       ComprobanteService.borrarTemporal(ruta);
       return;
     }
-    setState(() => _currentIndex = destino == 'finanzas' ? 3 : 0);
-    if (destino == 'finanzas') {
+    final aFinanzas = destino == 'finanzas' || (destino == 'ultimo' && ultimo!.clase == 'finanzas');
+    setState(() => _currentIndex = aFinanzas ? 3 : 0);
+    if (destino == 'ultimo' && ultimo!.clase == 'finanzas') {
+      await pagarConComprobante(context, ruta, tipo: ultimo.tipo, fila: ultimo.fila);
+    } else if (aFinanzas) {
       await pagarConComprobante(context, ruta);
     } else {
-      await Navigator.of(context).push(CupertinoPageRoute(builder: (_) => ElegirPedidoComprobanteScreen(imagen: ruta)));
+      await Navigator.of(context).push(CupertinoPageRoute(
+          builder: (_) => ElegirPedidoComprobanteScreen(imagen: ruta, pedidoId: destino == 'ultimo' ? ultimo!.id : null)));
     }
   }
 
-  /// 'pedidos', 'finanzas', o null si la persona cerró la pregunta.
-  Future<String?> _destinoComprobante() async {
+  /// 'pedidos', 'finanzas', 'ultimo' (el último registro abierto, 18 nov 2026), o null si la persona cerró la pregunta.
+  Future<String?> _destinoComprobante(UltimoRegistro? ultimo) async {
     final prefs = await SharedPreferences.getInstance();
     final dueno = prefs.getString('business_role') == 'owner';
     var areas = (prefs.getStringList(claveAreasElegidas) ?? const <String>[]).toSet();
@@ -93,28 +100,45 @@ class _MainScreenState extends State<MainScreen> {
     }
     final finanzas = dueno && areas.contains('finance');
     final comercial = areas.contains('commercial');
-    if (!finanzas) return 'pedidos';
-    if (!comercial) return 'finanzas';
+    final conPedidos = !finanzas || comercial;
+    // El último registro abierto, si la persona puede usarlo (un pedido; lo de Finanzas, sólo dueños con Finanzas).
+    final usarUltimo = ultimo != null &&
+        ((ultimo.clase == 'pedido' && conPedidos) ||
+            (ultimo.clase == 'finanzas' && finanzas && ultimo.tipo != null && ultimo.fila != null));
+    if (!usarUltimo) {
+      if (!finanzas) return 'pedidos';
+      if (!comercial) return 'finanzas';
+    }
     if (!mounted) return null;
     return showModalBottomSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const ListTile(title: Text('¿Qué comprobante es?', style: TextStyle(fontWeight: FontWeight.w600))),
-          ListTile(
+          if (conPedidos)
+            ListTile(
             leading: const Icon(Icons.shopping_bag_outlined),
             title: const Text('Un cobro de un pedido'),
             subtitle: const Text('Comercialización · pedidos por cobrar'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.pop(ctx, 'pedidos'),
           ),
-          ListTile(
+          if (finanzas)
+            ListTile(
             leading: const Icon(Icons.payments_outlined),
             title: const Text('Un pago que hicimos'),
             subtitle: const Text('Finanzas · lo que está por pagar'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.pop(ctx, 'finanzas'),
           ),
+          if (usarUltimo)
+            ListTile(
+              leading: const Icon(Icons.history),
+              title: const Text('El último que abriste'),
+              subtitle: Text(ultimo.titulo, maxLines: 1, overflow: TextOverflow.ellipsis),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.pop(ctx, 'ultimo'),
+            ),
         ]),
       ),
     );
