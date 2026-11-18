@@ -1768,6 +1768,8 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
           if (await _abrirFormulario(context, 'pagoMensual',
                   fijos: {'mensualId': g['id']},
                   iniciales: {if (g['monto'] != null) 'monto': g['monto']},
+                  // A quién y a qué cuenta se transfiere (General Manager, 18 nov 2026), como al pagar un gasto.
+                  destino: AdministracionService.destinoPago('mensual', '${g['id']}'),
                   subtitulo: '${g['nombre'] ?? ''} · ${g['mes'] ?? ''} · ${g['proveedor'] ?? ''}') &&
               mounted) {
             cargar();

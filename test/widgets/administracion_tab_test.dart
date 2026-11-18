@@ -2602,6 +2602,10 @@ void main() {
       expect(find.textContaining('S/ 450 · Pago mensual · noviembre 2026'), findsOneWidget);
       await tester.tap(find.text('Pago mensual · Contadora Ejemplo'));
       await tester.pumpAndSettle();
+      // Where to transfer, as in Pagar gasto (18 Nov 2026).
+      expect(find.textContaining('Para pagar a'), findsOneWidget);
+      final d = pedidos.lastWhere((r) => r.url.path.endsWith('/finanzas/destino'));
+      expect(d.url.queryParameters, {'tipo': 'mensual', 'id': 'MB-0002'});
       await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();
     }, () => MockClient(conFijo));
