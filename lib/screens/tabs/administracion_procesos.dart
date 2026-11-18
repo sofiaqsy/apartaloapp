@@ -5322,8 +5322,11 @@ class _MovimientoDetalleScreenState extends State<_MovimientoDetalleScreen> {
   Future<void> _constanciaAhora(Map<String, dynamic> m, Map<String, dynamic> pago) async {
     final ev = _mapa(pago['evidencia']);
     setState(() => _guardando = true);
-    final ok = await _guardarConstancia(m, '${ev['tipo']}', '${ev['id']}',
-        [pago['tipo'], pago['categoria'] ?? pago['quien'], ev['id'], pago['descripcion']].where((t) => t != null && '$t'.isNotEmpty).join(' · '));
+    // Un retiro pasado a Caja: lo que se pagó con ese efectivo (fincas 0088) dice qué fue y con qué pago.
+    final pagoDe = ev['titulo'] != null
+        ? '${ev['titulo']} · ${ev['id']}${ev['pago'] != null ? ' (pagado en efectivo, ${ev['pago']})' : ''}'
+        : [pago['tipo'], pago['categoria'] ?? pago['quien'], ev['id'], pago['descripcion']].where((t) => t != null && '$t'.isNotEmpty).join(' · ');
+    final ok = await _guardarConstancia(m, '${ev['tipo']}', '${ev['id']}', pagoDe);
     if (!mounted) return;
     setState(() => _guardando = false);
     ScaffoldMessenger.of(context)

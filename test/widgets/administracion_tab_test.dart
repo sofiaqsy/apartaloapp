@@ -1765,8 +1765,16 @@ void main() {
 
   testWidgets('a RETIRO (cash) conciliated with a gasto without a photo saves a constancia image as its evidence (18 Nov 2026)', (tester) async {
     var conciliada = false;
+    var caja = false;
     Future<http.Response> conRetiro(http.Request req) async {
       final p = req.url.path;
+      if (p.endsWith('/finanzas/movimientos/12') && caja) {
+        return http.Response(jsonEncode({'movimiento': {
+          'id': 12, 'fecha': '2026-11-08', 'banco': 'RETIRO AG 985384', 'operacion': '166556', 'monto': -750, 'estado': 'Conciliado',
+          'pago': {'id': 'PY-0022', 'tipo': 'Retiro', 'fecha': '2026-11-08',
+            'evidencia': {'tipo': 'expense', 'id': 'EX-0008', 'n': 0, 'titulo': 'Gasto · Mano de obra', 'pago': 'PY-0021'}},
+        }}), 200);
+      }
       if (p.endsWith('/finanzas/movimientos/12')) {
         return http.Response(jsonEncode({'movimiento': conciliada
             ? {
@@ -1835,6 +1843,21 @@ void main() {
     }, () => MockClient(conRetiro));
     expect(pedidos.where((r) => r.url.path.endsWith('/evidencias') && r.method == 'POST').length, antes + 1);
     expect(find.text('Constancia guardada ✓'), findsOneWidget);
+
+    // A RETIRO moved to Caja (fincas 0088): the evidence goes to the gasto paid with that cash.
+    final antesCaja = pedidos.where((r) => r.url.path.endsWith('/evidencias') && r.method == 'POST').length;
+    caja = true;
+    await http.runWithClient(() async {
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      await abrirRetiro();
+      await tester.tap(find.text('Guardar constancia del retiro'));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+      await tester.pumpAndSettle();
+    }, () => MockClient(conRetiro));
+    final evCaja = pedidos.where((r) => r.url.path.endsWith('/evidencias') && r.method == 'POST').toList();
+    expect(evCaja.length, antesCaja + 1);
+    expect(jsonDecode(evCaja.last.body)['id'], 'EX-0008');
     expect(tester.takeException(), isNull);
   });
 
