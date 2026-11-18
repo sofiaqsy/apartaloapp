@@ -1763,6 +1763,81 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('a RETIRO (cash) conciliated with a gasto without a photo saves a constancia image as its evidence (18 Nov 2026)', (tester) async {
+    var conciliada = false;
+    Future<http.Response> conRetiro(http.Request req) async {
+      final p = req.url.path;
+      if (p.endsWith('/finanzas/movimientos/12')) {
+        return http.Response(jsonEncode({'movimiento': conciliada
+            ? {
+                'id': 12, 'fecha': '2026-11-15', 'banco': 'RETIRO AG 997600', 'operacion': '25154', 'monto': -350, 'estado': 'Conciliado',
+                'pago': {'id': 'PY-0030', 'tipo': 'Gasto', 'categoria': 'Mano de obra', 'descripcion': 'pago a personal en efectivo',
+                  'evidencia': {'tipo': 'expense', 'id': 'EX-0014', 'n': 0}},
+              }
+            : {
+                'id': 12, 'fecha': '2026-11-15', 'banco': 'RETIRO AG 997600', 'operacion': '25154', 'monto': -350, 'estado': 'Falta en la app',
+                'sugerencias': [{'tipo': 'gasto', 'ref': 'EX-0014', 'titulo': 'Gasto · Mano de obra', 'detalle': 'EX-0014', 'fecha': '2026-11-15', 'monto': 350,
+                  'evidencia': {'tipo': 'expense', 'id': 'EX-0014', 'n': 0}}],
+              }}), 200);
+      }
+      if (p.endsWith('/finanzas/movimientos')) {
+        return http.Response(jsonEncode({
+          'cuenta': {'id': 'AC-01', 'nombre': 'BCP Corriente Soles'},
+          'resumen': {'saldo': 3204.37, 'mes': '2026-11-01', 'ingresos': 0, 'gastos': 350},
+          'cuentas': [{'id': 'AC-01', 'nombre': 'BCP Corriente Soles'}],
+          'filas': [{'id': 'b12', 'movimiento': 12, 'fecha': '2026-11-15', 'banco': 'RETIRO AG 997600', 'operacion': '25154',
+            'estado': conciliada ? 'Conciliado' : 'Falta en la app', 'monto': -350, 'saldo': 3204.37}],
+          'hayMas': false,
+          'inicial': {'fecha': '2026-11-01', 'saldo': 3554.37},
+        }), 200);
+      }
+      return responder(req);
+    }
+
+    Future<void> abrirRetiro() async {
+      await tester.ensureVisible(find.text('RETIRO AG 997600'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('RETIRO AG 997600'));
+      await tester.pumpAndSettle();
+    }
+
+    await abrir(tester, rol: 'owner');
+    await tester.scrollUntilVisible(find.text('Finanzas'), 200, scrollable: find.byType(Scrollable).last);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Finanzas'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Movimientos').last);
+      await tester.pumpAndSettle();
+      await abrirRetiro();
+      await tester.tap(find.text('Conciliar').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Conciliar').last);
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+      await tester.pumpAndSettle();
+    }, () => MockClient(conRetiro));
+    final ev = pedidos.lastWhere((r) => r.url.path.endsWith('/evidencias') && r.method == 'POST');
+    final cuerpo = jsonDecode(ev.body) as Map<String, dynamic>;
+    expect(cuerpo['tipo'], 'expense');
+    expect(cuerpo['id'], 'EX-0014');
+    expect(base64Decode(cuerpo['archivoBase64'] as String).take(4).toList(), [0x89, 0x50, 0x4E, 0x47]); // a PNG image
+    expect(cuerpo['nota'], 'Constancia automática del retiro (operación 25154)');
+    expect(find.textContaining('constancia del retiro guardada'), findsOneWidget);
+
+    // A RETIRO conciliated before, without a photo: Guardar constancia del retiro.
+    conciliada = true;
+    final antes = pedidos.where((r) => r.url.path.endsWith('/evidencias') && r.method == 'POST').length;
+    await http.runWithClient(() async {
+      await abrirRetiro();
+      expect(find.text('Sin foto del pago'), findsOneWidget);
+      await tester.tap(find.text('Guardar constancia del retiro'));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+      await tester.pumpAndSettle();
+    }, () => MockClient(conRetiro));
+    expect(pedidos.where((r) => r.url.path.endsWith('/evidencias') && r.method == 'POST').length, antes + 1);
+    expect(find.text('Constancia guardada ✓'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a bank line opens its detail: Conciliar a suggestion, or Sin coincidencias; ITF does not open (5 Nov 2026)', (tester) async {
     await abrir(tester, rol: 'owner');
     await tester.scrollUntilVisible(find.text('Finanzas'), 200, scrollable: find.byType(Scrollable).last);

@@ -5271,6 +5271,18 @@ class _MovimientoDetalleScreenState extends State<_MovimientoDetalleScreen> {
     final r = await AdministracionService.conciliarMovimiento(widget.id, '${s['tipo']}', '${s['ref']}',
         clave: AdministracionService.nuevaClave('conciliar'));
     if (!mounted) return;
+    // Un retiro en efectivo deja su constancia como evidencia de lo que pagó, si no tenía foto (18 nov 2026).
+    String? constancia;
+    if (r.isSuccess && ConstanciaRetiro.esRetiro(m['banco']?.toString())) {
+      final ev = _mapa(s['evidencia']);
+      final (tipo, id) = s['tipo'] == 'mensual' ? ('expense', r.data?['gasto']?.toString()) : (ev['tipo']?.toString(), ev['id']?.toString());
+      if (tipo != null && id != null && ((ev['n'] as num?)?.toInt() ?? 0) == 0) {
+        constancia = await _guardarConstancia(m, tipo, id, '${s['titulo'] ?? ''} · $id')
+            ? ' · constancia del retiro guardada'
+            : ' · la constancia del retiro no se pudo guardar';
+      }
+    }
+    if (!mounted) return;
     setState(() => _guardando = false);
     // Un pedido conciliado deja su comprobante verificado (el sello verde del pedido, General Manager 5 nov 2026).
     final verificados = (r.data?['comprobantes_verificados'] as num?)?.toInt();
@@ -5278,11 +5290,46 @@ class _MovimientoDetalleScreenState extends State<_MovimientoDetalleScreen> {
         content: Text(!r.isSuccess
             ? (r.error ?? 'No se guardó')
             : verificados == null || verificados == 0
-                ? 'Conciliado ✓'
+                ? 'Conciliado ✓${constancia ?? ''}'
                 : verificados < 0
                     ? 'Conciliado ✓ · el comprobante no se pudo marcar como verificado'
                     : 'Conciliado ✓ · comprobante verificado')));
     if (r.isSuccess) Navigator.of(context).pop(true); // Movimientos se recarga
+  }
+
+  /// La constancia del retiro (una imagen con los datos del banco y lo que se pagó), subida como evidencia.
+  Future<bool> _guardarConstancia(Map<String, dynamic> m, String tipo, String id, String pagoDe) async {
+    try {
+      final monto = (num.tryParse('${m['monto']}') ?? 0).abs();
+      final filas = <(String, String?)>[
+        ('Fecha del retiro', _fechaLarga(m['fecha'])),
+        ('Monto', _soles(monto)),
+        ('En el banco', m['banco']?.toString()),
+        ('Nº de operación', m['operacion']?.toString()),
+        ('Se pagó con este efectivo', pagoDe),
+      ].where((f) => f.$2 != null && f.$2!.isNotEmpty && f.$2 != 'null').map((f) => (f.$1, f.$2!)).toList();
+      final bytes = await ConstanciaRetiro.png(
+          negocio: ApiService.businessName.isEmpty ? 'Finca Rosal' : ApiService.businessName, filas: filas, hecha: DateTime.now());
+      final r = await AdministracionService.subirEvidencia(
+          tipo: tipo, id: id, bytes: bytes, nota: 'Constancia automática del retiro${m['operacion'] != null ? ' (operación ${m['operacion']})' : ''}');
+      return r.isSuccess;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Un retiro ya conciliado sin foto: guardar su constancia ahora (para los de antes del 18 nov 2026).
+  Future<void> _constanciaAhora(Map<String, dynamic> m, Map<String, dynamic> pago) async {
+    final ev = _mapa(pago['evidencia']);
+    setState(() => _guardando = true);
+    final ok = await _guardarConstancia(m, '${ev['tipo']}', '${ev['id']}',
+        [pago['tipo'], pago['categoria'] ?? pago['quien'], ev['id'], pago['descripcion']].where((t) => t != null && '$t'.isNotEmpty).join(' · '));
+    if (!mounted) return;
+    setState(() => _guardando = false);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(ok ? 'Constancia guardada ✓' : 'No se guardó: revisa la señal e inténtalo de nuevo.')));
+    if (ok) _cargar();
   }
 
   @override
@@ -5333,6 +5380,15 @@ class _MovimientoDetalleScreenState extends State<_MovimientoDetalleScreen> {
           ]),
         ),
         if (pago.isNotEmpty) _Evidencia(evidencia: _mapa(pago['evidencia']), titulo: datos.first.$2 ?? 'Movimiento'),
+        if (pago.isNotEmpty &&
+            ConstanciaRetiro.esRetiro(m['banco']?.toString()) &&
+            _mapa(pago['evidencia'])['id'] != null &&
+            ((_mapa(pago['evidencia'])['n'] as num?)?.toInt() ?? 0) == 0) ...[
+          const SizedBox(height: 12),
+          _Acciones(acciones: [
+            (Icons.receipt_long_outlined, 'Guardar constancia del retiro', _guardando ? () {} : () => _constanciaAhora(m, pago)),
+          ]),
+        ],
         if (pedido.isNotEmpty) _PagoDelPedido(pedidoApp: _mapa(pedido['pedido_app']), seccion: _mapa(pedido['pago_pedido']), fechaBanco: m['fecha']),
         // Sin nada que se le parezca, se dice aquí (General Manager, 5 nov 2026).
         if (m['sin_coincidencias'] == true) ...[
