@@ -2526,6 +2526,10 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
   // easy way to watch the detail of compras and adelantos is like in the report").
   List<Map<String, dynamic>>? _comprasReporte;
 
+  // Por defecto sólo lo activo: compras por pagar y adelantos con saldo (General Manager, 18 nov 2026); el chip muestra
+  // también lo cerrado (pagado, liquidado).
+  bool _verCerradas = false;
+
   Future<void> _cargar() async {
     final pedidos = await Future.wait([AdministracionService.proveedor(widget.id), AdministracionService.reporteProveedor(widget.id)]);
     final r = pedidos[0], rep = pedidos[1];
@@ -2851,6 +2855,12 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
     final cuentas = p == null ? const <Map<String, dynamic>>[] : _lista(p['cuentas']);
     final recientes = p == null ? const <Map<String, dynamic>>[] : _lista(p['recientes']);
     final listaAdelantos = p == null ? const <Map<String, dynamic>>[] : _lista(p['adelantos_lista']);
+    // Lo activo, o todo con "Ver también lo cerrado". Sin estado (las últimas compras sin el reporte) cuenta como activo.
+    final comprasVer = [
+      for (final c in _comprasReporte ?? recientes)
+        if (_verCerradas || c['situacion'] == null || ProveedorPdfService.compraActiva(c)) c
+    ];
+    final adelantosVer = [for (final a in listaAdelantos) if (_verCerradas || ProveedorPdfService.adelantoActivo(a)) a];
     final puedeEditar = p != null && p['puede_editar'] == true;
     final procesos = p == null ? const <String>[] : [for (final a in (p['procesos'] as List? ?? const [])) _areas['$a'] ?? '$a'];
     final es = p == null
@@ -2917,7 +2927,24 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
                 // como pagado desde adelantos para los dueños. Datos va al final.
                 // Como el reporte del proveedor (General Manager, 18 nov 2026): COMPRAS y ADELANTOS en tablas y el resumen con
                 // LE DEBEMOS. Cada fila abre su detalle; la compra, con Marcar como pagado desde adelantos (dueños).
-                if ((_comprasReporte ?? recientes).isNotEmpty)
+                if ((_comprasReporte ?? recientes).isNotEmpty || listaAdelantos.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: FilterChip(
+                        label: const Text('Ver también lo cerrado'),
+                        selected: _verCerradas,
+                        onSelected: (v) => setState(() => _verCerradas = v),
+                      ),
+                    ),
+                  ),
+                if (comprasVer.isEmpty && (_comprasReporte ?? recientes).isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text('Sin compras por pagar.', style: TextStyle(color: Colors.grey.shade700)),
+                  ),
+                if (comprasVer.isNotEmpty)
                   _TablaReporte(
                     titulo: 'COMPRAS',
                     columnas: puedeEditar
@@ -2925,7 +2952,7 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
                         ? const [('Fecha', 3, false), ('Kilos', 3, true), ('Total', 3, true), ('Estado', 4, false)]
                         : const [('Fecha', 3, false), ('Café', 3, false), ('Kilos', 3, true), ('Estado', 4, false)],
                     filas: [
-                      for (final c in _comprasReporte ?? recientes)
+                      for (final c in comprasVer)
                         (
                           puedeEditar
                               ? [
@@ -2939,13 +2966,13 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
                         ),
                     ],
                   ),
-                if (listaAdelantos.isNotEmpty)
+                if (adelantosVer.isNotEmpty)
                   _TablaReporte(
                     titulo: 'ADELANTOS',
                     // Sin Nº de operación (General Manager, 18 nov 2026): está en el detalle del adelanto.
                     columnas: const [('Fecha', 3, false), ('Monto', 3, true), ('Usado en café', 3, true), ('Saldo', 3, true)],
                     filas: [
-                      for (final a in listaAdelantos)
+                      for (final a in adelantosVer)
                         (
                           [_fechaCorta(a['fecha']), _soles(a['monto']), _soles(a['usado']), _soles(a['saldo'])],
                           () => _abrirPantalla<void>(context, _AdelantoDetalleScreen(id: '${a['id']}', esDueno: puedeEditar)),

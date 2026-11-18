@@ -130,6 +130,12 @@ class ProveedorPdfService {
         ),
       ];
 
+  /// Lo activo (General Manager, 18 nov 2026: "by default just show active, the report just show active"): una compra que
+  /// todavía no está pagada (ni rechazada) y un adelanto con saldo. Lo cerrado sigue en el resumen (Comprado, Le debemos).
+  static bool compraActiva(Map<String, dynamic> c) => c['situacion'] != 'Pagado' && c['situacion'] != 'Rechazado';
+  static bool adelantoActivo(Map<String, dynamic> a) =>
+      ((a['saldo'] as num?)?.toDouble() ?? double.tryParse('${a['saldo']}') ?? 0) > 0;
+
   /// [base] y [bold] sólo para las pruebas (sin internet); en la app se usa Noto Sans, como el PDF del pedido.
   ///
   /// [evidencias] (reporte con evidencias, General Manager 10 nov 2026): después del reporte, una página por cada imagen.
@@ -143,7 +149,8 @@ class ProveedorPdfService {
     final id = '${reporte['id'] ?? ''}';
     final emitido = fecha(reporte['generado'] ?? DateTime.now().toIso8601String());
     final esDueno = reporte['puede_editar'] == true;
-    final compras = _lista(reporte['compras_lista']);
+    // Sólo lo activo en las tablas (18 nov 2026); el resumen sigue con todo.
+    final compras = _lista(reporte['compras_lista']).where(compraActiva).toList();
     final resumen = _mapa(reporte['compras']);
     final dinero = reporte['dinero'] == null ? null : _mapa(reporte['dinero']);
     final adelantos = _lista(reporte['adelantos_lista']);
@@ -268,14 +275,14 @@ class ProveedorPdfService {
           ),
 
         // ── ADELANTOS ──
-        if (adelantos.isNotEmpty) ...[
+        if (adelantos.any(adelantoActivo)) ...[
           pw.SizedBox(height: 12),
           ..._tabla(
             'ADELANTOS',
             // Sin el código ni Devuelto; con el Nº de operación del banco (General Manager, 12 nov 2026).
             ['Fecha', 'Monto', 'Usado en café', 'Saldo', 'Nº de operación'],
             [
-              for (final a in adelantos)
+              for (final a in adelantos.where(adelantoActivo))
                 [fecha(a['fecha']), soles(a['monto']), soles(a['usado']), soles(a['saldo']), '${a['operacion'] ?? '—'}'],
             ],
             {1, 2, 3},

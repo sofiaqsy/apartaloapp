@@ -3013,6 +3013,44 @@ void main() {
     }
   });
 
+  testWidgets('a provider shows only what is active; Ver también lo cerrado shows the paid and the settled (18 Nov 2026)', (tester) async {
+    await abrir(tester, rol: 'owner');
+    Future<http.Response> conCerradas(http.Request req) async {
+      final r = await responder(req);
+      if (req.url.path.endsWith('/proveedores/P-0001')) {
+        final body = jsonDecode(r.body) as Map<String, dynamic>;
+        (body['proveedor'] as Map<String, dynamic>)['adelantos_lista'] = [
+          {'id': 'ADV-007', 'fecha': '2026-11-01', 'monto': 500, 'usado': 300, 'saldo': 200},
+          {'id': 'ADV-001', 'fecha': '2026-06-01', 'monto': 900, 'usado': 900, 'saldo': 0},
+        ];
+        return http.Response(jsonEncode(body), 200);
+      }
+      if (req.url.path.endsWith('/proveedores/P-0001/reporte')) {
+        return http.Response(jsonEncode({'reporte': {'compras_lista': [
+          {'id': 'DL-0001', 'fecha': '2026-11-03', 'estado': 'parchment', 'kg': 100, 'total': 2000, 'debe': 300, 'situacion': 'Pagado en parte'},
+          {'id': 'DL-0009', 'fecha': '2026-06-09', 'estado': 'parchment', 'kg': 77, 'total': 1540, 'debe': 0, 'situacion': 'Pagado'},
+        ]}}), 200);
+      }
+      return r;
+    }
+
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Proveedores'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pedro Ramírez Ñique'));
+      await tester.pumpAndSettle();
+    }, () => MockClient(conCerradas));
+    expect(find.text('Pagado en parte'), findsOneWidget);
+    expect(find.text('77 kg'), findsNothing); // paid: hidden
+    expect(find.text('S/ 900'), findsNothing); // settled advance: hidden
+    await tester.tap(find.text('Ver también lo cerrado'));
+    await tester.pumpAndSettle();
+    expect(find.text('77 kg'), findsOneWidget);
+    expect(find.text('S/ 900'), findsWidgets);
+  });
+
   testWidgets('a farmer has Cerrar cuentas and no Pago mensual; it shows what will happen, then closes (18 Nov 2026)', (tester) async {
     await abrir(tester, rol: 'owner');
     Future<http.Response> conCierre(http.Request req) async {
