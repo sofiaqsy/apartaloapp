@@ -1648,6 +1648,23 @@ void main() {
     expect(find.text('Inversiones'), findsNothing);
   });
 
+  testWidgets('a gasto detail shows its evidence image to owners, without a Ver evidencia button (18 Nov 2026)', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await tester.scrollUntilVisible(find.text('Finca'), 200, scrollable: find.byType(Scrollable).last);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Finca'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Mano de obra'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.text('Jornal deshierbo'), findsOneWidget);
+    expect(find.textContaining('Ver evidencia'), findsNothing);
+    final r = pedidos.lastWhere((r) => r.url.path.endsWith('/evidencias'));
+    expect(r.url.queryParameters, {'tipo': 'expense', 'id': 'EX-0003'});
+    expect(find.text('Evidencia').evaluate().isNotEmpty || find.text('Sin evidencia').evaluate().isNotEmpty, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Finca redesigned with Farm (4 Nov 2026): no data on top, Gastos 20 a page that open their detail, Proveedores, PDF', (tester) async {
     await abrir(tester, rol: 'staff');
     await tester.scrollUntilVisible(find.text('Finca'), 200, scrollable: find.byType(Scrollable).last);
@@ -2440,16 +2457,18 @@ void main() {
     expect(find.text('Pagar compra'), findsNothing);
   });
 
-  testWidgets('a waiting compra opens its detail with Pagar compra, Subir evidencia and Ver evidencia under it', (tester) async {
+  testWidgets('a waiting compra opens its detail with Pagar compra, Subir evidencia and its image under them (no Ver evidencia)', (tester) async {
     await abrir(tester, rol: 'owner');
     await entrarFinanzas(tester);
     await http.runWithClient(() async {
       await tester.tap(find.text('Pedro Ramírez Ñique'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    for (final t in ['Pidieron pagar', 'S/ 300', 'Transferencia', 'Pagar compra', 'Subir evidencia', 'Ver evidencia (1)']) {
+    for (final t in ['Pidieron pagar', 'S/ 300', 'Transferencia', 'Pagar compra', 'Subir evidencia']) {
       expect(find.text(t), findsWidgets, reason: t);
     }
+    expect(find.textContaining('Ver evidencia'), findsNothing); // the image itself, no button (18 Nov 2026)
+    expect(find.text('Evidencia'), findsOneWidget);
     expect(find.text('Ver detalle'), findsNothing); // no menu: the detail opens at once
   });
 
@@ -2783,19 +2802,17 @@ void main() {
     }
   });
 
-  testWidgets('Finanzas shows how much evidence a row has and opens it', (tester) async {
+  testWidgets('Finanzas shows how much evidence a row has, and its detail shows the image itself (18 Nov 2026)', (tester) async {
     await abrir(tester, rol: 'owner');
     await entrarFinanzas(tester);
     expect(find.textContaining('1 evidencia'), findsOneWidget);
     await http.runWithClient(() async {
       await tester.tap(find.text('Pedro Ramírez Ñique'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Ver evidencia (1)'));
-      await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    expect(find.text('Evidencia'), findsWidgets);
+    expect(find.textContaining('Ver evidencia'), findsNothing);
+    expect(find.text('Evidencia'), findsOneWidget);
     expect(find.text('Subir evidencia'), findsOneWidget);
-    expect(find.text('3 nov'), findsOneWidget); // one photo, with its date
     final r = pedidos.lastWhere((r) => r.url.path.endsWith('/evidencias'));
     expect(r.url.queryParameters, {'tipo': 'purchase', 'id': 'PU-0001'});
   });

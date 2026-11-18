@@ -1824,18 +1824,6 @@ class _FinanzaDetalleScreenState extends State<_FinanzaDetalleScreen> {
     }
   }
 
-  /// Al volver de la evidencia se cuenta otra vez (pudo quitar una).
-  Future<void> _ver() async {
-    await _abrirPantalla<void>(context, _EvidenciasScreen(tipo: widget.tipo, id: widget.id, titulo: widget.titulo));
-    final r = await AdministracionService.evidencias(widget.tipo, widget.id);
-    if (!mounted || !r.isSuccess) return;
-    final n = _lista(r.data!['evidencias']).length;
-    if (n != _n) {
-      widget.onCambio();
-      setState(() => _n = n);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final visibles = widget.datos.where((d) => d.$2 != null && d.$2!.isNotEmpty && d.$2 != 'null').toList();
@@ -1873,8 +1861,20 @@ class _FinanzaDetalleScreenState extends State<_FinanzaDetalleScreen> {
           widget.comprobante != null
               ? (Icons.receipt_long_outlined, 'Subir este comprobante', _subir)
               : (Icons.add_a_photo_outlined, 'Subir evidencia', _subir),
-          if (_n > 0) (Icons.photo_library_outlined, 'Ver evidencia ($_n)', _ver),
         ]),
+        // La imagen en el detalle, sin botón Ver evidencia (General Manager, 18 nov 2026).
+        if (_n > 0) ...[
+          const SizedBox(height: 16),
+          _EvidenciaEnDetalle(
+            key: ValueKey('evidencia-$_n'),
+            tipo: widget.tipo,
+            id: widget.id,
+            onQuitada: (n) {
+              widget.onCambio();
+              setState(() => _n = n);
+            },
+          ),
+        ],
       ]),
     );
   }
@@ -2207,16 +2207,10 @@ class _GastoDetalleScreen extends StatelessWidget {
             padding: const EdgeInsets.only(top: 12),
             child: Text('Lo paga Finanzas.', style: TextStyle(color: Colors.grey.shade700)),
           ),
+        // La imagen en el detalle, sin botón Ver evidencia (General Manager, 18 nov 2026).
         if (esDueno && g['id'] != null) ...[
           const SizedBox(height: 16),
-          SizedBox(
-            height: 48,
-            child: OutlinedButton.icon(
-              icon: const Icon(Icons.attach_file),
-              label: const Text('Ver evidencia'),
-              onPressed: () => _abrirPantalla<void>(context, _EvidenciasScreen(tipo: 'expense', id: '${g['id']}', titulo: '${g['category'] ?? 'Gasto'}')),
-            ),
-          ),
+          _EvidenciaEnDetalle(tipo: 'expense', id: '${g['id']}'),
         ],
       ]),
     );
@@ -3693,6 +3687,82 @@ class _EvidenciasScreenState extends State<_EvidenciasScreen> {
         ]),
       ),
     );
+  }
+}
+
+/// La evidencia dentro del detalle (General Manager, 18 nov 2026: "avoid the button VER EVIDENCIA ... just put the
+/// image"): una foto se ve entera a lo ancho; varias, en cuadrícula. Tocarla la abre en grande (acercar, quitar).
+/// Sin evidencia lo dice en gris. Es información: no parece botón.
+class _EvidenciaEnDetalle extends StatefulWidget {
+  const _EvidenciaEnDetalle({super.key, required this.tipo, required this.id, this.onQuitada});
+  final String tipo;
+  final String id;
+
+  /// Se quitó una: cuántas quedan.
+  final void Function(int n)? onQuitada;
+
+  @override
+  State<_EvidenciaEnDetalle> createState() => _EvidenciaEnDetalleState();
+}
+
+class _EvidenciaEnDetalleState extends State<_EvidenciaEnDetalle> {
+  List<Map<String, dynamic>>? _items;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    final r = await AdministracionService.evidencias(widget.tipo, widget.id);
+    if (!mounted) return;
+    setState(() {
+      _error = r.isSuccess ? null : (r.error ?? 'No se pudo cargar la evidencia.');
+      if (r.isSuccess) _items = _lista(r.data!['evidencias']);
+    });
+  }
+
+  Future<void> _abrir(Map<String, dynamic> e) async {
+    if (!await _abrirEvidencia(context, e)) return;
+    await _cargar();
+    widget.onQuitada?.call(_items?.length ?? 0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lista = _items;
+    final gris = TextStyle(color: Colors.grey.shade700);
+    if (lista == null) {
+      return _error != null
+          ? Text(_error!, style: gris)
+          : const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()));
+    }
+    if (lista.isEmpty) return Text('Sin evidencia', style: gris);
+    final e = lista.first;
+    final unaFoto = lista.length == 1 && e['url'] != null && e['tipo'] != 'application/pdf';
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('Evidencia', style: gris),
+      const SizedBox(height: 8),
+      if (unaFoto)
+        GestureDetector(
+          onTap: () => _abrir(e),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 420),
+              child: Image.network('${e['url']}',
+                  width: double.infinity,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) =>
+                      Container(height: 160, color: Colors.grey.shade200, child: const Center(child: Icon(Icons.broken_image_outlined)))),
+            ),
+          ),
+        )
+      else
+        _cuadriculaEvidencias(context, lista, _abrir),
+    ]);
   }
 }
 
