@@ -1240,7 +1240,17 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
     await Future.wait([for (var i = 0; i < 3; i++) _todas(i)]);
     if (vuelta == _vuelta) _cargandoPend = false;
     if (!mounted || vuelta != _vuelta) return;
-    final todas = [for (var i = 0; i < 3; i++) for (final f in _filas[i]) (i, f)];
+    // Una compra pagada sólo con adelantos no es de Finanzas: no salió dinero, sólo se actualizó en Compras (General
+    // Manager, 18 nov 2026: "the fields paid from adelanto should not create a pending in finanzas, it is just an update
+    // inside compras"). Lo que espera pago sí sale siempre.
+    bool soloAdelantos(int i, Map<String, dynamic> f) {
+      if (i != 0 || _esperaFila(f)) return false;
+      final adel = (f['de_adelantos'] as num?) ?? num.tryParse('${f['de_adelantos']}') ?? 0;
+      final pagado = (f['pagado'] as num?) ?? num.tryParse('${f['pagado']}') ?? 0;
+      return adel > 0 && adel >= pagado;
+    }
+
+    final todas = [for (var i = 0; i < 3; i++) for (final f in _filas[i]) if (!soloAdelantos(i, f)) (i, f)];
     String cuando((int, Map<String, dynamic>) x) => '${x.$2['pagado_el'] ?? x.$2['decidido_el'] ?? x.$2['fecha'] ?? ''}';
     final esperan = todas.where((x) => _esperaFila(x.$2)).toList()
       ..sort((a, b) {

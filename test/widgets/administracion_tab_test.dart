@@ -341,6 +341,9 @@ void main() {
           {'id': 'PU-0002', 'entrega': 'DL-0002', 'fecha': '2026-11-02', 'agricultor': 'Agricultor Parte', 'kg': 50, 'total': 1000, 'pagado': 500, 'debe': 500,
            'monto': 200, 'metodo': 'advance', 'adelanto': 'ADV-007', 'solicitud': 9, 'estado': 'Urgente', 'espera': 9},
           {'id': 'PU-0003', 'entrega': 'DL-0003', 'fecha': '2026-10-20', 'agricultor': 'Agricultor Pagado', 'kg': 20, 'total': 400, 'pagado': 400, 'debe': 0, 'estado': 'Pagado'},
+          // Paid only with advances: no money left the bank, so it is not shown in Finanzas (18 Nov 2026).
+          {'id': 'PU-0004', 'entrega': 'DL-0004', 'fecha': '2026-10-21', 'agricultor': 'Agricultor Con Adelantos', 'kg': 10, 'total': 200, 'pagado': 200,
+           'de_adelantos': 200, 'debe': 0, 'estado': 'Pagado'},
         ],
         'gastos': [
           {'id': 'EX-0001', 'fecha': '2026-11-01', 'categoria': 'Gas', 'descripcion': 'Gasolina', 'area': 'fulfillment', 'monto': 120, 'por': 'staff@x', 'estado': 'Pendiente', 'espera': 2, 'revisar': true},
@@ -2633,6 +2636,8 @@ void main() {
     for (final t in ['compras', 'gastos', 'adelantos']) {
       expect(pedidos.any((r) => r.url.path.endsWith('/finanzas/lista') && r.url.queryParameters['tipo'] == t), isTrue, reason: t);
     }
+    // A compra paid only with advances is not Finanzas' (18 Nov 2026).
+    expect(find.text('Agricultor Con Adelantos'), findsNothing);
     // What waits comes first, the urgent on top; what was paid comes after.
     final ys = (String t) => tester.getTopLeft(find.text(t).first).dy;
     expect(ys('Urgente') < ys('Pendiente'), isTrue);
