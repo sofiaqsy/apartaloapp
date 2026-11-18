@@ -2535,6 +2535,72 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
     if (await _abrirFormulario(context, form, fijos: {'proveedorId': widget.id, ...fijos}, iniciales: iniciales, subtitulo: subtitulo)) _cargar();
   }
 
+  /// Cerrar cuentas: primero dice lo que pasará (lo que se paga con adelantos, lo que se pide a Finanzas y lo que queda en
+  /// los adelantos) y, si se confirma, lo hace la base de datos en un solo paso.
+  Future<void> _cerrarCuentas(Map<String, dynamic> p) async {
+    final r = await AdministracionService.cierreProveedor(widget.id);
+    if (!mounted) return;
+    if (!r.isSuccess) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.error ?? 'No se pudo revisar: revisa la señal.')));
+      return;
+    }
+    final c = _mapa(r.data!['cierre']);
+    num n(String k) => (c[k] as num?) ?? num.tryParse('${c[k]}') ?? 0;
+    if (n('compras') == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(n('ya_solicitadas') > 0
+              ? 'No hay nada más que cerrar: ${_soles(n('ya_solicitado'))} ya espera en Finanzas.'
+              : 'No hay compras por pagar.')));
+      return;
+    }
+    final lineas = <(String, String)>[
+      ('Por pagar', '${_soles(n('debe'))} · ${n('compras')} ${n('compras') == 1 ? 'compra' : 'compras'}'),
+      ('Adelantos abiertos', _soles(n('adelantos'))),
+      if (n('con_adelantos') > 0) ('Se paga con adelantos', _soles(n('con_adelantos'))),
+      if (n('solicitar') > 0) ('Se pide a Finanzas', '${_soles(n('solicitar'))} por transferencia'),
+      if (n('queda_adelanto') > 0) ('Queda en adelantos', '${_soles(n('queda_adelanto'))} (lo devuelve en café o dinero)'),
+      if (n('ya_solicitadas') > 0) ('Ya espera en Finanzas', _soles(n('ya_solicitado'))),
+    ];
+    final si = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Cerrar cuentas · ${p['nombre'] ?? ''}'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          for (final l in lineas)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(child: Text(l.$1, style: TextStyle(color: Colors.grey.shade700))),
+                const SizedBox(width: 8),
+                Flexible(child: Text(l.$2, textAlign: TextAlign.right, style: const TextStyle(fontWeight: FontWeight.w600))),
+              ]),
+            ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Cerrar cuentas')),
+        ],
+      ),
+    );
+    if (si != true || !mounted) return;
+    final g = await AdministracionService.registrar('cerrarCuentas', {'proveedorId': widget.id},
+        clave: AdministracionService.nuevaClave('cerrarCuentas'));
+    if (!mounted) return;
+    final res = g.data ?? const {};
+    num v(String k) => (res[k] as num?) ?? num.tryParse('${res[k]}') ?? 0;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(seconds: 6),
+        content: Text(!g.isSuccess
+            ? (g.error ?? 'No se guardó')
+            : [
+                'Cuentas cerradas ✓',
+                if (v('con_adelantos') > 0) '${_soles(v('con_adelantos'))} con adelantos',
+                if (v('solicitado') > 0) '${_soles(v('solicitado'))} pedido a Finanzas',
+                if (v('queda_adelanto') > 0) 'quedan ${_soles(v('queda_adelanto'))} en adelantos',
+              ].join(' · '))));
+    if (g.isSuccess) _cargar();
+  }
+
   /// Pago mensual: marcarlo (qué es y el día) o, si ya lo tiene, cambiarlo o quitarlo (deja de aparecer cada mes).
   Future<void> _pagoMensual(Map<String, dynamic> p) async {
     final actual = p['pago_mensual'] == null ? null : _mapa(p['pago_mensual']);
@@ -2801,8 +2867,13 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
                   _Acciones(acciones: [
                     (Icons.edit_outlined, 'Editar datos', () => _editarDatos(p)),
                     (Icons.add_card_outlined, 'Agregar cuenta', () => _formulario('cuentaProveedor', subtitulo: '${p['nombre'] ?? ''}')),
-                    // Pago mensual (General Manager, 16 nov 2026): se paga cada mes, el monto llega con el recibo.
-                    (Icons.event_repeat, p['pago_mensual'] == null ? 'Pago mensual' : 'Cambiar pago mensual', () => _pagoMensual(p)),
+                    // Cerrar cuentas con un agricultor (General Manager, 18 nov 2026): los adelantos pagan sus compras y lo que
+                    // falta se pide a Finanzas.
+                    if (p['agricultor'] == true) (Icons.task_alt, 'Cerrar cuentas', () => _cerrarCuentas(p)),
+                    // Pago mensual (General Manager, 16 nov 2026): se paga cada mes, el monto llega con el recibo. No para un
+                    // agricultor ni un comprador (General Manager, 18 nov 2026: "inside Tito shouldn't exist the option Pago mensual").
+                    if (p['agricultor'] != true && p['comprador'] != true)
+                      (Icons.event_repeat, p['pago_mensual'] == null ? 'Pago mensual' : 'Cambiar pago mensual', () => _pagoMensual(p)),
                   ]),
                 // Primero lo que se mira: sus adelantos y sus últimas compras (General Manager, 18 nov 2026: "the first thing I
                 // want to see is adelantos and últimas compras"); cada compra abre el mismo detalle de la compra, con Marcar

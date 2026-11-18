@@ -2531,7 +2531,14 @@ void main() {
       await tester.enterText(find.widgetWithText(TextField, 'Día de pago (1 a 28)'), '15');
       await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();
-    }, () => MockClient((req) async => responder(req)));
+    }, () => MockClient((req) async {
+          // A provider of services, not a farmer: farmers have no Pago mensual (18 Nov 2026).
+          final r = await responder(req);
+          if (!req.url.path.endsWith('/proveedores/P-0001')) return r;
+          final body = jsonDecode(r.body) as Map<String, dynamic>;
+          (body['proveedor'] as Map<String, dynamic>)['agricultor'] = false;
+          return http.Response(jsonEncode(body), r.statusCode);
+        }));
     final body = jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/servicioMensual')).body);
     expect(body['proveedorId'], 'P-0001');
     expect(body['nombre'], 'Luz');
@@ -2999,6 +3006,43 @@ void main() {
       }
       expect(find.text(t), findsWidgets, reason: t);
     }
+  });
+
+  testWidgets('a farmer has Cerrar cuentas and no Pago mensual; it shows what will happen, then closes (18 Nov 2026)', (tester) async {
+    await abrir(tester, rol: 'owner');
+    Future<http.Response> conCierre(http.Request req) async {
+      if (req.url.path.endsWith('/proveedores/P-0001/cierre')) {
+        return http.Response(jsonEncode({'cierre': {'compras': 2, 'debe': 1000, 'adelantos': 300, 'con_adelantos': 300, 'solicitar': 700,
+          'queda_adelanto': 0, 'ya_solicitadas': 0, 'ya_solicitado': 0}}), 200);
+      }
+      if (req.url.path.endsWith('/registrar/cerrarCuentas')) {
+        pedidos.add(req);
+        return http.Response(jsonEncode({'ok': true, 'resultado': {'con_adelantos': 300, 'solicitado': 700, 'queda_adelanto': 0}}), 200);
+      }
+      return responder(req);
+    }
+
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Compras'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Proveedores'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pedro Ramírez Ñique'));
+      await tester.pumpAndSettle();
+      expect(find.text('Pago mensual'), findsNothing); // a farmer
+      await tester.tap(find.text('Cerrar cuentas'));
+      await tester.pumpAndSettle();
+      for (final t in ['Por pagar', 'S/ 1,000 · 2 compras', 'Adelantos abiertos', 'Se paga con adelantos', 'Se pide a Finanzas', 'S/ 700 por transferencia']) {
+        expect(find.text(t), findsWidgets, reason: t);
+      }
+      expect(find.text('Queda en adelantos'), findsNothing);
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Cerrar cuentas'));
+      await tester.pumpAndSettle();
+    }, () => MockClient(conCierre));
+    final body = jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/cerrarCuentas')).body);
+    expect(body['proveedorId'], 'P-0001');
+    expect(find.textContaining('Cuentas cerradas ✓'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('a compra opened from its provider has the owner\'s Marcar como pagado desde adelantos (18 Nov 2026)', (tester) async {

@@ -249,6 +249,10 @@ class AdministracionService {
 
   static Future<ApiResponse<Map<String, dynamic>>> reporteProveedor(String id) => _get('proveedores/${Uri.encodeComponent(id)}/reporte');
 
+  /// Cerrar cuentas, antes de confirmar (dueños, fincas 0093): {cierre: {compras, debe, adelantos, con_adelantos,
+  /// solicitar, queda_adelanto, ya_solicitadas, ya_solicitado}}.
+  static Future<ApiResponse<Map<String, dynamic>>> cierreProveedor(String id) => _get('proveedores/${Uri.encodeComponent(id)}/cierre');
+
   /// Reporte con evidencias (dueños, 10 nov 2026): la evidencia de las compras, adelantos y gastos del proveedor, cada
   /// una con a qué pertenece y un enlace de 10 minutos ({evidencias}).
   static Future<ApiResponse<Map<String, dynamic>>> evidenciasProveedor(String id) =>
