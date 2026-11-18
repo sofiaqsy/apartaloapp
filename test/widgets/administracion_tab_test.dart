@@ -1657,6 +1657,12 @@ void main() {
       await tester.enterText(find.widgetWithText(TextField, 'Nombre'), 'Contadora Ejemplo');
       await tester.enterText(find.widgetWithText(TextField, 'Banco (opcional)'), 'BCP');
       await tester.enterText(find.widgetWithText(TextField, 'Número de cuenta'), '191-0000000-0-00');
+      // Her monthly payment: the day and the fixed fee (18 Nov 2026).
+      await tester.scrollUntilVisible(find.widgetWithText(TextField, 'Monto fijo cada mes (S/) (opcional)'), 120,
+          scrollable: find.ancestor(of: find.widgetWithText(TextField, 'Nombre'), matching: find.byType(Scrollable)).first);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Día de pago cada mes (1 a 28) (opcional)'), '5');
+      await tester.enterText(find.widgetWithText(TextField, 'Monto fijo cada mes (S/) (opcional)'), '450');
       await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
@@ -1665,6 +1671,8 @@ void main() {
     expect(body['tipoCuenta'], 'bank_account');
     expect(body['banco'], 'BCP');
     expect(body['numero'], '191-0000000-0-00');
+    expect('${body['dia']}', '5');
+    expect('${body['monto']}', '450');
     expect(body.containsKey('rol'), isFalse);
   });
 
@@ -2567,6 +2575,39 @@ void main() {
     expect(body['mensualId'], 'MB-0001');
     expect(body['monto'], 87.4);
     expect(body['metodo'], 'transfer');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a monthly payment with a fixed amount waits from its day with its amount, and Pagar el mes starts with it (18 Nov 2026)', (tester) async {
+    Future<http.Response> conFijo(http.Request req) async {
+      if (req.url.path.endsWith('/finanzas/lista') && req.url.queryParameters['tipo'] == 'gastos') {
+        return http.Response(jsonEncode({
+          'filas': [
+            {'id': 'MB-0002', 'mensual': true, 'fecha': '2026-11-05', 'categoria': 'Servicios profesionales', 'nombre': 'Pago mensual',
+             'proveedor': 'Contadora Ejemplo', 'mes': 'noviembre 2026', 'estado': 'Pendiente', 'espera': 0, 'monto': 450},
+          ],
+          'total': 1, 'hayMas': false,
+        }), 200);
+      }
+      return responder(req);
+    }
+
+    await abrir(tester, rol: 'owner');
+    await tester.scrollUntilVisible(find.text('Finanzas'), 200, scrollable: find.byType(Scrollable).last);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Finanzas'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Pago mensual · Contadora Ejemplo'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('S/ 450 · Pago mensual · noviembre 2026'), findsOneWidget);
+      await tester.tap(find.text('Pago mensual · Contadora Ejemplo'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient(conFijo));
+    final body = jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/pagoMensual')).body);
+    expect(body['mensualId'], 'MB-0002');
+    expect('${body['monto']}', '450');
     expect(tester.takeException(), isNull);
   });
 

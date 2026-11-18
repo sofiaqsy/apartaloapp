@@ -285,6 +285,10 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('titular', 'Titular (si es otra persona)', _Tipo.texto, requerido: false),
     const _Campo('documento', 'DNI o RUC', _Tipo.texto, requerido: false),
     const _Campo('telefono', 'Teléfono', _Tipo.texto, requerido: false),
+    // Su pago de cada mes (General Manager, 18 nov 2026): el día y, si es fijo, el monto; desde ese día espera en Finanzas.
+    const _Campo('dia', 'Día de pago cada mes (1 a 28)', _Tipo.numero,
+        requerido: false, ayuda: 'Desde ese día aparece en Finanzas → Pendientes'),
+    const _Campo('monto', 'Monto fijo cada mes (S/)', _Tipo.monto, requerido: false, ayuda: 'Vacío si cambia cada mes'),
     const _Campo('tipo', 'Persona o empresa', _Tipo.opcion,
         opciones: {'person': 'Persona', 'business': 'Empresa'}, porDefecto: 'person', avanzado: true),
   ],
@@ -304,7 +308,9 @@ final Map<String, List<_Campo>> _formularios = {
   // Finanzas sin monto; se paga con el monto del recibo (pagoMensual) o al conciliar la línea del banco.
   'servicioMensual': [
     const _Campo('nombre', 'Qué es (por ejemplo Luz)', _Tipo.texto),
-    const _Campo('dia', 'Día de pago (1 a 28)', _Tipo.numero),
+    const _Campo('dia', 'Día de pago (1 a 28)', _Tipo.numero, ayuda: 'Desde ese día aparece en Finanzas → Pendientes'),
+    // Un monto fijo, como la contadora (General Manager, 18 nov 2026); vacío, como la luz, se pone con el recibo.
+    const _Campo('monto', 'Monto fijo (S/)', _Tipo.monto, requerido: false, ayuda: 'Vacío si cambia cada mes, como la luz'),
   ],
   'pagoMensual': [
     const _Campo('monto', 'Monto del recibo (S/)', _Tipo.monto),

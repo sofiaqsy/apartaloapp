@@ -1753,15 +1753,22 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
     );
   }
 
-  /// Un pago mensual que espera (16 nov 2026): sin monto todavía; tocarlo abre Pagar el mes, con el monto del recibo.
+  /// Un pago mensual que espera desde su día (16 y 18 nov 2026): con su monto fijo (la contadora) o sin monto todavía
+  /// (la luz); tocarlo abre Pagar el mes, con el monto fijo ya puesto o el del recibo.
   Widget _filaMensual(Map<String, dynamic> g) => _Ficha(
         inicio: _Insignia(_fechaCorta(g['fecha']), tono: Colors.orange),
         titulo: '${g['nombre'] ?? 'Pago mensual'} · ${g['proveedor'] ?? ''}',
-        detalle: ['Monto por confirmar', 'Pago mensual · ${g['mes'] ?? ''}', 'vence el ${_fechaCorta(g['fecha'])}'].join(' · '),
+        detalle: [
+          g['monto'] != null ? _soles(g['monto']) : 'Monto por confirmar',
+          'Pago mensual · ${g['mes'] ?? ''}',
+          'desde el ${_fechaCorta(g['fecha'])}',
+        ].join(' · '),
         fin: _estado(g),
         onTap: () async {
           if (await _abrirFormulario(context, 'pagoMensual',
-                  fijos: {'mensualId': g['id']}, subtitulo: '${g['nombre'] ?? ''} · ${g['mes'] ?? ''} · ${g['proveedor'] ?? ''}') &&
+                  fijos: {'mensualId': g['id']},
+                  iniciales: {if (g['monto'] != null) 'monto': g['monto']},
+                  subtitulo: '${g['nombre'] ?? ''} · ${g['mes'] ?? ''} · ${g['proveedor'] ?? ''}') &&
               mounted) {
             cargar();
           }
@@ -2539,7 +2546,9 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
     );
     if (!mounted || eleccion == null) return;
     if (eleccion == 'cambiar') {
-      await _formulario('servicioMensual', iniciales: {'nombre': '${actual['nombre']}', 'dia': '${actual['dia']}'}, subtitulo: '${p['nombre'] ?? ''}');
+      await _formulario('servicioMensual',
+          iniciales: {'nombre': '${actual['nombre']}', 'dia': '${actual['dia']}', if (actual['monto'] != null) 'monto': actual['monto']},
+          subtitulo: '${p['nombre'] ?? ''}');
       return;
     }
     final si = await showDialog<bool>(
@@ -2785,7 +2794,12 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
                   _dato('Teléfono', p['telefono']?.toString()),
                   _dato('Notas', p['notas']?.toString()),
                   _dato('Pago mensual',
-                      p['pago_mensual'] == null ? null : '${_mapa(p['pago_mensual'])['nombre']} · cada día ${_mapa(p['pago_mensual'])['dia']}'),
+                      p['pago_mensual'] == null
+                          ? null
+                          : [
+                              '${_mapa(p['pago_mensual'])['nombre']} · cada día ${_mapa(p['pago_mensual'])['dia']}',
+                              if (_mapa(p['pago_mensual'])['monto'] != null) _soles(_mapa(p['pago_mensual'])['monto']),
+                            ].join(' · ')),
                 ]),
                 // Dueños: cada cuenta se toca para editarla o quitarla; sin dueño no llegan cuentas.
                 if (puedeEditar) ...[
