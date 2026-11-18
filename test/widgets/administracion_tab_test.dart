@@ -2989,7 +2989,10 @@ void main() {
     // Adelantos and Últimas compras first; Datos (DNI, teléfono) at the end (General Manager, 18 Nov 2026).
     final lista = find.ancestor(of: find.text('Editar datos'), matching: find.byType(Scrollable)).first;
     expect(tester.getTopLeft(find.text('COMPRAS')).dy, lessThan(tester.getTopLeft(find.text('ADELANTOS')).dy));
-    for (final t in ['Total', 'Falta pagar', 'LE DEBEMOS:', 'S/ 300', 'Cuentas para pagarle', '000-0000000-0-00', 'Cuenta · BCP · Pedro Ramírez Ñique', 'DNI o RUC', 'Teléfono']) {
+    // No Falta pagar in COMPRAS, no Nº de operación in ADELANTOS (18 Nov 2026).
+    expect(find.text('Falta pagar'), findsNothing);
+    expect(find.text('Nº de operación'), findsNothing);
+    for (final t in ['Total', 'LE DEBEMOS:', 'S/ 300', 'Cuentas para pagarle', '000-0000000-0-00', 'Cuenta · BCP · Pedro Ramírez Ñique', 'DNI o RUC', 'Teléfono']) {
       for (var i = 0; i < 20 && find.text(t).evaluate().isEmpty; i++) {
         await tester.drag(lista, const Offset(0, -150));
         await tester.pumpAndSettle();

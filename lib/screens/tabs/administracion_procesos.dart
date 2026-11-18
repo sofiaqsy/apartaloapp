@@ -2813,7 +2813,8 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
                   _TablaReporte(
                     titulo: 'COMPRAS',
                     columnas: puedeEditar
-                        ? const [('Fecha', 3, false), ('Kilos', 3, true), ('Total', 3, true), ('Falta pagar', 3, true), ('Estado', 4, false)]
+                        // Sin Falta pagar (General Manager, 18 nov 2026): LE DEBEMOS lo dice abajo.
+                        ? const [('Fecha', 3, false), ('Kilos', 3, true), ('Total', 3, true), ('Estado', 4, false)]
                         : const [('Fecha', 3, false), ('Café', 3, false), ('Kilos', 3, true), ('Estado', 4, false)],
                     filas: [
                       for (final c in _comprasReporte ?? recientes)
@@ -2823,7 +2824,6 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
                                   _fechaCorta(c['fecha']),
                                   _kg(c['kg']),
                                   c['total'] == null ? '—' : _soles(c['total']),
-                                  ((c['debe'] as num?) ?? 0) > 0 ? _soles(c['debe']) : '—',
                                   '${c['situacion'] ?? ''}',
                                 ]
                               : [_fechaCorta(c['fecha']), _estadosCafe[c['estado']] ?? '${c['estado'] ?? ''}', _kg(c['kg']), '${c['situacion'] ?? ''}'],
@@ -2834,11 +2834,12 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
                 if (listaAdelantos.isNotEmpty)
                   _TablaReporte(
                     titulo: 'ADELANTOS',
-                    columnas: const [('Fecha', 3, false), ('Monto', 3, true), ('Usado en café', 3, true), ('Saldo', 3, true), ('Nº de operación', 4, false)],
+                    // Sin Nº de operación (General Manager, 18 nov 2026): está en el detalle del adelanto.
+                    columnas: const [('Fecha', 3, false), ('Monto', 3, true), ('Usado en café', 3, true), ('Saldo', 3, true)],
                     filas: [
                       for (final a in listaAdelantos)
                         (
-                          [_fechaCorta(a['fecha']), _soles(a['monto']), _soles(a['usado']), _soles(a['saldo']), '${a['operacion'] ?? '—'}'],
+                          [_fechaCorta(a['fecha']), _soles(a['monto']), _soles(a['usado']), _soles(a['saldo'])],
                           () => _abrirPantalla<void>(context, _AdelantoDetalleScreen(id: '${a['id']}', esDueno: puedeEditar)),
                         ),
                     ],
