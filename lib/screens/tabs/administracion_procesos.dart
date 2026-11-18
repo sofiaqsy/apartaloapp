@@ -2530,6 +2530,9 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
   // también lo cerrado (pagado, liquidado).
   bool _verCerradas = false;
 
+  static num _suma(List<Map<String, dynamic>> filas, String campo) =>
+      filas.fold<num>(0, (s, f) => s + ((f[campo] as num?) ?? num.tryParse('${f[campo]}') ?? 0));
+
   Future<void> _cargar() async {
     final pedidos = await Future.wait([AdministracionService.proveedor(widget.id), AdministracionService.reporteProveedor(widget.id)]);
     final r = pedidos[0], rep = pedidos[1];
@@ -2981,8 +2984,19 @@ class _ProveedorDetalleScreenState extends State<_ProveedorDetalleScreen> {
                   ),
                 if (dinero != null)
                   _ResumenReporte(
-                    comprado: _soles(dinero['comprado']),
-                    abiertos: _soles(adelantos == null ? 0 : (adelantos['saldo'] ?? 0)),
+                    // Sólo lo pendiente (General Manager, 18 nov 2026: "Comprado pendiente de pago"): el total de las compras
+                    // que faltan pagar y lo que ya se les pagó; con "Ver también lo cerrado", todo lo comprado.
+                    lineas: !_verCerradas && _comprasReporte != null
+                        ? [
+                            ('Comprado pendiente de pago:', _soles(_suma(comprasVer, 'total'))),
+                            if (_suma(comprasVer, 'total') - _suma(comprasVer, 'debe') > 0)
+                              ('Ya pagado de esas compras:', '− ${_soles(_suma(comprasVer, 'total') - _suma(comprasVer, 'debe'))}'),
+                            ('Adelantos abiertos:', _soles(adelantos == null ? 0 : (adelantos['saldo'] ?? 0))),
+                          ]
+                        : [
+                            ('Comprado:', _soles(dinero['comprado'])),
+                            ('Adelantos abiertos:', _soles(adelantos == null ? 0 : (adelantos['saldo'] ?? 0))),
+                          ],
                     debe: _soles(dinero['debe']),
                   ),
                 // Dueños: cada cuenta se toca para editarla o quitarla; sin dueño no llegan cuentas.
@@ -3077,8 +3091,9 @@ class _TablaReporte extends StatelessWidget {
 
 /// El resumen del reporte: Comprado, Adelantos abiertos y LE DEBEMOS en la franja café. Es información, no un botón.
 class _ResumenReporte extends StatelessWidget {
-  const _ResumenReporte({required this.comprado, required this.abiertos, required this.debe});
-  final String comprado, abiertos, debe;
+  const _ResumenReporte({required this.lineas, required this.debe});
+  final List<(String, String)> lineas;
+  final String debe;
 
   Widget _linea(String nombre, String valor) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
@@ -3094,9 +3109,10 @@ class _ResumenReporte extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(border: Border.all(color: _bordeReporte), borderRadius: BorderRadius.circular(8)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            _linea('Comprado:', comprado),
-            const Divider(height: 1, thickness: 0.6, color: _bordeReporte),
-            _linea('Adelantos abiertos:', abiertos),
+            for (var i = 0; i < lineas.length; i++) ...[
+              if (i > 0) const Divider(height: 1, thickness: 0.6, color: _bordeReporte),
+              _linea(lineas[i].$1, lineas[i].$2),
+            ],
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
               decoration: const BoxDecoration(color: _cafeReporte, borderRadius: BorderRadius.vertical(bottom: Radius.circular(7))),

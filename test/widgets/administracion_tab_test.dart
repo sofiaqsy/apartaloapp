@@ -3045,9 +3045,25 @@ void main() {
     expect(find.text('Pagado en parte'), findsOneWidget);
     expect(find.text('77 kg'), findsNothing); // paid: hidden
     expect(find.text('S/ 900'), findsNothing); // settled advance: hidden
+    // The summary counts only what is pending: S/ 2,000 bought, S/ 1,700 of it already paid (18 Nov 2026).
+    final lista = find.ancestor(of: find.text('Ver también lo cerrado'), matching: find.byType(Scrollable)).first;
+    for (var i = 0; i < 10 && find.text('Comprado pendiente de pago:').evaluate().isEmpty; i++) {
+      await tester.drag(lista, const Offset(0, -150));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('Comprado pendiente de pago:'), findsOneWidget);
+    expect(find.text('S/ 2,000'), findsWidgets);
+    expect(find.text('− S/ 1,700'), findsOneWidget);
+    await tester.ensureVisible(find.text('Ver también lo cerrado'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Ver también lo cerrado'));
     await tester.pumpAndSettle();
     expect(find.text('77 kg'), findsOneWidget);
+    for (var i = 0; i < 10 && find.text('Comprado:').evaluate().isEmpty; i++) {
+      await tester.drag(lista, const Offset(0, -150));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('Comprado:'), findsOneWidget); // with the closed ones, all that was bought
     expect(find.text('S/ 900'), findsWidgets);
   });
 
