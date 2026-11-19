@@ -2287,6 +2287,7 @@ class _GastoDetalleScreenState extends State<_GastoDetalleScreen> {
               if (g['amount'] != null) 'monto': g['amount'],
               if ((g['description'] ?? '').toString().isNotEmpty) 'descripcion': '${g['description']}',
               if (fecha != null) 'fecha': fecha,
+              'pago': g['credito'] == true && g['pago_solicitado'] == null && !_solicitado ? 'credito' : 'ahora',
             },
             subtitulo: '${g['category'] ?? 'Gasto'} · ${g['id']}') &&
         mounted) {

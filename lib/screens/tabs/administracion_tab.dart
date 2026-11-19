@@ -302,6 +302,9 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('categoria', 'Categoría', _Tipo.opcion, requerido: false),
     const _Campo('monto', 'Monto (S/)', _Tipo.monto),
     const _Campo('descripcion', 'Descripción', _Tipo.texto, requerido: false),
+    // Cuándo se paga (General Manager, 19 nov 2026): pasar a crédito, o mandarlo a Finanzas (Solicitar pago).
+    const _Campo('pago', 'Cuándo se paga', _Tipo.opcion,
+        opciones: {'ahora': 'Finanzas lo paga', 'credito': 'A crédito (se paga después)'}, porDefecto: 'ahora'),
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
   // Al editar una cuenta, la anterior queda archivada (nunca se borra) y se guarda la nueva.
@@ -520,6 +523,9 @@ class _FormularioSheetState extends State<_FormularioSheet> {
     }
     // "Cuándo se paga" no va al servidor: a crédito se marca después de guardar el gasto.
     final aCredito = widget.formulario == 'gasto' && datos.remove('pago') == 'credito';
+    // Al editar: si cambió, después de guardar se pasa a crédito o se manda a Finanzas (Solicitar pago).
+    final pagoEditado = widget.formulario == 'editarGasto' ? datos.remove('pago') ?? 'ahora' : null;
+    final pagoAntes = widget.iniciales['pago'] ?? 'ahora';
     if (_areaAutomatica) {
       // La base pone el área (compra o entrega del mismo día, o la de la persona); el formulario no pregunta para qué fue.
       datos.remove('area');
@@ -536,6 +542,17 @@ class _FormularioSheetState extends State<_FormularioSheet> {
       final areaNombre = r.data?['area_name'];
       if (widget.formulario == 'gasto' && areaNombre != null) {
         texto = '$texto · Área: $areaNombre${r.data?['area_source'] == 'to_review' ? ' (por revisar)' : ''}';
+      }
+      if (pagoEditado != null && pagoEditado != pagoAntes) {
+        final aCred = pagoEditado == 'credito';
+        final c = await AdministracionService.registrar(aCred ? 'gastoACredito' : 'solicitarPagoGasto', {'gastoId': widget.fijos['gastoId']},
+            clave: AdministracionService.nuevaClave(aCred ? 'gastoACredito' : 'solicitarPagoGasto'));
+        if (!mounted) return;
+        texto = !c.isSuccess
+            ? 'Gasto actualizado, pero no cambió cuándo se paga: ${c.error ?? 'inténtalo de nuevo'}'
+            : aCred
+                ? 'Gasto actualizado ✓ A crédito: se paga cuando se solicite'
+                : 'Gasto actualizado ✓ Finanzas lo pagará';
       }
       final gastoId = r.data?['expense_id']?.toString();
       if (aCredito && gastoId != null) {

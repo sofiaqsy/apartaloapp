@@ -1735,15 +1735,22 @@ void main() {
       await tester.tap(find.text('Editar gasto'));
       await tester.pumpAndSettle();
       await tester.enterText(find.widgetWithText(TextField, 'Monto (S/)'), '6600');
+      // It starts on A crédito; choosing Finanzas lo paga sends it to Finanzas (19 Nov 2026).
+      final form = find.ancestor(of: find.widgetWithText(TextField, 'Monto (S/)'), matching: find.byType(Scrollable)).first;
+      await tester.scrollUntilVisible(find.text('Finanzas lo paga'), 120, scrollable: form);
+      await tester.tap(find.text('Finanzas lo paga'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
+    expect(jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/solicitarPagoGasto')).body)['gastoId'], 'EX-0004');
+    expect(find.text('Gasto actualizado ✓ Finanzas lo pagará'), findsOneWidget);
     final editado = jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/editarGasto')).body) as Map;
     expect(editado['gastoId'], 'EX-0004');
+    expect(editado.containsKey('pago'), isFalse);
     expect('${editado['monto']}', '6600');
     expect(editado['descripcion'], 'Abono a crédito'); // the form opened with today's data
     expect(editado['categoria'], 'Insumos');
-    expect(find.text('Gasto actualizado ✓'), findsOneWidget);
     // Anular, with a reason.
     await http.runWithClient(() async {
       await tester.tap(find.text('Insumos'));
