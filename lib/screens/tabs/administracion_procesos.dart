@@ -2376,12 +2376,28 @@ class _GastoDetalleScreenState extends State<_GastoDetalleScreen> {
     final acciones = <(IconData, String, VoidCallback, bool)>[
       // Mientras no se paga: Solicitar pago (a crédito), Editar y Anular (General Manager, 19 nov 2026); la base decide quién.
       if (!pagado && aCredito && g['id'] != null) (Icons.request_quote_outlined, 'Solicitar pago', _solicitarPago, true),
-      if (!pagado && g['id'] != null) (Icons.edit_outlined, 'Editar gasto', _editar, false),
-      if (!pagado && g['id'] != null) (Icons.block_outlined, 'Anular gasto', _anular, false),
       if (esDueno && g['id'] != null) (Icons.add_a_photo_outlined, 'Agregar foto', _agregarFoto, false),
     ];
     return Scaffold(
-      appBar: AppBar(title: const Text('Gasto'), centerTitle: true),
+      // Editar y Anular van en los tres puntos (General Manager, 19 nov 2026); sólo mientras no se paga.
+      appBar: AppBar(title: const Text('Gasto'), centerTitle: true, actions: [
+        if (!pagado && g['id'] != null)
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_horiz),
+            tooltip: 'Más opciones',
+            enabled: !_guardando,
+            onSelected: (v) => v == 'editar' ? _editar() : _anular(),
+            itemBuilder: (ctx) => [
+              const PopupMenuItem(value: 'editar', child: ListTile(leading: Icon(Icons.edit_outlined), title: Text('Editar gasto'))),
+              PopupMenuItem(
+                value: 'anular',
+                child: ListTile(
+                    leading: Icon(Icons.block_outlined, color: Colors.red.shade700),
+                    title: Text('Anular gasto', style: TextStyle(color: Colors.red.shade700))),
+              ),
+            ],
+          ),
+      ]),
       body: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 32), children: [
         Row(children: [
           Container(

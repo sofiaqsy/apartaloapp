@@ -1725,12 +1725,15 @@ void main() {
       // Paid: no Editar or Anular.
       await tester.tap(find.text('Mano de obra'));
       await tester.pumpAndSettle();
-      expect(find.text('Editar gasto'), findsNothing);
-      expect(find.text('Anular gasto'), findsNothing);
+      expect(find.byTooltip('Más opciones'), findsNothing); // paid: no Editar or Anular
       await tester.pageBack();
       await tester.pumpAndSettle();
       // A crédito, unpaid: Editar with today's data.
       await tester.tap(find.text('Insumos'));
+      await tester.pumpAndSettle();
+      // Editar and Anular live in the ••• menu (19 Nov 2026).
+      expect(find.text('Editar gasto'), findsNothing);
+      await tester.tap(find.byTooltip('Más opciones'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Editar gasto'));
       await tester.pumpAndSettle();
@@ -1754,6 +1757,8 @@ void main() {
     // Anular, with a reason.
     await http.runWithClient(() async {
       await tester.tap(find.text('Insumos'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Más opciones'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Anular gasto'));
       await tester.pumpAndSettle();
