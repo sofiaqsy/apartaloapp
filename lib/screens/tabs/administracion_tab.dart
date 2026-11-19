@@ -296,6 +296,14 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('tipo', 'Persona o empresa', _Tipo.opcion,
         opciones: {'person': 'Persona', 'business': 'Empresa'}, porDefecto: 'person', avanzado: true),
   ],
+  // Editar un gasto que todavía no se pagó (General Manager, 19 nov 2026); lo que estaba queda en el historial.
+  'editarGasto': [
+    const _Campo('proveedorId', 'Proveedor', _Tipo.persona, requerido: false),
+    const _Campo('categoria', 'Categoría', _Tipo.opcion, requerido: false),
+    const _Campo('monto', 'Monto (S/)', _Tipo.monto),
+    const _Campo('descripcion', 'Descripción', _Tipo.texto, requerido: false),
+    const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
+  ],
   // Al editar una cuenta, la anterior queda archivada (nunca se borra) y se guarda la nueva.
   'cuentaProveedor': [
     const _Campo('tipo', 'Tipo', _Tipo.opcion, opciones: _tiposCuenta, porDefecto: 'bank_account'),
@@ -352,6 +360,7 @@ const _titulos = {
   'rechazarAdelanto': 'Rechazar adelanto',
   'proveedor': 'Registrar proveedor',
   'proveedorFinanzas': 'Registrar proveedor',
+  'editarGasto': 'Editar gasto',
   'entrega': 'Registrar compra',
   'precio': 'Poner precio a la compra',
   'pago': 'Pagar compra',
@@ -375,6 +384,7 @@ const _hecho = {
   'rechazarAdelanto': 'Adelanto rechazado',
   'proveedor': 'Proveedor registrado ✓',
   'proveedorFinanzas': 'Proveedor registrado ✓ Con su cuenta para transferir',
+  'editarGasto': 'Gasto actualizado ✓',
   'entrega': 'Compra registrada ✓',
   'precio': 'Precio puesto ✓ Lo que falta queda por pagar',
   'pago': 'Compra pagada ✓',
@@ -746,7 +756,7 @@ class _FormularioSheetState extends State<_FormularioSheet> {
     void poner(dynamic v) => setState(() => _valores[c.clave] = v);
     switch (c.tipo) {
       case _Tipo.opcion:
-        if (widget.formulario == 'gasto' && c.clave == 'categoria') return _categorias(c);
+        if ((widget.formulario == 'gasto' || widget.formulario == 'editarGasto') && c.clave == 'categoria') return _categorias(c);
         // Botones para tocar en lugar de una lista desplegable.
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,

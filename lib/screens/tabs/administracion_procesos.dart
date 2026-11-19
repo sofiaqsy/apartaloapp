@@ -1571,6 +1571,23 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
           (ctx) =>
               _pagar(ctx, 'pagoGasto', 'expense', '${f['id']}', fijos: {'gastoId': f['id']}, subtitulo: '${f['categoria']} · ${_soles(f['monto'])}')
         ),
+      // Editar o anular un gasto que espera pago (General Manager, 19 nov 2026); quien lo registró o un dueño.
+      if (espera && tipo == 'expense' && f['mensual'] != true) ...[
+        (
+          Icons.edit_outlined,
+          'Editar gasto',
+          (ctx) => _abrirFormulario(ctx, 'editarGasto',
+              fijos: {'gastoId': f['id']},
+              iniciales: {
+                if (f['categoria'] != null) 'categoria': '${f['categoria']}',
+                if (f['monto'] != null) 'monto': f['monto'],
+                if ((f['descripcion'] ?? '').toString().isNotEmpty) 'descripcion': '${f['descripcion']}',
+                if (DateTime.tryParse('${f['fecha'] ?? ''}') != null) 'fecha': DateTime.parse('${f['fecha']}'),
+              },
+              subtitulo: '${f['categoria'] ?? 'Gasto'} · ${f['id']}')
+        ),
+        (Icons.block_outlined, 'Anular gasto', (ctx) => _anularGasto(ctx, '${f['id']}', '${f['categoria'] ?? 'Gasto'} · ${_soles(f['monto'])}')),
+      ],
       // Antes estaba en Pendientes, que se quitó (General Manager, 4 nov 2026).
       if (tipo == 'expense' && f['revisar'] == true) (Icons.help_outline, 'Elegir para qué fue', (ctx) => _elegirParaQue(ctx, f)),
       if (espera && tipo == 'advance_request') ...[
@@ -2218,7 +2235,10 @@ mixin _GastosDelArea<T extends StatefulWidget> on State<T> {
               : g['credito'] == true && g['pago_solicitado'] == null
                   ? const _Pildora('A crédito', Colors.blue)
                   : const _Pildora('Pendiente', Colors.orange),
-          onTap: () => _abrirPantalla<void>(context, _GastoDetalleScreen(gasto: g, esDueno: duenoGastos)),
+          // Editado o anulado en su detalle (19 nov 2026): la lista se vuelve a pedir.
+          onTap: () async {
+            if (await _abrirPantalla<bool>(context, _GastoDetalleScreen(gasto: g, esDueno: duenoGastos)) == true && mounted) cargarGastos();
+          },
         ),
       // Sin texto al final de la lista: sólo la carga mientras llega la siguiente página.
       if (_cargandoGastos || !_gastosPedidos) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
@@ -2254,6 +2274,57 @@ class _GastoDetalleScreenState extends State<_GastoDetalleScreen> {
     });
     ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(r.isSuccess ? 'Pago solicitado ✓ Finanzas lo pagará' : (r.error ?? 'No se guardó'))));
+  }
+
+  /// Editar el gasto (19 nov 2026): el mismo formulario con lo que tiene hoy; al guardar, vuelve a la lista.
+  Future<void> _editar() async {
+    final g = widget.gasto;
+    final fecha = DateTime.tryParse('${g['expense_date'] ?? ''}');
+    if (await _abrirFormulario(context, 'editarGasto',
+            fijos: {'gastoId': g['id']},
+            iniciales: {
+              if (g['category'] != null) 'categoria': '${g['category']}',
+              if (g['amount'] != null) 'monto': g['amount'],
+              if ((g['description'] ?? '').toString().isNotEmpty) 'descripcion': '${g['description']}',
+              if (fecha != null) 'fecha': fecha,
+            },
+            subtitulo: '${g['category'] ?? 'Gasto'} · ${g['id']}') &&
+        mounted) {
+      Navigator.of(context).pop(true);
+    }
+  }
+
+  /// Anular el gasto (19 nov 2026): no se borra; queda anulado, con el motivo, y deja de contar.
+  Future<void> _anular() async {
+    final motivo = TextEditingController();
+    final si = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Anular el gasto?'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${widget.gasto['category'] ?? 'Gasto'} · ${_soles(widget.gasto['amount'])}. Deja de contar y no se paga. No se borra.'),
+          const SizedBox(height: 16),
+          TextField(
+            controller: motivo,
+            decoration: const InputDecoration(labelText: 'Motivo (opcional)', border: OutlineInputBorder()),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Anular gasto')),
+        ],
+      ),
+    );
+    if (si != true || !mounted) return;
+    setState(() => _guardando = true);
+    final r = await AdministracionService.registrar('anularGasto', {'gastoId': widget.gasto['id'], if (motivo.text.trim().isNotEmpty) 'motivo': motivo.text.trim()},
+        clave: AdministracionService.nuevaClave('anularGasto'));
+    if (!mounted) return;
+    setState(() => _guardando = false);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(r.isSuccess ? 'Gasto anulado ✓' : (r.error ?? 'No se guardó'))));
+    if (r.isSuccess) Navigator.of(context).pop(true);
   }
 
   /// Agregar fotos al gasto (19 nov 2026), por ejemplo la factura o la guía del proveedor.
@@ -2308,9 +2379,15 @@ class _GastoDetalleScreenState extends State<_GastoDetalleScreen> {
             child: Text(aCredito ? 'A crédito: Finanzas lo paga cuando se solicite el pago.' : 'Lo paga Finanzas.',
                 style: TextStyle(color: Colors.grey.shade700)),
           ),
-        if (!pagado && aCredito && g['id'] != null) ...[
+        // Mientras no se paga: Solicitar pago (a crédito), Editar y Anular (General Manager, 19 nov 2026). La base decide quién:
+        // quien lo registró o un dueño.
+        if (!pagado && g['id'] != null) ...[
           const SizedBox(height: 16),
-          _Acciones(acciones: [(Icons.request_quote_outlined, 'Solicitar pago', _guardando ? () {} : _solicitarPago)]),
+          _Acciones(acciones: [
+            if (aCredito) (Icons.request_quote_outlined, 'Solicitar pago', _guardando ? () {} : _solicitarPago),
+            (Icons.edit_outlined, 'Editar gasto', _guardando ? () {} : _editar),
+            (Icons.block_outlined, 'Anular gasto', _guardando ? () {} : _anular),
+          ]),
         ],
         // La imagen en el detalle, sin botón Ver evidencia (General Manager, 18 nov 2026); los dueños agregan fotos.
         if (esDueno && g['id'] != null) ...[
@@ -4139,6 +4216,34 @@ class _EvidenciaEnDetalleState extends State<_EvidenciaEnDetalle> {
         _cuadriculaEvidencias(context, lista, _abrir),
     ]);
   }
+}
+
+/// Anular un gasto que espera pago (General Manager, 19 nov 2026): con motivo opcional; no se borra. true si se anuló.
+Future<bool> _anularGasto(BuildContext context, String id, String titulo) async {
+  final motivo = TextEditingController();
+  final si = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('¿Anular el gasto?'),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('$titulo. Deja de contar y no se paga. No se borra.'),
+        const SizedBox(height: 16),
+        TextField(controller: motivo, decoration: const InputDecoration(labelText: 'Motivo (opcional)', border: OutlineInputBorder())),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+        ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Anular gasto')),
+      ],
+    ),
+  );
+  if (si != true || !context.mounted) return false;
+  final r = await AdministracionService.registrar('anularGasto', {'gastoId': id, if (motivo.text.trim().isNotEmpty) 'motivo': motivo.text.trim()},
+      clave: AdministracionService.nuevaClave('anularGasto'));
+  if (!context.mounted) return false;
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(r.isSuccess ? 'Gasto anulado ✓' : (r.error ?? 'No se guardó'))));
+  return r.isSuccess;
 }
 
 /// Abre una evidencia: un PDF en su app, una foto en grande (donde se puede quitar). true si se quitó.

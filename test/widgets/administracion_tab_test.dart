@@ -1716,6 +1716,51 @@ void main() {
     expect(find.textContaining('Gasto registrado a crédito ✓'), findsOneWidget);
   });
 
+  testWidgets('an unpaid gasto can be edited or cancelled from its detail; a paid one cannot (19 Nov 2026)', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await tester.scrollUntilVisible(find.text('Finca'), 200, scrollable: find.byType(Scrollable).last);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Finca'));
+      await tester.pumpAndSettle();
+      // Paid: no Editar or Anular.
+      await tester.tap(find.text('Mano de obra'));
+      await tester.pumpAndSettle();
+      expect(find.text('Editar gasto'), findsNothing);
+      expect(find.text('Anular gasto'), findsNothing);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      // A crédito, unpaid: Editar with today's data.
+      await tester.tap(find.text('Insumos'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Editar gasto'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Monto (S/)'), '6600');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final editado = jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/editarGasto')).body) as Map;
+    expect(editado['gastoId'], 'EX-0004');
+    expect('${editado['monto']}', '6600');
+    expect(editado['descripcion'], 'Abono a crédito'); // the form opened with today's data
+    expect(editado['categoria'], 'Insumos');
+    expect(find.text('Gasto actualizado ✓'), findsOneWidget);
+    // Anular, with a reason.
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Insumos'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Anular gasto'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Motivo (opcional)'), 'registrado dos veces');
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Anular gasto'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final anulado = jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/anularGasto')).body) as Map;
+    expect(anulado['gastoId'], 'EX-0004');
+    expect(anulado['motivo'], 'registrado dos veces');
+    expect(find.text('Gasto anulado ✓'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Finca: staff have no Registrar inversión and no Inversiones tab', (tester) async {
     await abrir(tester, rol: 'staff');
     await tester.scrollUntilVisible(find.text('Finca'), 200, scrollable: find.byType(Scrollable).last);
