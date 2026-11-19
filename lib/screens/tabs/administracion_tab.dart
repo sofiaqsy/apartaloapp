@@ -178,6 +178,10 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('categoria', 'Categoría', _Tipo.opcion), // las opciones son la guía de categorías (_guia)
     const _Campo('monto', 'Monto (S/)', _Tipo.monto),
     const _Campo('descripcion', 'Descripción', _Tipo.texto, requerido: false),
+    // A crédito (General Manager, 19 nov 2026: un abono que el proveedor entregó sin cobrar): el gasto cuenta hoy, pero
+    // no va a Finanzas hasta que alguien toque Solicitar pago en el gasto.
+    const _Campo('pago', 'Cuándo se paga', _Tipo.opcion,
+        opciones: {'ahora': 'Finanzas lo paga', 'credito': 'A crédito (se paga después)'}, porDefecto: 'ahora'),
     // Quien registra elige el área que responde por el gasto; se llena sola según la categoría.
     const _Campo('area', 'Área', _Tipo.opcion, opciones: _areas, porDefecto: 'shared', avanzado: true),
     const _Campo('centro', 'Centro de costo', _Tipo.opcion,
@@ -504,6 +508,8 @@ class _FormularioSheetState extends State<_FormularioSheet> {
       if (v == null || v == '') continue;
       datos[c.clave] = v is DateTime ? v.toIso8601String().substring(0, 10) : v;
     }
+    // "Cuándo se paga" no va al servidor: a crédito se marca después de guardar el gasto.
+    final aCredito = widget.formulario == 'gasto' && datos.remove('pago') == 'credito';
     if (_areaAutomatica) {
       // La base pone el área (compra o entrega del mismo día, o la de la persona); el formulario no pregunta para qué fue.
       datos.remove('area');
@@ -521,7 +527,19 @@ class _FormularioSheetState extends State<_FormularioSheet> {
       if (widget.formulario == 'gasto' && areaNombre != null) {
         texto = '$texto · Área: $areaNombre${r.data?['area_source'] == 'to_review' ? ' (por revisar)' : ''}';
       }
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(texto)));
+      final gastoId = r.data?['expense_id']?.toString();
+      if (aCredito && gastoId != null) {
+        final c = await AdministracionService.registrar('gastoCredito', {'gastoId': gastoId},
+            clave: AdministracionService.nuevaClave('gastoCredito'));
+        if (!mounted) return;
+        texto = c.isSuccess
+            ? 'Gasto registrado a crédito ✓ Cuando el proveedor cobre, toca Solicitar pago en el gasto'
+            : 'Gasto registrado, pero no quedó a crédito: Finanzas lo verá para pagar.';
+      }
+      // El mensaje nuevo reemplaza al anterior, si todavía se ve.
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(texto)));
       Navigator.of(context).pop(true);
     } else {
       setState(() {

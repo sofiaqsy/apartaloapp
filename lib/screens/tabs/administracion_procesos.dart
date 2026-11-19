@@ -2212,7 +2212,12 @@ mixin _GastosDelArea<T extends StatefulWidget> on State<T> {
             if ((g['description'] ?? '').toString().isNotEmpty) '${g['description']}',
           ].join(' · '),
           // La base dice "Pagado" o "Pendiente de pago"; el mismo naranja que lo que espera en Finanzas.
-          fin: g['status'] == 'Pagado' ? const _Pildora('Pagado', Colors.green) : const _Pildora('Pendiente', Colors.orange),
+          // A crédito (19 nov 2026): azul hasta que alguien solicita el pago.
+          fin: g['status'] == 'Pagado'
+              ? const _Pildora('Pagado', Colors.green)
+              : g['credito'] == true && g['pago_solicitado'] == null
+                  ? const _Pildora('A crédito', Colors.blue)
+                  : const _Pildora('Pendiente', Colors.orange),
           onTap: () => _abrirPantalla<void>(context, _GastoDetalleScreen(gasto: g, esDueno: duenoGastos)),
         ),
       // Sin texto al final de la lista: sólo la carga mientras llega la siguiente página.
@@ -2223,14 +2228,44 @@ mixin _GastosDelArea<T extends StatefulWidget> on State<T> {
 
 /// Detalle de un gasto de un área (4 nov 2026): sus datos y, para los dueños, su evidencia. Sólo Finanzas paga: aquí no
 /// hay botón de pagar (General Manager, 3 nov 2026).
-class _GastoDetalleScreen extends StatelessWidget {
+class _GastoDetalleScreen extends StatefulWidget {
   const _GastoDetalleScreen({required this.gasto, required this.esDueno});
   final Map<String, dynamic> gasto;
   final bool esDueno;
 
   @override
+  State<_GastoDetalleScreen> createState() => _GastoDetalleScreenState();
+}
+
+class _GastoDetalleScreenState extends State<_GastoDetalleScreen> {
+  bool _solicitado = false;
+  int _fotos = 0; // al subir una, la evidencia se vuelve a leer
+  bool _guardando = false;
+
+  /// Solicitar pago de un gasto a crédito (19 nov 2026): desde ahora espera en Finanzas → Pendientes.
+  Future<void> _solicitarPago() async {
+    setState(() => _guardando = true);
+    final r = await AdministracionService.registrar('solicitarPagoGasto', {'gastoId': widget.gasto['id']},
+        clave: AdministracionService.nuevaClave('solicitarPagoGasto'));
+    if (!mounted) return;
+    setState(() {
+      _guardando = false;
+      if (r.isSuccess) _solicitado = true;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(r.isSuccess ? 'Pago solicitado ✓ Finanzas lo pagará' : (r.error ?? 'No se guardó'))));
+  }
+
+  /// Agregar fotos al gasto (19 nov 2026), por ejemplo la factura o la guía del proveedor.
+  Future<void> _agregarFoto() async {
+    if (await _subirEvidencia(context, 'expense', '${widget.gasto['id']}') && mounted) setState(() => _fotos++);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final g = gasto;
+    final g = widget.gasto;
+    final esDueno = widget.esDueno;
+    final aCredito = g['credito'] == true && g['pago_solicitado'] == null && !_solicitado;
     final pagado = g['status'] == 'Pagado';
     Widget dato(String nombre, String? valor) => valor == null || valor.isEmpty || valor == 'null'
         ? const SizedBox.shrink()
@@ -2247,7 +2282,11 @@ class _GastoDetalleScreen extends StatelessWidget {
       body: ListView(padding: const EdgeInsets.all(16), children: [
         Row(children: [
           Expanded(child: Text('${g['category'] ?? 'Gasto'}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
-          _Pildora(pagado ? 'Pagado' : 'Pendiente', pagado ? Colors.green : Colors.orange),
+          pagado
+              ? const _Pildora('Pagado', Colors.green)
+              : aCredito
+                  ? const _Pildora('A crédito', Colors.blue)
+                  : const _Pildora('Pendiente', Colors.orange),
         ]),
         const SizedBox(height: 12),
         Container(
@@ -2266,12 +2305,19 @@ class _GastoDetalleScreen extends StatelessWidget {
         if (!pagado)
           Padding(
             padding: const EdgeInsets.only(top: 12),
-            child: Text('Lo paga Finanzas.', style: TextStyle(color: Colors.grey.shade700)),
+            child: Text(aCredito ? 'A crédito: Finanzas lo paga cuando se solicite el pago.' : 'Lo paga Finanzas.',
+                style: TextStyle(color: Colors.grey.shade700)),
           ),
-        // La imagen en el detalle, sin botón Ver evidencia (General Manager, 18 nov 2026).
+        if (!pagado && aCredito && g['id'] != null) ...[
+          const SizedBox(height: 16),
+          _Acciones(acciones: [(Icons.request_quote_outlined, 'Solicitar pago', _guardando ? () {} : _solicitarPago)]),
+        ],
+        // La imagen en el detalle, sin botón Ver evidencia (General Manager, 18 nov 2026); los dueños agregan fotos.
         if (esDueno && g['id'] != null) ...[
           const SizedBox(height: 16),
-          _EvidenciaEnDetalle(tipo: 'expense', id: '${g['id']}'),
+          _Acciones(acciones: [(Icons.add_a_photo_outlined, 'Agregar foto', _agregarFoto)]),
+          const SizedBox(height: 12),
+          _EvidenciaEnDetalle(key: ValueKey('gasto-fotos-$_fotos'), tipo: 'expense', id: '${g['id']}'),
         ],
       ]),
     );
@@ -6026,7 +6072,27 @@ class _PagoDetalleScreenState extends State<_PagoDetalleScreen> {
                       ),
                   ]),
                 ),
-                _Evidencia(evidencia: _mapa(p['evidencia']), titulo: '${p['tipo'] ?? 'Pago'} · ${p['id']}'),
+                // Fotos del pago (General Manager, 19 nov 2026): se ven aquí y se agregan aquí, en lo que el pago pagó.
+                if (_mapa(p['evidencia'])['id'] != null) ...[
+                  const SizedBox(height: 16),
+                  _Acciones(acciones: [
+                    (
+                      Icons.add_a_photo_outlined,
+                      'Agregar foto',
+                      () async {
+                        final ev = _mapa(p['evidencia']);
+                        if (await _subirEvidencia(context, '${ev['tipo']}', '${ev['id']}') && mounted) {
+                          widget.onCambio();
+                          _cargar();
+                        }
+                      }
+                    ),
+                  ]),
+                  const SizedBox(height: 12),
+                  _EvidenciaEnDetalle(
+                      key: ValueKey('pago-fotos-${_mapa(p['evidencia'])['n']}'), tipo: '${_mapa(p['evidencia'])['tipo']}', id: '${_mapa(p['evidencia'])['id']}'),
+                ] else
+                  _Evidencia(evidencia: _mapa(p['evidencia']), titulo: '${p['tipo'] ?? 'Pago'} · ${p['id']}'),
                 if (p['puede_operacion'] == true) ...[
                   const SizedBox(height: 20),
                   _Acciones(acciones: [(Icons.tag, p['operacion'] == null ? 'Agregar número de operación' : 'Cambiar número de operación', _agregarOperacion)]),

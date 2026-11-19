@@ -107,6 +107,8 @@ void main() {
         {'id': 'EX-0001', 'area': 'fulfillment', 'category': 'Flete', 'amount': 120, 'description': 'Envío a Lima', 'expense_date': '2026-11-01', 'created_by': 'staff@x', 'status': 'Pendiente de pago'},
         {'id': 'EX-0002', 'area': 'sourcing', 'category': 'Transporte', 'amount': 30, 'description': 'Lobato', 'expense_date': '2026-11-01', 'created_by': 'staff@x', 'status': 'Pendiente de pago'},
         {'id': 'EX-0003', 'area': 'farm', 'category': 'Mano de obra', 'amount': 120, 'description': 'Jornal deshierbo', 'expense_date': '2026-11-02', 'created_by': 'staff@x', 'status': 'Pagado', 'operacion': '6053814'},
+        // A crédito (19 Nov 2026): paid when someone taps Solicitar pago.
+        {'id': 'EX-0004', 'area': 'farm', 'category': 'Insumos', 'amount': 900, 'description': 'Abono a crédito', 'expense_date': '2026-10-01', 'created_by': 'staff@x', 'status': 'Pendiente de pago', 'credito': true, 'pago_solicitado': null},
       ].where((g) => g['area'] == area).toList();
       return http.Response(jsonEncode({'gastos': todos, 'hayMas': false}), 200);
     }
@@ -1679,6 +1681,41 @@ void main() {
     expect(body.containsKey('rol'), isFalse);
   });
 
+  testWidgets('Finca: a gasto a crédito is registered, shows A crédito, and Solicitar pago sends it to Finanzas (19 Nov 2026)', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await tester.scrollUntilVisible(find.text('Finca'), 200, scrollable: find.byType(Scrollable).last);
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Finca'));
+      await tester.pumpAndSettle();
+      expect(find.text('A crédito'), findsOneWidget); // the row's label
+      await tester.tap(find.text('Insumos'));
+      await tester.pumpAndSettle();
+      expect(find.text('A crédito: Finanzas lo paga cuando se solicite el pago.'), findsOneWidget);
+      expect(find.text('Agregar foto'), findsOneWidget);
+      await tester.tap(find.text('Solicitar pago'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/solicitarPagoGasto')).body)['gastoId'], 'EX-0004');
+    expect(find.text('Solicitar pago'), findsNothing); // asked: it now waits in Finanzas
+    expect(find.text('Pendiente'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    // Registering a gasto a crédito marks it right after it is saved.
+    await http.runWithClient(() async {
+      await tester.tap(find.text('Registrar gasto'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Monto (S/)'), '900');
+      await tester.tap(find.text('A crédito (se paga después)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final gasto = jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/gasto')).body) as Map;
+    expect(gasto.containsKey('pago'), isFalse);
+    expect(jsonDecode(pedidos.lastWhere((r) => r.url.path.endsWith('/registrar/gastoCredito')).body)['gastoId'], 'EX-0001');
+    expect(find.textContaining('Gasto registrado a crédito ✓'), findsOneWidget);
+  });
+
   testWidgets('Finca: staff have no Registrar inversión and no Inversiones tab', (tester) async {
     await abrir(tester, rol: 'staff');
     await tester.scrollUntilVisible(find.text('Finca'), 200, scrollable: find.byType(Scrollable).last);
@@ -1975,7 +2012,8 @@ void main() {
       await tester.tap(find.text('Compra · Jhonatan'));
       await tester.pumpAndSettle();
     }, () => MockClient((req) async => responder(req)));
-    for (final t in ['No está en el banco', 'Yape', 'Sin foto del pago', 'Agregar número de operación']) {
+    // Its photos are shown and added here (19 Nov 2026).
+    for (final t in ['No está en el banco', 'Yape', 'Agregar foto', 'Agregar número de operación']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     await http.runWithClient(() async {
