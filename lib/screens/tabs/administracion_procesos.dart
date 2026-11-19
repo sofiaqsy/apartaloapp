@@ -2339,65 +2339,160 @@ class _GastoDetalleScreenState extends State<_GastoDetalleScreen> {
     final esDueno = widget.esDueno;
     final aCredito = g['credito'] == true && g['pago_solicitado'] == null && !_solicitado;
     final pagado = g['status'] == 'Pagado';
-    Widget dato(String nombre, String? valor) => valor == null || valor.isEmpty || valor == 'null'
+    // El diseño de la General Manager (19 nov 2026, con una imagen): encabezado con el ícono de la categoría y su estado,
+    // los datos en una tarjeta blanca con íconos, una nota azul, la acción principal llena y las demás en azul claro, y
+    // la Evidencia con un recuadro vacío que invita a agregar la foto.
+    Widget dato(IconData icono, String nombre, String? valor, {bool resaltado = false}) => valor == null || valor.isEmpty || valor == 'null'
         ? const SizedBox.shrink()
-        : Container(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade300))),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              SizedBox(width: 130, child: Text(nombre, style: TextStyle(color: Colors.grey.shade700))),
-              Expanded(child: Text(valor, style: const TextStyle(fontWeight: FontWeight.w600))),
+        : Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Row(children: [
+              Icon(icono, size: 22, color: Colors.grey.shade600),
+              const SizedBox(width: 14),
+              SizedBox(width: 120, child: Text(nombre, style: TextStyle(fontSize: 15, color: Colors.grey.shade700))),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: resaltado
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          decoration: BoxDecoration(color: _azulSuave, borderRadius: BorderRadius.circular(20)),
+                          child: Text(valor, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                        )
+                      : Text(valor, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                ),
+              ),
             ]),
           );
+    final datos = [
+      dato(Icons.payments_outlined, 'Monto', g['amount'] == null ? null : _soles(g['amount']), resaltado: true),
+      dato(Icons.calendar_today_outlined, 'Fecha', g['expense_date'] == null ? null : _fechaLarga(g['expense_date'])),
+      dato(Icons.notes_outlined, 'Descripción', g['description']?.toString()),
+      dato(Icons.description_outlined, 'Gasto', g['id']?.toString()),
+      dato(Icons.person_outline, 'Registrado por', g['created_by']?.toString()),
+      // Con el pago conciliado con el banco, su número de operación (General Manager, 10 nov 2026).
+      dato(Icons.tag, 'Nº de operación', g['operacion']?.toString()),
+    ].where((w) => w is! SizedBox).toList();
+    final acciones = <(IconData, String, VoidCallback, bool)>[
+      // Mientras no se paga: Solicitar pago (a crédito), Editar y Anular (General Manager, 19 nov 2026); la base decide quién.
+      if (!pagado && aCredito && g['id'] != null) (Icons.request_quote_outlined, 'Solicitar pago', _solicitarPago, true),
+      if (!pagado && g['id'] != null) (Icons.edit_outlined, 'Editar gasto', _editar, false),
+      if (!pagado && g['id'] != null) (Icons.block_outlined, 'Anular gasto', _anular, false),
+      if (esDueno && g['id'] != null) (Icons.add_a_photo_outlined, 'Agregar foto', _agregarFoto, false),
+    ];
     return Scaffold(
-      appBar: AppBar(title: const Text('Gasto')),
-      body: ListView(padding: const EdgeInsets.all(16), children: [
+      appBar: AppBar(title: const Text('Gasto'), centerTitle: true),
+      body: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 32), children: [
         Row(children: [
-          Expanded(child: Text('${g['category'] ?? 'Gasto'}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(color: _azulSuave, borderRadius: BorderRadius.circular(14)),
+            child: Icon(_iconoCategoria('${g['category'] ?? ''}'), color: _azul, size: 28),
+          ),
+          const SizedBox(width: 16),
+          Expanded(child: Text('${g['category'] ?? 'Gasto'}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold))),
           pagado
               ? const _Pildora('Pagado', Colors.green)
               : aCredito
                   ? const _Pildora('A crédito', Colors.blue)
                   : const _Pildora('Pendiente', Colors.orange),
         ]),
-        const SizedBox(height: 12),
+        const SizedBox(height: 20),
+        // Los datos: información, no botones (una tarjeta blanca, sin flecha).
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(16)),
-          child: Column(children: [
-            dato('Monto', g['amount'] == null ? null : _soles(g['amount'])),
-            dato('Fecha', g['expense_date'] == null ? null : _fechaLarga(g['expense_date'])),
-            dato('Descripción', g['description']?.toString()),
-            dato('Gasto', g['id']?.toString()),
-            dato('Registrado por', g['created_by']?.toString()),
-            // Con el pago conciliado con el banco, su número de operación (General Manager, 10 nov 2026).
-            dato('Nº de operación', g['operacion']?.toString()),
-          ].where((w) => w is! SizedBox).toList()),
-        ),
-        if (!pagado)
-          Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: Text(aCredito ? 'A crédito: Finanzas lo paga cuando se solicite el pago.' : 'Lo paga Finanzas.',
-                style: TextStyle(color: Colors.grey.shade700)),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 12, offset: const Offset(0, 3))],
           ),
-        // Mientras no se paga: Solicitar pago (a crédito), Editar y Anular (General Manager, 19 nov 2026). La base decide quién:
-        // quien lo registró o un dueño.
-        if (!pagado && g['id'] != null) ...[
-          const SizedBox(height: 16),
-          _Acciones(acciones: [
-            if (aCredito) (Icons.request_quote_outlined, 'Solicitar pago', _guardando ? () {} : _solicitarPago),
-            (Icons.edit_outlined, 'Editar gasto', _guardando ? () {} : _editar),
-            (Icons.block_outlined, 'Anular gasto', _guardando ? () {} : _anular),
+          child: Column(children: [
+            for (var i = 0; i < datos.length; i++) ...[
+              if (i > 0) Divider(height: 1, color: Colors.grey.shade200),
+              datos[i],
+            ],
           ]),
+        ),
+        if (!pagado) ...[
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            decoration: BoxDecoration(color: _azulSuave, borderRadius: BorderRadius.circular(14)),
+            child: Row(children: [
+              const Icon(Icons.info_outline, color: _azul),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text.rich(TextSpan(children: [
+                  TextSpan(text: aCredito ? 'A crédito: ' : 'Pendiente: ', style: const TextStyle(fontWeight: FontWeight.w700, color: _azul)),
+                  TextSpan(text: aCredito ? 'Finanzas lo paga cuando se solicite el pago.' : 'Finanzas lo pagará.'),
+                ])),
+              ),
+            ]),
+          ),
+        ],
+        for (final a in acciones) ...[
+          const SizedBox(height: 12),
+          _BotonDetalle(icono: a.$1, texto: a.$2, principal: a.$4, onTap: _guardando ? null : a.$3),
         ],
         // La imagen en el detalle, sin botón Ver evidencia (General Manager, 18 nov 2026); los dueños agregan fotos.
         if (esDueno && g['id'] != null) ...[
-          const SizedBox(height: 16),
-          _Acciones(acciones: [(Icons.add_a_photo_outlined, 'Agregar foto', _agregarFoto)]),
+          const SizedBox(height: 28),
+          const Text('Evidencia', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
-          _EvidenciaEnDetalle(key: ValueKey('gasto-fotos-$_fotos'), tipo: 'expense', id: '${g['id']}'),
+          _EvidenciaEnDetalle(key: ValueKey('gasto-fotos-$_fotos'), tipo: 'expense', id: '${g['id']}', conTitulo: false, onAgregar: _agregarFoto),
         ],
       ]),
+    );
+  }
+}
+
+const _azul = Color(0xFF1A56C9), _azulSuave = Color(0xFFE6EEFB);
+
+/// El ícono de cada categoría de gasto, para el encabezado del detalle.
+IconData _iconoCategoria(String c) => switch (c) {
+      'Insumos' => Icons.shopping_bag_outlined,
+      'Combustible' => Icons.local_gas_station_outlined,
+      'Mano de obra' => Icons.engineering_outlined,
+      'Transporte' => Icons.local_shipping_outlined,
+      'Servicios' => Icons.bolt_outlined,
+      'Servicios profesionales' => Icons.work_outline,
+      'Mantenimiento' => Icons.build_outlined,
+      'Construcción' => Icons.construction_outlined,
+      'Empaque' => Icons.inventory_2_outlined,
+      'Personal' => Icons.badge_outlined,
+      'Finca' => Icons.agriculture_outlined,
+      _ => Icons.receipt_long_outlined,
+    };
+
+/// Un botón del detalle (diseño de la General Manager, 19 nov 2026): la acción principal azul llena; las demás en azul
+/// claro; todas con su ícono y la flecha.
+class _BotonDetalle extends StatelessWidget {
+  const _BotonDetalle({required this.icono, required this.texto, required this.onTap, this.principal = false});
+  final IconData icono;
+  final String texto;
+  final VoidCallback? onTap;
+  final bool principal;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = principal ? Colors.white : const Color(0xFF1F2328);
+    return Material(
+      color: principal ? _azul : _azulSuave,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 18, vertical: principal ? 20 : 16),
+          child: Row(children: [
+            Icon(icono, color: principal ? Colors.white : _azul, size: 26),
+            const SizedBox(width: 18),
+            Expanded(child: Text(texto, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: color))),
+            Icon(Icons.chevron_right, color: principal ? Colors.white : Colors.grey.shade700),
+          ]),
+        ),
+      ),
     );
   }
 }
@@ -4147,9 +4242,13 @@ class _EvidenciasScreenState extends State<_EvidenciasScreen> {
 /// image"): una foto se ve entera a lo ancho; varias, en cuadrícula. Tocarla la abre en grande (acercar, quitar).
 /// Sin evidencia lo dice en gris. Es información: no parece botón.
 class _EvidenciaEnDetalle extends StatefulWidget {
-  const _EvidenciaEnDetalle({super.key, required this.tipo, required this.id, this.onQuitada});
+  const _EvidenciaEnDetalle({super.key, required this.tipo, required this.id, this.onQuitada, this.conTitulo = true, this.onAgregar});
   final String tipo;
   final String id;
+
+  /// Sin título propio (el detalle pone el suyo) y, sin fotos, un recuadro que invita a agregar una (19 nov 2026).
+  final bool conTitulo;
+  final VoidCallback? onAgregar;
 
   /// Se quitó una: cuántas quedan.
   final void Function(int n)? onQuitada;
@@ -4192,12 +4291,37 @@ class _EvidenciaEnDetalleState extends State<_EvidenciaEnDetalle> {
           ? Text(_error!, style: gris)
           : const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()));
     }
-    if (lista.isEmpty) return Text('Sin evidencia', style: gris);
+    if (lista.isEmpty) {
+      if (widget.onAgregar == null) return Text('Sin evidencia', style: gris);
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade300)),
+        child: Column(children: [
+          Icon(Icons.image_outlined, size: 44, color: Colors.grey.shade400),
+          const SizedBox(height: 8),
+          Text('Sin evidencia', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey.shade800)),
+          const SizedBox(height: 6),
+          Text('Agrega una foto del comprobante, factura o nota de compra.', textAlign: TextAlign.center, style: gris),
+          const SizedBox(height: 14),
+          OutlinedButton.icon(
+            onPressed: widget.onAgregar,
+            icon: const Icon(Icons.add_a_photo_outlined),
+            label: const Text('Agregar foto'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _azul,
+              side: const BorderSide(color: _azul),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+            ),
+          ),
+        ]),
+      );
+    }
     final e = lista.first;
     final unaFoto = lista.length == 1 && e['url'] != null && e['tipo'] != 'application/pdf';
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('Evidencia', style: gris),
-      const SizedBox(height: 8),
+      if (widget.conTitulo) ...[Text('Evidencia', style: gris), const SizedBox(height: 8)],
       if (unaFoto)
         GestureDetector(
           onTap: () => _abrir(e),
