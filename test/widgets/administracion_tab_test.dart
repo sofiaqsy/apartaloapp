@@ -21,7 +21,8 @@ void main() {
   // Las áreas marcadas en Perfil deciden qué tarjetas muestra Registrar.
   var marcadas = ['farm', 'sourcing', 'production', 'commercial', 'fulfillment', 'finance'];
   var sinComercial = false;
-  var comprasExtra = <Map<String, dynamic>>[]; // más compras pendientes en Finanzas para una prueba
+  var comprasExtra = <Map<String, dynamic>>[];
+  var gastosExtra = <Map<String, dynamic>>[]; // más gastos en Finanzas para una prueba // más compras pendientes en Finanzas para una prueba
   var esDuenoMock = true; // el servidor de prueba responde como la persona de cada prueba (dueño o equipo) // el servidor no manda Comercialización (no es área de la persona)
 
   http.Response responder(http.Request req) {
@@ -353,6 +354,7 @@ void main() {
           {'id': 'EX-0001', 'fecha': '2026-11-01', 'categoria': 'Gas', 'descripcion': 'Gasolina', 'area': 'fulfillment', 'monto': 120, 'por': 'staff@x', 'estado': 'Pendiente', 'espera': 2, 'revisar': true},
           {'id': 'EX-0002', 'fecha': '2026-10-25', 'categoria': 'Mano de obra', 'descripcion': 'Jornal', 'area': 'farm', 'monto': 80, 'por': 'staff@x',
            'estado': 'Pagado', 'pagado_el': '2026-10-26', 'metodo': 'transfer', 'pagado_por': 'owner@x'},
+          ...gastosExtra,
         ],
         'adelantos': [
           {'id': 'SOL-0001', 'fecha': '2026-11-02', 'para': 'Misael Cusi', 'monto': 1500, 'motivo': 'Compras', 'por': 'misael@x', 'estado': 'Pendiente', 'espera': 1},
@@ -511,6 +513,7 @@ void main() {
     marcadas = ['farm', 'sourcing', 'production', 'commercial', 'fulfillment', 'finance'];
     sinComercial = false;
     comprasExtra = [];
+    gastosExtra = [];
     dotenv.testLoad(fileInput: 'API_BASE_URL=https://api.test\nBUSINESS_ID=BIZ-002');
   });
 
@@ -642,6 +645,64 @@ void main() {
     expect(r.url.path, endsWith('/registrar/pagoVarias'));
     expect(jsonDecode(r.body)['compraIds'], ['PU-0001', 'PU-0005']);
     expect(jsonDecode(r.body)['metodo'], 'transfer');
+  });
+
+  testWidgets('two gastos of the same provider are paid together; a gasto paid in part shows what is left (21 Nov 2026)', (tester) async {
+    gastosExtra = [
+      {'id': 'EX-0024', 'fecha': '2026-11-19', 'categoria': 'Insumos', 'monto': 2960, 'estado': 'Pendiente', 'espera': 1,
+       'proveedor_id': 'P-0039', 'proveedor': 'Agro Ejemplo'},
+      {'id': 'EX-0022', 'fecha': '2026-11-19', 'categoria': 'Abono', 'monto': 30, 'total': 730, 'pagado': 700, 'en_parte': true,
+       'estado': 'Pendiente', 'espera': 1, 'proveedor_id': 'P-0039', 'proveedor': 'Agro Ejemplo'},
+    ];
+    await abrir(tester, rol: 'owner');
+    await entrarFinanzas(tester);
+    await http.runWithClient(() async {
+      await tester.scrollUntilVisible(find.text('Abono'), 200, scrollable: find.byType(Scrollable).last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Abono'));
+      await tester.pumpAndSettle();
+      expect(find.text('Falta pagar'), findsOneWidget);
+      expect(find.text('Ya pagado'), findsOneWidget);
+      expect(find.text('Editar gasto'), findsNothing); // paid in part: it cannot be changed
+      await tester.tap(find.textContaining('Pagar los 2 gastos juntos'));
+      await tester.pumpAndSettle();
+      expect(find.text('Pagar gastos juntos'), findsOneWidget);
+      expect(find.textContaining('Número de operación'), findsNothing);
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      if (find.text('Después').evaluate().isNotEmpty) {
+        await tester.tap(find.text('Después'));
+        await tester.pumpAndSettle();
+      }
+    }, () => MockClient((req) async => responder(req)));
+    final r = pedidos.lastWhere((r) => r.url.path.contains('/registrar/'));
+    expect(r.url.path, endsWith('/registrar/pagoGastos'));
+    expect(jsonDecode(r.body)['gastos'], [{'id': 'EX-0024'}, {'id': 'EX-0022'}]);
+  });
+
+  testWidgets('Pagar gasto asks the amount (empty = what is left)', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await entrarFinanzas(tester);
+    await http.runWithClient(() async {
+      await tester.ensureVisible(find.text('Gas'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Gas'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pagar gasto'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Monto (S/)'), findsOneWidget);
+      await tester.enterText(find.byType(TextField).first, '100');
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      if (find.text('Después').evaluate().isNotEmpty) {
+        await tester.tap(find.text('Después'));
+        await tester.pumpAndSettle();
+      }
+    }, () => MockClient((req) async => responder(req)));
+    final r = pedidos.lastWhere((r) => r.url.path.contains('/registrar/'));
+    expect(r.url.path, endsWith('/registrar/pagoGasto'));
+    expect(jsonDecode(r.body)['gastoId'], 'EX-0001');
+    expect(jsonDecode(r.body)['monto'], 100);
   });
 
   testWidgets('a single requested compra has no "pay together" option', (tester) async {

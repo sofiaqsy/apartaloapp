@@ -1525,7 +1525,14 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
         (espera ? 'Pedido el' : 'Último pago', _fechaCorta(f['fecha'])),
         ('Nº de operación', f['operacion']?.toString()),
       ] else if (tipo == 'expense') ...[
-        ('Monto', _soles(f['monto'])),
+        // Pagado en parte (General Manager, 21 nov 2026): lo que falta, el total y lo ya pagado.
+        if (f['en_parte'] == true) ...[
+          ('Falta pagar', _soles(f['monto'])),
+          ('Total del gasto', _soles(f['total'])),
+          ('Ya pagado', _soles(f['pagado'])),
+        ] else
+          ('Monto', _soles(f['monto'])),
+        ('Proveedor', f['proveedor']?.toString()),
         ('Categoría', f['categoria']?.toString()),
         ('Descripción', f['descripcion']?.toString()),
         ('Área', f['area'] == null ? null : '${_areas[f['area']] ?? f['area']}${f['revisar'] == true ? ' (por revisar)' : ''}'),
@@ -1559,6 +1566,14 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
               if (_esperaFila(c) && c['metodo'] != 'advance' && c['agricultor'] == f['agricultor']) c
           ]
         : const <Map<String, dynamic>>[];
+    // Los gastos del mismo proveedor que esperan pago (General Manager, 21 nov 2026): se pagan juntos con un solo pago.
+    final gastosJuntos = tipo == 'expense' && espera && f['mensual'] != true && f['proveedor_id'] != null
+        ? [
+            for (final g in _filas[1])
+              if (_esperaFila(g) && g['mensual'] != true && g['proveedor_id'] == f['proveedor_id']) g
+          ]
+        : const <Map<String, dynamic>>[];
+    final totalGastos = gastosJuntos.fold<num>(0, (a, g) => a + ((g['monto'] as num?) ?? num.tryParse('${g['monto']}') ?? 0));
     num pedido(Map<String, dynamic> c) => (c['monto'] as num?) ?? num.tryParse('${c['monto']}') ?? (c['debe'] as num?) ?? 0;
     final totalJuntas = juntas.fold<num>(0, (a, c) => a + pedido(c));
     // Lo que espera se paga o se decide desde aquí; true si se guardó (entonces el detalle se cierra).
@@ -1582,6 +1597,14 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
                     subtitulo: '${f['agricultor'] ?? f['id']} · pidieron ${_soles(f['monto'] ?? f['debe'])}',
                     iniciales: {if (f['monto'] != null) 'monto': f['monto']})
               ),
+      if (gastosJuntos.length >= 2)
+        (
+          Icons.payments_outlined,
+          'Pagar los ${gastosJuntos.length} gastos juntos · ${_soles(totalGastos)}',
+          (ctx) => _pagar(ctx, 'pagoGastos', 'expense', '${f['id']}',
+              fijos: {'gastos': [for (final g in gastosJuntos) {'id': '${g['id']}'}]},
+              subtitulo: '${f['proveedor']} · ${[for (final g in gastosJuntos) '${g['id']} ${_soles(g['monto'])}'].join(' + ')}')
+        ),
       if (espera && tipo == 'expense')
         (
           Icons.payments_outlined,
@@ -1590,7 +1613,7 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
               _pagar(ctx, 'pagoGasto', 'expense', '${f['id']}', fijos: {'gastoId': f['id']}, subtitulo: '${f['categoria']} · ${_soles(f['monto'])}')
         ),
       // Editar o anular un gasto que espera pago (General Manager, 19 nov 2026); quien lo registró o un dueño.
-      if (espera && tipo == 'expense' && f['mensual'] != true) ...[
+      if (espera && tipo == 'expense' && f['mensual'] != true && f['en_parte'] != true) ...[
         (
           Icons.edit_outlined,
           'Editar gasto',
@@ -2384,6 +2407,9 @@ class _GastoDetalleScreenState extends State<_GastoDetalleScreen> {
           );
     final datos = [
       dato(Icons.payments_outlined, 'Monto', g['amount'] == null ? null : _soles(g['amount']), resaltado: true),
+      // Pagado en parte (General Manager, 21 nov 2026).
+      dato(Icons.hourglass_bottom_outlined, 'Falta pagar', g['falta'] == null ? null : _soles(g['falta'])),
+      dato(Icons.check_circle_outline, 'Ya pagado', g['falta'] == null || g['pagado'] == null ? null : _soles(g['pagado'])),
       dato(Icons.calendar_today_outlined, 'Fecha', g['expense_date'] == null ? null : _fechaLarga(g['expense_date'])),
       dato(Icons.notes_outlined, 'Descripción', g['description']?.toString()),
       dato(Icons.description_outlined, 'Gasto', g['id']?.toString()),
@@ -2399,7 +2425,7 @@ class _GastoDetalleScreenState extends State<_GastoDetalleScreen> {
     return Scaffold(
       // Editar y Anular van en los tres puntos (General Manager, 19 nov 2026); sólo mientras no se paga.
       appBar: AppBar(title: const Text('Gasto'), centerTitle: true, actions: [
-        if (!pagado && g['id'] != null)
+        if (!pagado && g['falta'] == null && g['id'] != null)
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_horiz),
             tooltip: 'Más opciones',

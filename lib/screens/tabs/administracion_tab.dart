@@ -188,7 +188,14 @@ final Map<String, List<_Campo>> _formularios = {
         opciones: {'coffee': 'Café', 'farm': 'Finca', 'venue': 'Local', 'property': 'Casa'}, porDefecto: 'coffee', avanzado: true),
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
+  // Con monto (General Manager, 21 nov 2026): vacío = lo que falta; una parte deja el resto esperando en Finanzas.
   'pagoGasto': [
+    const _Campo('monto', 'Monto (S/)', _Tipo.monto, requerido: false, ayuda: 'Vacío = todo lo que falta. Una parte deja el resto pendiente'),
+    const _Campo('metodo', 'Cómo se pagó', _Tipo.opcion, opciones: _metodosPago, porDefecto: 'transfer'),
+    const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
+  ],
+  // Pagar juntos varios gastos de un proveedor (General Manager, 21 nov 2026): una transferencia, un solo pago.
+  'pagoGastos': [
     const _Campo('metodo', 'Cómo se pagó', _Tipo.opcion, opciones: _metodosPago, porDefecto: 'transfer'),
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
@@ -364,6 +371,7 @@ const _tiposCuenta = {'bank_account': 'Cuenta', 'cci': 'CCI', 'phone_wallet': 'Y
 const _titulos = {
   'gasto': 'Registrar gasto',
   'pagoGasto': 'Pagar gasto',
+  'pagoGastos': 'Pagar gastos juntos',
   'adelanto': 'Solicitar adelanto',
   'aprobarAdelanto': 'Aprobar adelanto',
   'rechazarAdelanto': 'Rechazar adelanto',
@@ -388,7 +396,8 @@ const _titulos = {
 // Lo que pasó y lo que sigue, después de guardar.
 const _hecho = {
   'gasto': 'Gasto registrado ✓ Administración lo pagará',
-  'pagoGasto': 'Gasto pagado ✓',
+  'pagoGasto': 'Pago registrado ✓',
+  'pagoGastos': 'Gastos pagados ✓ En un solo pago',
   'adelanto': 'Adelanto solicitado ✓ Administración lo revisará',
   'aprobarAdelanto': 'Adelanto aprobado y entregado ✓',
   'rechazarAdelanto': 'Adelanto rechazado',
