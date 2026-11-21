@@ -251,6 +251,12 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('metodo', 'Cómo se pagó', _Tipo.opcion, opciones: _metodosPago, porDefecto: 'transfer'),
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
+  // Pagar juntas varias compras de un proveedor (General Manager, 21 nov 2026): una sola transferencia queda como un solo
+  // pago, así se concilia con su línea del banco. Lo que se paga es lo que pidieron en cada compra.
+  'pagoVarias': [
+    const _Campo('metodo', 'Cómo se pagó', _Tipo.opcion, opciones: _metodosPago, porDefecto: 'transfer'),
+    const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
+  ],
   'ingreso': [
     const _Campo('tipo', 'Qué es', _Tipo.opcion,
         opciones: {'sale': 'Venta fuera de la tienda', 'advance_return': 'Devolución de adelanto', 'loan': 'Préstamo', 'other': 'Otro'}),
@@ -367,6 +373,7 @@ const _titulos = {
   'entrega': 'Registrar compra',
   'precio': 'Poner precio a la compra',
   'pago': 'Pagar compra',
+  'pagoVarias': 'Pagar compras juntas',
   'ingreso': 'Registrar ingreso',
   'retiro': 'Registrar retiro de efectivo',
   'solicitarPago': 'Solicitar pago',
@@ -391,6 +398,7 @@ const _hecho = {
   'entrega': 'Compra registrada ✓',
   'precio': 'Precio puesto ✓ Lo que falta queda por pagar',
   'pago': 'Compra pagada ✓',
+  'pagoVarias': 'Compras pagadas ✓ En un solo pago',
   'retiro': 'Retiro de efectivo registrado ✓ Ya está en caja',
   'solicitarPago': 'Pago solicitado ✓ Finanzas lo pagará',
   'editarProveedor': 'Proveedor actualizado ✓',

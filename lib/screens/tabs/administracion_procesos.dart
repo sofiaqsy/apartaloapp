@@ -1551,8 +1551,26 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
         ('Código', '${f['id']}'),
       ],
     ];
+    // Las compras del mismo proveedor que esperan pago por transferencia (General Manager, 21 nov 2026): se pueden pagar
+    // juntas con un solo pago, así una transferencia queda como una sola línea y se concilia con el banco.
+    final juntas = tipo == 'purchase' && espera && f['metodo'] != 'advance' && f['agricultor'] != null
+        ? [
+            for (final c in _filas[0])
+              if (_esperaFila(c) && c['metodo'] != 'advance' && c['agricultor'] == f['agricultor']) c
+          ]
+        : const <Map<String, dynamic>>[];
+    num pedido(Map<String, dynamic> c) => (c['monto'] as num?) ?? num.tryParse('${c['monto']}') ?? (c['debe'] as num?) ?? 0;
+    final totalJuntas = juntas.fold<num>(0, (a, c) => a + pedido(c));
     // Lo que espera se paga o se decide desde aquí; true si se guardó (entonces el detalle se cierra).
     final acciones = <(IconData, String, Future<bool> Function(BuildContext))>[
+      if (juntas.length >= 2)
+        (
+          Icons.payments_outlined,
+          'Pagar las ${juntas.length} compras juntas · ${_soles(totalJuntas)}',
+          (ctx) => _pagar(ctx, 'pagoVarias', 'purchase', '${f['id']}',
+              fijos: {'compraIds': [for (final c in juntas) '${c['id']}']},
+              subtitulo: '${f['agricultor']} · ${[for (final c in juntas) '${c['id']} ${_soles(pedido(c))}'].join(' + ')}')
+        ),
       if (espera && tipo == 'purchase')
         f['metodo'] == 'advance'
             ? (Icons.savings_outlined, 'Pagar con el adelanto', (ctx) => _confirmarConAdelanto(ctx, f))

@@ -21,6 +21,7 @@ void main() {
   // Las áreas marcadas en Perfil deciden qué tarjetas muestra Registrar.
   var marcadas = ['farm', 'sourcing', 'production', 'commercial', 'fulfillment', 'finance'];
   var sinComercial = false;
+  var comprasExtra = <Map<String, dynamic>>[]; // más compras pendientes en Finanzas para una prueba
   var esDuenoMock = true; // el servidor de prueba responde como la persona de cada prueba (dueño o equipo) // el servidor no manda Comercialización (no es área de la persona)
 
   http.Response responder(http.Request req) {
@@ -346,6 +347,7 @@ void main() {
           // Paid only with advances: no money left the bank, so it is not shown in Finanzas (18 Nov 2026).
           {'id': 'PU-0004', 'entrega': 'DL-0004', 'fecha': '2026-10-21', 'agricultor': 'Agricultor Con Adelantos', 'kg': 10, 'total': 200, 'pagado': 200,
            'de_adelantos': 200, 'debe': 0, 'estado': 'Pagado'},
+          ...comprasExtra,
         ],
         'gastos': [
           {'id': 'EX-0001', 'fecha': '2026-11-01', 'categoria': 'Gas', 'descripcion': 'Gasolina', 'area': 'fulfillment', 'monto': 120, 'por': 'staff@x', 'estado': 'Pendiente', 'espera': 2, 'revisar': true},
@@ -508,6 +510,7 @@ void main() {
     sugerencia = {'area': 'fulfillment', 'cost_centre': 'coffee', 'source': 'to_review'};
     marcadas = ['farm', 'sourcing', 'production', 'commercial', 'fulfillment', 'finance'];
     sinComercial = false;
+    comprasExtra = [];
     dotenv.testLoad(fileInput: 'API_BASE_URL=https://api.test\nBUSINESS_ID=BIZ-002');
   });
 
@@ -607,6 +610,50 @@ void main() {
     expect(find.text('Para'), findsOneWidget);
     expect(find.textContaining('Cómo se'), findsNothing);
     expect(find.textContaining('Número de operación'), findsNothing);
+  });
+
+  testWidgets('two requested compras of the same provider are paid together with one payment (21 Nov 2026)', (tester) async {
+    comprasExtra = [
+      {'id': 'PU-0005', 'entrega': 'DL-0005', 'fecha': '2026-11-05', 'agricultor': 'Pedro Ramírez Ñique', 'kg': 40, 'total': 700, 'pagado': 0, 'debe': 700,
+       'monto': 700, 'metodo': 'transfer', 'solicitud': 10, 'estado': 'Pendiente', 'espera': 0},
+    ];
+    await abrir(tester, rol: 'owner');
+    await entrarFinanzas(tester);
+    await http.runWithClient(() async {
+      await tester.ensureVisible(find.text('Pedro Ramírez Ñique').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pedro Ramírez Ñique').first);
+      await tester.pumpAndSettle();
+      expect(find.text('Pagar compra'), findsOneWidget); // one at a time still works
+      await tester.tap(find.textContaining('Pagar las 2 compras juntas'));
+      await tester.pumpAndSettle();
+      expect(find.text('Pagar compras juntas'), findsOneWidget);
+      expect(find.textContaining('PU-0001'), findsWidgets);
+      expect(find.textContaining('PU-0005'), findsWidgets);
+      expect(find.textContaining('Número de operación'), findsNothing); // never asked
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      if (find.text('Después').evaluate().isNotEmpty) {
+        await tester.tap(find.text('Después'));
+        await tester.pumpAndSettle();
+      }
+    }, () => MockClient((req) async => responder(req)));
+    final r = pedidos.lastWhere((r) => r.url.path.contains('/registrar/'));
+    expect(r.url.path, endsWith('/registrar/pagoVarias'));
+    expect(jsonDecode(r.body)['compraIds'], ['PU-0001', 'PU-0005']);
+    expect(jsonDecode(r.body)['metodo'], 'transfer');
+  });
+
+  testWidgets('a single requested compra has no "pay together" option', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await entrarFinanzas(tester);
+    await http.runWithClient(() async {
+      await tester.ensureVisible(find.text('Pedro Ramírez Ñique'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pedro Ramírez Ñique'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    expect(find.textContaining('compras juntas'), findsNothing);
   });
 
   testWidgets('the owner approves an advance in Finanzas, choosing how it is paid', (tester) async {
