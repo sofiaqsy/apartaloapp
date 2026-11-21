@@ -1610,7 +1610,9 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
           Icons.payments_outlined,
           _titulos['pagoGasto']!,
           (ctx) =>
-              _pagar(ctx, 'pagoGasto', 'expense', '${f['id']}', fijos: {'gastoId': f['id']}, subtitulo: '${f['categoria']} · ${_soles(f['monto'])}')
+              // El monto viene lleno con lo que falta pagar (el total si no hay pagos), General Manager 21 nov 2026.
+              _pagar(ctx, 'pagoGasto', 'expense', '${f['id']}', fijos: {'gastoId': f['id']}, subtitulo: '${f['categoria']} · ${_soles(f['monto'])}',
+                  iniciales: {if (f['monto'] != null) 'monto': f['monto']})
         ),
       // Editar o anular un gasto que espera pago (General Manager, 19 nov 2026); quien lo registró o un dueño.
       if (espera && tipo == 'expense' && f['mensual'] != true && f['en_parte'] != true) ...[
@@ -2317,6 +2319,22 @@ class _GastoDetalleScreenState extends State<_GastoDetalleScreen> {
         SnackBar(content: Text(r.isSuccess ? 'Pago solicitado ✓ Finanzas lo pagará' : (r.error ?? 'No se guardó'))));
   }
 
+  /// Solicitar pago del resto (21 nov 2026): lo que falta de un gasto pagado en parte espera en su área hasta pedirlo.
+  bool _restoPedido = false;
+  Future<void> _solicitarResto() async {
+    setState(() => _guardando = true);
+    final r = await AdministracionService.registrar('solicitarRestoGasto', {'gastoId': widget.gasto['id']},
+        clave: AdministracionService.nuevaClave('solicitarRestoGasto'));
+    if (!mounted) return;
+    setState(() {
+      _guardando = false;
+      if (r.isSuccess) _restoPedido = true;
+    });
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(r.isSuccess ? 'Pago del resto solicitado ✓ Finanzas lo pagará' : (r.error ?? 'No se guardó'))));
+  }
+
   /// Editar el gasto (19 nov 2026): el mismo formulario con lo que tiene hoy; al guardar, vuelve a la lista.
   Future<void> _editar() async {
     final g = widget.gasto;
@@ -2380,6 +2398,7 @@ class _GastoDetalleScreenState extends State<_GastoDetalleScreen> {
     final esDueno = widget.esDueno;
     final aCredito = g['credito'] == true && g['pago_solicitado'] == null && !_solicitado;
     final pagado = g['status'] == 'Pagado';
+    final restoEspera = !pagado && g['falta'] != null && g['resto_solicitado'] != true && !_restoPedido;
     // El diseño de la General Manager (19 nov 2026, con una imagen): encabezado con el ícono de la categoría y su estado,
     // los datos en una tarjeta blanca con íconos, una nota azul, la acción principal llena y las demás en azul claro, y
     // la Evidencia con un recuadro vacío que invita a agregar la foto.
@@ -2420,6 +2439,8 @@ class _GastoDetalleScreenState extends State<_GastoDetalleScreen> {
     final acciones = <(IconData, String, VoidCallback, bool)>[
       // Mientras no se paga: Solicitar pago (a crédito), Editar y Anular (General Manager, 19 nov 2026); la base decide quién.
       if (!pagado && aCredito && g['id'] != null) (Icons.request_quote_outlined, 'Solicitar pago', _solicitarPago, true),
+      if (!pagado && g['falta'] != null && g['resto_solicitado'] != true && !_restoPedido && g['id'] != null)
+        (Icons.request_quote_outlined, 'Solicitar pago del resto', _solicitarResto, true),
       if (esDueno && g['id'] != null) (Icons.add_a_photo_outlined, 'Agregar foto', _agregarFoto, false),
     ];
     return Scaffold(
@@ -2484,8 +2505,13 @@ class _GastoDetalleScreenState extends State<_GastoDetalleScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text.rich(TextSpan(children: [
-                  TextSpan(text: aCredito ? 'A crédito: ' : 'Pendiente: ', style: const TextStyle(fontWeight: FontWeight.w700, color: _azul)),
-                  TextSpan(text: aCredito ? 'Finanzas lo paga cuando se solicite el pago.' : 'Finanzas lo pagará.'),
+                  TextSpan(
+                      text: restoEspera ? 'Pagado en parte: ' : (aCredito ? 'A crédito: ' : 'Pendiente: '),
+                      style: const TextStyle(fontWeight: FontWeight.w700, color: _azul)),
+                  TextSpan(
+                      text: restoEspera
+                          ? 'lo que falta queda aquí; Finanzas lo paga cuando se solicite el pago del resto.'
+                          : (aCredito ? 'Finanzas lo paga cuando se solicite el pago.' : 'Finanzas lo pagará.')),
                 ])),
               ),
             ]),
@@ -7210,3 +7236,8 @@ class _ElegirProductoState extends State<_ElegirProducto> {
     );
   }
 }
+
+/// Para las pruebas: abre el detalle de un gasto de un área.
+@visibleForTesting
+Future<void> abrirDetalleGastoParaPruebas(BuildContext context, Map<String, dynamic> gasto, {bool esDueno = true}) =>
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => _GastoDetalleScreen(gasto: gasto, esDueno: esDueno)));

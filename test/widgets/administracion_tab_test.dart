@@ -647,6 +647,30 @@ void main() {
     expect(jsonDecode(r.body)['metodo'], 'transfer');
   });
 
+  testWidgets('the rest of a gasto paid in part waits in its area until Solicitar pago del resto (21 Nov 2026)', (tester) async {
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final g = {'id': 'EX-0022', 'category': 'Insumos', 'amount': 730, 'expense_date': '2026-11-19', 'status': 'Pendiente de pago',
+      'pagado': 700, 'falta': 30, 'resto_solicitado': false};
+    await http.runWithClient(() async {
+      await tester.pumpWidget(MaterialApp(home: Builder(
+        builder: (context) => Scaffold(body: Center(child: TextButton(onPressed: () => abrirDetalleGastoParaPruebas(context, g), child: const Text('abrir')))),
+      )));
+      await tester.tap(find.text('abrir'));
+      await tester.pumpAndSettle();
+      expect(find.text('Falta pagar'), findsOneWidget);
+      expect(find.textContaining('lo que falta queda aquí'), findsOneWidget);
+      expect(find.byTooltip('Más opciones'), findsNothing); // paid in part: no Editar or Anular
+      await tester.tap(find.text('Solicitar pago del resto'));
+      await tester.pumpAndSettle();
+    }, () => MockClient((req) async => responder(req)));
+    final r = pedidos.lastWhere((r) => r.url.path.contains('/registrar/'));
+    expect(r.url.path, endsWith('/registrar/solicitarRestoGasto'));
+    expect(jsonDecode(r.body)['gastoId'], 'EX-0022');
+    expect(find.text('Solicitar pago del resto'), findsNothing);
+  });
+
   testWidgets('two gastos of the same provider are paid together; a gasto paid in part shows what is left (21 Nov 2026)', (tester) async {
     gastosExtra = [
       {'id': 'EX-0024', 'fecha': '2026-11-19', 'categoria': 'Insumos', 'monto': 2960, 'estado': 'Pendiente', 'espera': 1,
@@ -703,6 +727,29 @@ void main() {
     expect(r.url.path, endsWith('/registrar/pagoGasto'));
     expect(jsonDecode(r.body)['gastoId'], 'EX-0001');
     expect(jsonDecode(r.body)['monto'], 100);
+  });
+
+  testWidgets('Pagar gasto opens with the total of the gasto already filled in', (tester) async {
+    await abrir(tester, rol: 'owner');
+    await entrarFinanzas(tester);
+    await http.runWithClient(() async {
+      await tester.ensureVisible(find.text('Gas'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Gas'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pagar gasto'));
+      await tester.pumpAndSettle();
+      // Sin escribir nada: se guarda con el total del gasto.
+      await tester.tap(find.text('Guardar'));
+      await tester.pumpAndSettle();
+      if (find.text('Después').evaluate().isNotEmpty) {
+        await tester.tap(find.text('Después'));
+        await tester.pumpAndSettle();
+      }
+    }, () => MockClient((req) async => responder(req)));
+    final r = pedidos.lastWhere((r) => r.url.path.contains('/registrar/'));
+    expect(r.url.path, endsWith('/registrar/pagoGasto'));
+    expect(num.parse('${jsonDecode(r.body)['monto']}'), 120);
   });
 
   testWidgets('a single requested compra has no "pay together" option', (tester) async {
