@@ -3892,13 +3892,17 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
     }
   }
 
-  /// Solicitar pago completo (General Manager, 3 nov 2026): todo lo que se debe, por transferencia; Finanzas lo paga.
-  Future<void> _solicitarCompleto(Map<String, dynamic> c) async {
-    if (!await _confirmar(
-        '¿Solicitar pago completo?', '${c['agricultor'] ?? ''}: ${_soles(c['debe'])} por transferencia. Finanzas lo pagará.', 'Solicitar')) {
-      return;
+  /// Solicitar pago (General Manager, 23 nov 2026; antes "Solicitar pago completo"): abre el formulario con todo lo que
+  /// se debe, y se puede cambiar el monto. Por transferencia; Finanzas lo paga.
+  Future<void> _solicitarPago(Map<String, dynamic> c) async {
+    final debe = num.tryParse('${c['debe'] ?? ''}');
+    if (await _abrirFormulario(context, 'solicitarPago',
+        fijos: {'compraId': c['compra_id'], 'metodo': 'transfer'},
+        iniciales: {if (debe != null && debe > 0) 'monto': debe},
+        subtitulo: '${c['agricultor'] ?? ''} · debe ${_soles(c['debe'])}')) {
+      widget.onCambio();
+      _cargar();
     }
-    await _guardar('solicitarPago', {'compraId': c['compra_id'], 'metodo': 'transfer'}, (_) => _hecho['solicitarPago']!);
   }
 
   /// Marcar como pagado desde adelantos (dueños): los adelantos abiertos del mismo agricultor, el más antiguo primero,
@@ -4028,10 +4032,10 @@ class _CompraDetalleScreenState extends State<_CompraDetalleScreen> {
                     ),
                   ])
                 else if ((situacion == 'Por pagar' || situacion == 'Pagado en parte') && c['compra_id'] != null)
-                  // Compras no paga: pide el pago completo y Finanzas lo hace, o (dueños) lo marca pagado desde los
+                  // Compras no paga: pide el pago (todo o una parte) y Finanzas lo hace, o (dueños) lo marca pagado desde los
                   // adelantos del agricultor. Nunca es automático (General Manager, 3 nov 2026).
                   _Acciones(acciones: [
-                    (Icons.schedule_send, 'Solicitar pago completo', () => _solicitarCompleto(c)),
+                    (Icons.schedule_send, 'Solicitar pago', () => _solicitarPago(c)),
                     if (widget.esDueno && _lista(c['adelantos']).isNotEmpty)
                       (Icons.savings_outlined, 'Marcar como pagado desde adelantos', () => _pagarDesdeAdelantos(c, _lista(c['adelantos']))),
                   ]),

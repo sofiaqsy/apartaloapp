@@ -190,7 +190,7 @@ final Map<String, List<_Campo>> _formularios = {
   ],
   // Con monto (General Manager, 21 nov 2026): vacío = lo que falta; una parte deja el resto esperando en Finanzas.
   'pagoGasto': [
-    const _Campo('monto', 'Monto (S/)', _Tipo.monto, requerido: false, ayuda: 'Vacío = todo lo que falta. Una parte deja el resto pendiente'),
+    const _Campo('monto', 'Monto (S/)', _Tipo.monto, requerido: false, ayuda: 'Viene con lo que falta pagar. Si pagas una parte, el resto queda pendiente'),
     const _Campo('metodo', 'Cómo se pagó', _Tipo.opcion, opciones: _metodosPago, porDefecto: 'transfer'),
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
@@ -274,13 +274,10 @@ final Map<String, List<_Campo>> _formularios = {
     const _Campo('descripcion', 'Descripción', _Tipo.texto, requerido: false),
     const _Campo('fecha', 'Fecha', _Tipo.fecha, avanzado: true),
   ],
-  // Solicitar pago (General Manager, 3 nov 2026): a demanda, con el monto y cómo: transferencia (Finanzas paga)
-  // o con un adelanto abierto del mismo agricultor (Finanzas lo confirma). Las opciones de adelanto llegan del detalle.
+  // Solicitar pago (General Manager, 23 nov 2026, antes "Solicitar pago completo"): se abre con todo lo que se debe
+  // y se puede cambiar el monto; por transferencia (va fijo desde el detalle de la compra), Finanzas lo paga.
   'solicitarPago': [
-    const _Campo('monto', 'Monto a pagar (S/)', _Tipo.monto, requerido: false, ayuda: 'Vacío = todo lo que se debe'),
-    const _Campo('metodo', 'Cómo se paga', _Tipo.opcion,
-        opciones: {'transfer': 'Transferencia', 'advance': 'Con un adelanto'}, porDefecto: 'transfer'),
-    _Campo('adelantoId', 'Adelanto', _Tipo.opcion, visibleSi: (v) => v['metodo'] == 'advance'),
+    const _Campo('monto', 'Monto a pagar (S/)', _Tipo.monto, ayuda: 'Viene con todo lo que se debe. Puedes pedir solo una parte'),
     const _Campo('nota', 'Nota para Finanzas', _Tipo.texto, requerido: false),
   ],
   // Editar proveedor y sus cuentas (General Manager, 3 nov 2026): sólo dueños, lo decide la base.
