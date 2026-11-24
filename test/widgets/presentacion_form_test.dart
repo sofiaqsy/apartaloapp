@@ -235,4 +235,32 @@ void main() {
     await _pump(t, presentacion: _existente, manual: true, scale: 2.0, size: const Size(320, 568));
     expect(t.takeException(), isNull);
   });
+
+  group('units for services (Buddy, 24 Nov 2026)', () {
+    testWidgets('día, viaje and unidad can be chosen; und is no longer offered', (t) async {
+      final h = await _pump(t);
+      await t.enterText(campo('Contenido'), '1');
+      await t.enterText(campo('Precio público'), '270');
+      await _tap(t, find.byType(DropdownButtonFormField<String>));
+      expect(find.text('viaje'), findsWidgets);
+      expect(find.text('unidad'), findsWidgets);
+      expect(find.text('und'), findsNothing);
+      await _tap(t, find.text('día').last);
+      await _tap(t, find.text('Crear presentación'));
+      expect(h.datos!.unidad, 'día');
+    });
+
+    for (final unidad in ['und', 'persona']) {
+      testWidgets('a saved unit outside the list ($unidad) shows as it is and is kept when editing', (t) async {
+        final h = await _pump(t, presentacion: Presentacion(
+          id: 'pr2', contenido: 1, unidad: unidad, precio: 5, stock: 0, pedidoMinimo: 1, orden: 0,
+          predeterminada: false, visible: true, molienda: const []));
+        expect(t.takeException(), isNull);
+        expect(find.text(unidad), findsOneWidget);
+        await t.enterText(campo('Precio público'), '6');
+        await _tap(t, find.text('Guardar cambios'));
+        expect((h.datos!.unidad, h.datos!.precio), (unidad, 6.0));
+      });
+    }
+  });
 }

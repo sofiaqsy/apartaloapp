@@ -53,7 +53,9 @@ class PresentacionForm extends StatefulWidget {
 }
 
 class _PresentacionFormState extends State<PresentacionForm> {
-  static const _unidades = ['g', 'kg', 'ml', 'und'];
+  // Servicios de transporte para Buddy (24 nov 2026): "día" y "viaje". "unidad" en lugar de "und" (lo mismo que Buddy);
+  // las presentaciones guardadas con "und" (o cualquier otra unidad) se muestran y se guardan tal cual.
+  static const _unidades = ['g', 'kg', 'ml', 'unidad', 'día', 'viaje'];
   static const _moliendas = {'ground': 'Molido', 'whole': 'Grano', 'green': 'Verde'};
 
   late final TextEditingController _contenido;
@@ -196,7 +198,9 @@ class _PresentacionFormState extends State<PresentacionForm> {
             key: ValueKey('unidad-$_unidad'),
             initialValue: _unidad,
             decoration: const InputDecoration(labelText: 'Unidad'),
-            items: [for (final u in _unidades) DropdownMenuItem(value: u, child: Text(u))],
+            items: [
+              for (final u in [..._unidades, if (!_unidades.contains(_unidad)) _unidad]) DropdownMenuItem(value: u, child: Text(u)),
+            ],
             onChanged: _guardando ? null : (v) => setState(() => _unidad = v ?? _unidad),
           ),
           flexA: 3,
