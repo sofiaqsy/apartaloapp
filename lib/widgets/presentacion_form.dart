@@ -197,9 +197,11 @@ class _PresentacionFormState extends State<PresentacionForm> {
           DropdownButtonFormField<String>(
             key: ValueKey('unidad-$_unidad'),
             initialValue: _unidad,
+            isExpanded: true, // "unidad" o "viaje" en un teléfono angosto con letra grande: se corta, no se desborda
             decoration: const InputDecoration(labelText: 'Unidad'),
             items: [
-              for (final u in [..._unidades, if (!_unidades.contains(_unidad)) _unidad]) DropdownMenuItem(value: u, child: Text(u)),
+              for (final u in [..._unidades, if (!_unidades.contains(_unidad)) _unidad])
+                DropdownMenuItem(value: u, child: Text(u, overflow: TextOverflow.ellipsis)),
             ],
             onChanged: _guardando ? null : (v) => setState(() => _unidad = v ?? _unidad),
           ),
