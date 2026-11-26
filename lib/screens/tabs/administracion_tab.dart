@@ -429,23 +429,38 @@ Future<bool> _abrirFormulario(BuildContext context, String formulario,
     {Map<String, dynamic> fijos = const {},
     String? subtitulo,
     Map<String, dynamic> iniciales = const {},
+    Map<String, String> nombres = const {},
     Map<String, Map<String, String>> opciones = const {},
     Future<ApiResponse<Map<String, dynamic>>>? destino}) async {
   final guardado = await Navigator.of(context).push<bool>(
     CupertinoPageRoute(
         builder: (_) => _FormularioSheet(
-            formulario: formulario, fijos: fijos, subtitulo: subtitulo, iniciales: iniciales, opciones: opciones, destino: destino)),
+            formulario: formulario,
+            fijos: fijos,
+            subtitulo: subtitulo,
+            iniciales: iniciales,
+            nombres: nombres,
+            opciones: opciones,
+            destino: destino)),
   );
   return guardado == true;
 }
 
 class _FormularioSheet extends StatefulWidget {
   const _FormularioSheet(
-      {required this.formulario, required this.fijos, this.subtitulo, this.iniciales = const {}, this.opciones = const {}, this.destino});
+      {required this.formulario,
+      required this.fijos,
+      this.subtitulo,
+      this.iniciales = const {},
+      this.nombres = const {},
+      this.opciones = const {},
+      this.destino});
   final String formulario;
   final Map<String, dynamic> fijos;
   final String? subtitulo;
   final Map<String, dynamic> iniciales;
+  /// El nombre que se muestra de un campo persona que ya viene elegido (Editar gasto: su proveedor, 25 nov 2026).
+  final Map<String, String> nombres;
   final Map<String, Map<String, String>> opciones;
   final Future<ApiResponse<Map<String, dynamic>>>? destino;
 
@@ -480,6 +495,7 @@ class _FormularioSheetState extends State<_FormularioSheet> {
       if (c.tipo == _Tipo.fecha) _valores[c.clave] = DateTime.now();
     }
     _valores.addAll(widget.iniciales);
+    _nombresElegidos.addAll(widget.nombres);
     _opciones.addAll(widget.opciones);
     if (widget.formulario == 'entrega') _cargarProductos();
     if (widget.formulario == 'inversion') _cargarAportantes();

@@ -1626,7 +1626,9 @@ class _FinanzasScreenState extends _ProcesoState<_FinanzasScreen> with _ReporteD
                 if (f['monto'] != null) 'monto': f['monto'],
                 if ((f['descripcion'] ?? '').toString().isNotEmpty) 'descripcion': '${f['descripcion']}',
                 if (DateTime.tryParse('${f['fecha'] ?? ''}') != null) 'fecha': DateTime.parse('${f['fecha']}'),
+                if (f['proveedor_id'] != null) 'proveedorId': '${f['proveedor_id']}',
               },
+              nombres: {if (f['proveedor_id'] != null && f['proveedor'] != null) 'proveedorId': '${f['proveedor']}'},
               subtitulo: '${f['categoria'] ?? 'Gasto'} · ${f['id']}')
         ),
         (Icons.block_outlined, 'Anular gasto', (ctx) => _anularGasto(ctx, '${f['id']}', '${f['categoria'] ?? 'Gasto'} · ${_soles(f['monto'])}')),
@@ -2347,7 +2349,10 @@ class _GastoDetalleScreenState extends State<_GastoDetalleScreen> {
               if ((g['description'] ?? '').toString().isNotEmpty) 'descripcion': '${g['description']}',
               if (fecha != null) 'fecha': fecha,
               'pago': g['credito'] == true && g['pago_solicitado'] == null && !_solicitado ? 'credito' : 'ahora',
+              // Abre con su proveedor (General Manager, 25 nov 2026: "I can't see that name").
+              if (g['proveedor_id'] != null) 'proveedorId': '${g['proveedor_id']}',
             },
+            nombres: {if (g['proveedor_id'] != null && g['proveedor'] != null) 'proveedorId': '${g['proveedor']}'},
             subtitulo: '${g['category'] ?? 'Gasto'} · ${g['id']}') &&
         mounted) {
       Navigator.of(context).pop(true);
@@ -2430,6 +2435,8 @@ class _GastoDetalleScreenState extends State<_GastoDetalleScreen> {
       dato(Icons.hourglass_bottom_outlined, 'Falta pagar', g['falta'] == null ? null : _soles(g['falta'])),
       dato(Icons.check_circle_outline, 'Ya pagado', g['falta'] == null || g['pagado'] == null ? null : _soles(g['pagado'])),
       dato(Icons.calendar_today_outlined, 'Fecha', g['expense_date'] == null ? null : _fechaLarga(g['expense_date'])),
+      // Su proveedor (General Manager, 25 nov 2026: "I can't see that name"; fincas 0105).
+      dato(Icons.store_outlined, 'Proveedor', g['proveedor']?.toString()),
       dato(Icons.notes_outlined, 'Descripción', g['description']?.toString()),
       dato(Icons.description_outlined, 'Gasto', g['id']?.toString()),
       dato(Icons.person_outline, 'Registrado por', g['created_by']?.toString()),
